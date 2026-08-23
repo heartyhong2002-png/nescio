@@ -1,0 +1,1250 @@
+<title>Nescio</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --paper: #E9EDE1;
+    --backdrop: #DDE3D2;
+    --surface: #FFFFFF;
+    --surface-alt: #EEF1E6;
+    --ink: #1C2A21;
+    --ink-soft: #55654F;
+    --ink-faint: #85927E;
+    --rule: #CBD4BE;
+    --accent: #1F6F5C;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #DCEAE1;
+    --up: #C23B3B;
+    --up-soft: color-mix(in srgb, #C23B3B 13%, transparent);
+    --down: #2A5FB0;
+    --down-soft: color-mix(in srgb, #2A5FB0 13%, transparent);
+    --shadow: rgba(28, 42, 33, 0.12);
+    --tab-inactive: #85927E;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #10150F;
+      --backdrop: #0A0D09;
+      --surface: #171E17;
+      --surface-alt: #1D251C;
+      --ink: #E7EDE2;
+      --ink-soft: #A0AD98;
+      --ink-faint: #6C7665;
+      --rule: #2C362A;
+      --accent: #6BCBAA;
+      --accent-ink: #0D1712;
+      --accent-soft: #1E332A;
+      --up: #E3706B;
+      --up-soft: color-mix(in srgb, #E3706B 16%, transparent);
+      --down: #6FA0E3;
+      --down-soft: color-mix(in srgb, #6FA0E3 16%, transparent);
+      --shadow: rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #10150F;
+    --backdrop: #0A0D09;
+    --surface: #171E17;
+    --surface-alt: #1D251C;
+    --ink: #E7EDE2;
+    --ink-soft: #A0AD98;
+    --ink-faint: #6C7665;
+    --rule: #2C362A;
+    --accent: #6BCBAA;
+    --accent-ink: #0D1712;
+    --accent-soft: #1E332A;
+    --up: #E3706B;
+    --up-soft: color-mix(in srgb, #E3706B 16%, transparent);
+    --down: #6FA0E3;
+    --down-soft: color-mix(in srgb, #6FA0E3 16%, transparent);
+    --shadow: rgba(0, 0, 0, 0.4);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background: var(--backdrop);
+    color: var(--ink);
+    font-family: 'Noto Sans KR', -apple-system, 'Malgun Gothic', sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  a { color: inherit; }
+  button { font-family: inherit; }
+
+  /* ---- App shell ---- */
+  .stage {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 2.25rem 1rem 3rem;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 428px;
+    min-height: 780px;
+    background: var(--paper);
+    border-radius: 22px;
+    border: 1px solid var(--rule);
+    box-shadow: 0 24px 60px var(--shadow);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-topbar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 1.05rem 1.1rem 0.85rem;
+    border-bottom: 1px solid var(--rule);
+    background: var(--paper);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 5;
+  }
+
+  .app-topbar .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    font-family: 'Gowun Batang', 'Noto Serif KR', serif;
+    font-weight: 700;
+    font-size: 1.15rem;
+  }
+  .app-topbar .brand .mark { color: var(--accent); }
+
+  .back-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 2rem; height: 2rem;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .back-btn:hover { background: var(--surface-alt); }
+  .back-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .back-btn svg { width: 1.1rem; height: 1.1rem; }
+
+  .topbar-title {
+    font-weight: 600;
+    font-size: 0.98rem;
+    flex: 1;
+  }
+
+  .theme-toggle {
+    width: 2rem; height: 2rem;
+    border-radius: 50%;
+    border: 1px solid var(--rule);
+    background: var(--surface);
+    color: var(--ink-soft);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .theme-toggle svg { width: 1rem; height: 1rem; }
+
+  .app-body {
+    flex: 1;
+    overflow-y: auto;
+    position: relative;
+  }
+
+  .screen {
+    display: none;
+    padding: 1.3rem 1.15rem 1.6rem;
+    animation: enter 0.22s ease-out;
+  }
+  .screen.visible { display: block; }
+  @keyframes enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .screen.flush { padding: 0; }
+
+  /* ---- Tab bar ---- */
+  .tabbar {
+    display: none;
+    border-top: 1px solid var(--rule);
+    background: var(--paper);
+    flex-shrink: 0;
+  }
+  .tabbar.visible { display: flex; }
+  .tab-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.65rem 0 0.8rem;
+    background: none;
+    border: none;
+    color: var(--tab-inactive);
+    font-size: 0.68rem;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+  }
+  .tab-btn svg { width: 1.25rem; height: 1.25rem; }
+  .tab-btn.active { color: var(--accent); }
+  .tab-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  /* ---- Typography helpers ---- */
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  h1.big-title {
+    font-family: 'Gowun Batang', 'Noto Serif KR', serif;
+    font-weight: 700;
+    font-size: 1.55rem;
+    margin: 0.4rem 0 0.5rem;
+    text-wrap: balance;
+  }
+  p.lede { color: var(--ink-soft); margin: 0; max-width: 40ch; }
+
+  /* ---- Onboarding ---- */
+  .onboard-skip {
+    position: absolute;
+    top: 1.1rem; right: 1.15rem;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    background: none;
+    border: none;
+    cursor: pointer;
+    z-index: 6;
+  }
+  .onboard-skip:hover { color: var(--ink); }
+
+  .onboard-track {
+    display: flex;
+    transition: transform 0.35s ease;
+  }
+  .onboard-slide {
+    min-width: 100%;
+    padding: 2.6rem 1.5rem 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .onboard-art {
+    width: 100%;
+    max-width: 260px;
+    margin-bottom: 1.8rem;
+  }
+  .onboard-slide h2 {
+    font-family: 'Gowun Batang', 'Noto Serif KR', serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0 0 0.7rem;
+    text-wrap: balance;
+  }
+  .onboard-slide p {
+    color: var(--ink-soft);
+    font-size: 0.94rem;
+    max-width: 30ch;
+    margin: 0;
+  }
+
+  .onboard-dots {
+    display: flex;
+    justify-content: center;
+    gap: 0.4rem;
+    margin: 2rem 0 1.4rem;
+  }
+  .onboard-dots span {
+    width: 0.4rem; height: 0.4rem;
+    border-radius: 50%;
+    background: var(--rule);
+    transition: background 0.2s, width 0.2s;
+  }
+  .onboard-dots span.active { background: var(--accent); width: 1.15rem; border-radius: 999px; }
+
+  .onboard-footer {
+    padding: 0 1.5rem 2rem;
+  }
+
+  .btn-primary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    width: 100%;
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    border: none;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 600;
+    font-size: 0.94rem;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .btn-primary:hover { opacity: 0.92; }
+  .btn-primary:active { transform: scale(0.98); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .btn-primary svg { width: 1rem; height: 1rem; }
+
+  /* ---- Register ---- */
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 0.7rem 0.85rem;
+    margin-top: 0.2rem;
+  }
+  .search-box svg { width: 1.05rem; height: 1.05rem; color: var(--ink-faint); flex-shrink: 0; }
+  .search-box input {
+    border: none;
+    outline: none;
+    background: none;
+    color: var(--ink);
+    font-size: 0.92rem;
+    width: 100%;
+    font-family: inherit;
+  }
+  .search-box input::placeholder { color: var(--ink-faint); }
+
+  .stock-list { display: flex; flex-direction: column; margin-top: 0.9rem; }
+  .stock-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 0.15rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .stock-row:last-child { border-bottom: none; }
+  .stock-avatar {
+    width: 2.15rem; height: 2.15rem;
+    border-radius: 50%;
+    background: var(--surface-alt);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Gowun Batang', serif;
+    font-weight: 700;
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+    flex-shrink: 0;
+  }
+  .stock-meta { flex: 1; min-width: 0; }
+  .stock-meta .name { font-weight: 600; font-size: 0.9rem; }
+  .stock-meta .code { font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--ink-faint); }
+  .stock-price {
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+    flex-shrink: 0;
+  }
+  .add-btn {
+    width: 1.9rem; height: 1.9rem;
+    border-radius: 50%;
+    border: 1px solid var(--rule);
+    background: var(--surface);
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  }
+  .add-btn svg { width: 1rem; height: 1rem; }
+  .add-btn:hover { border-color: var(--accent); }
+  .add-btn:active { transform: scale(0.92); }
+  .add-btn.added { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .add-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .my-picks-label {
+    margin-top: 1.6rem;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.7rem; min-height: 2.1rem; }
+  .chip {
+    display: flex; align-items: center; gap: 0.4rem;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 999px;
+    padding: 0.32rem 0.55rem 0.32rem 0.8rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  .chip button {
+    border: none; background: none; color: inherit; cursor: pointer;
+    display: flex; align-items: center; padding: 0.1rem;
+    opacity: 0.7;
+  }
+  .chip button:hover { opacity: 1; }
+  .chip button svg { width: 0.85rem; height: 0.85rem; }
+  .chip-empty { font-size: 0.82rem; color: var(--ink-faint); font-style: italic; }
+
+  .register-footer {
+    position: sticky;
+    bottom: 0;
+    padding: 0.9rem 1.15rem calc(0.9rem + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to top, var(--paper) 65%, transparent);
+  }
+  .register-hint { text-align: center; font-size: 0.76rem; color: var(--ink-faint); margin-top: 0.5rem; }
+
+  /* ---- Home ---- */
+  .home-head { display: flex; align-items: flex-start; justify-content: space-between; }
+  .home-date { font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--ink-faint); margin-top: 0.3rem; }
+  .icon-btn {
+    width: 2.15rem; height: 2.15rem;
+    border-radius: 50%;
+    border: 1px solid var(--rule);
+    background: var(--surface);
+    color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .icon-btn svg { width: 1.05rem; height: 1.05rem; }
+
+  .spotlight {
+    margin-top: 1.3rem;
+    display: flex;
+    gap: 0.8rem;
+    align-items: center;
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    border-radius: 12px;
+    padding: 0.85rem 0.95rem;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+  }
+  .spotlight .spotlight-icon { color: var(--accent); flex-shrink: 0; }
+  .spotlight .spotlight-icon svg { width: 1.4rem; height: 1.4rem; }
+  .spotlight-body { flex: 1; min-width: 0; }
+  .spotlight-eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 0.65rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+  .spotlight-title { font-weight: 600; font-size: 0.88rem; margin-top: 0.15rem; }
+  .spotlight-chevron { color: var(--accent); flex-shrink: 0; }
+  .spotlight-chevron svg { width: 1rem; height: 1rem; }
+
+  .section-label {
+    margin-top: 1.6rem;
+    margin-bottom: 0.7rem;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .watch-list { display: flex; flex-direction: column; gap: 0.6rem; }
+  .watch-card {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 0.8rem 0.9rem;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .watch-card:hover { border-color: var(--accent); }
+  .watch-card:active { transform: scale(0.99); }
+  .watch-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .watch-main { flex: 1; min-width: 0; }
+  .watch-name { font-weight: 600; font-size: 0.92rem; }
+  .watch-note { font-size: 0.78rem; color: var(--ink-soft); margin-top: 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .watch-spark { flex-shrink: 0; }
+  .watch-figures { text-align: right; flex-shrink: 0; }
+  .watch-price { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: 0.86rem; font-weight: 600; }
+  .watch-change { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: 0.78rem; font-weight: 600; margin-top: 0.15rem; }
+  .watch-change.up { color: var(--up); }
+  .watch-change.down { color: var(--down); }
+
+  .empty-state {
+    text-align: center;
+    padding: 2.6rem 1rem;
+    color: var(--ink-faint);
+    font-size: 0.88rem;
+  }
+  .empty-state .btn-primary { margin-top: 1.1rem; }
+
+  /* ---- Briefing detail (reuses editorial density) ---- */
+  .brief-hero { padding: 1.3rem 1.15rem 0.6rem; }
+  .brief-ticker-row { display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap; }
+  .brief-name { font-family: 'Gowun Batang', 'Noto Serif KR', serif; font-size: 1.35rem; font-weight: 700; }
+  .change-pill {
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.84rem;
+    font-weight: 600;
+    padding: 0.15rem 0.55rem;
+    border-radius: 4px;
+  }
+  .change-pill.up { color: var(--up); background: var(--up-soft); }
+  .change-pill.down { color: var(--down); background: var(--down-soft); }
+  .brief-date { font-size: 0.78rem; color: var(--ink-faint); margin-top: 0.3rem; }
+
+  .spark-wrap {
+    display: flex; align-items: center; gap: 0.9rem;
+    margin: 0.9rem 1.15rem 0;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid var(--rule); border-radius: 10px;
+    background: var(--surface);
+  }
+  .spark-caption strong { display: block; font-size: 0.8rem; color: var(--ink); margin-bottom: 0.15rem; }
+  .spark-caption span { font-size: 0.72rem; color: var(--ink-faint); }
+  .spark-line { stroke: var(--accent); }
+  .spark-area { fill: var(--accent-soft); }
+  .spark-dot-down { fill: var(--down); }
+  .spark-dot-up { fill: var(--up); }
+  .spark-dot-end { fill: var(--accent); }
+
+  .brief-block { padding: 1.15rem 1.15rem 0; }
+  .news-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+  .news-list li { font-size: 0.84rem; color: var(--ink-soft); padding-left: 0.9rem; position: relative; }
+  .news-list li::before { content: ''; position: absolute; left: 0; top: 0.5em; width: 4px; height: 4px; border-radius: 50%; background: var(--ink-faint); }
+
+  .flow-label { font-family: 'IBM Plex Mono', monospace; font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 0.6rem; }
+  .causal-flow { display: flex; flex-direction: column; gap: 0.35rem; }
+  .flow-node {
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+    padding: 0.55rem 0.7rem;
+    display: flex; align-items: center; gap: 0.55rem;
+  }
+  .flow-node .flow-kicker { font-family: 'IBM Plex Mono', monospace; font-size: 0.6rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-faint); flex-shrink: 0; width: 3.4rem; }
+  .flow-node .flow-body { font-weight: 600; font-size: 0.8rem; color: var(--ink-soft); }
+  .flow-node.result { border-color: var(--accent); background: var(--accent-soft); }
+  .flow-node.result .flow-body { color: var(--accent); }
+  .flow-node.result .flow-kicker { color: var(--accent); }
+  .flow-connector { display: flex; justify-content: center; color: var(--ink-faint); }
+  .flow-connector svg { width: 0.9rem; height: 0.9rem; transform: rotate(90deg); }
+
+  .analogy-box {
+    display: flex; gap: 0.6rem; align-items: flex-start;
+    background: var(--surface-alt); border-radius: 8px;
+    padding: 0.75rem 0.9rem; font-size: 0.84rem; color: var(--ink-soft);
+  }
+  .analogy-box .analogy-mark { font-family: 'Gowun Batang', serif; font-size: 1.3rem; color: var(--ink-faint); line-height: 1; flex-shrink: 0; }
+  .analogy-box strong { color: var(--ink); }
+
+  .ai-callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1rem;
+  }
+  .ai-callout .ai-label { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 0.65rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--accent); margin-bottom: 0.4rem; }
+  .ai-callout p { margin: 0 0 0.55rem; font-size: 0.86rem; color: var(--ink); }
+  .ai-callout p:last-child { margin: 0; }
+  .ai-disclaimer { margin-top: 0.75rem; padding-top: 0.65rem; border-top: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); font-size: 0.72rem; color: var(--ink-faint); }
+
+  .related-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.55rem; }
+  .related-stat { border: 1px solid var(--rule); border-radius: 8px; padding: 0.6rem 0.6rem; background: var(--surface); }
+  .related-stat .co { font-size: 0.72rem; color: var(--ink-soft); margin-bottom: 0.25rem; }
+  .related-stat .pct { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: 0.9rem; font-weight: 600; }
+  .related-stat .pct.up { color: var(--up); }
+  .related-stat .pct.down { color: var(--down); }
+
+  .story-cta {
+    margin: 1.15rem 1.15rem 0;
+    display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+    background: var(--surface);
+    border: 1px dashed var(--accent);
+    border-radius: 10px;
+    padding: 0.8rem 0.95rem;
+    cursor: pointer;
+    width: calc(100% - 2.3rem);
+    text-align: left;
+  }
+  .story-cta-text strong { display: block; font-size: 0.86rem; color: var(--ink); }
+  .story-cta-text span { font-size: 0.74rem; color: var(--ink-faint); }
+  .story-cta svg { width: 1.1rem; height: 1.1rem; color: var(--accent); flex-shrink: 0; }
+
+  .brief-foot { padding: 1.3rem 1.15rem 1.6rem; }
+
+  /* ---- Story / 원인 브리핑 ---- */
+  .story-intro { padding: 1.3rem 1.15rem 0.4rem; }
+  .story-timeline { position: relative; padding: 1.5rem 1.15rem 0.5rem 2.5rem; }
+  .story-timeline::before {
+    content: ''; position: absolute; left: 1.55rem; top: 1.9rem; bottom: 1.6rem;
+    width: 2px; background: var(--rule);
+  }
+  .story-node { position: relative; padding-bottom: 1.7rem; }
+  .story-node:last-child { padding-bottom: 0; }
+  .story-node::before {
+    content: ''; position: absolute; left: -1.32rem; top: 0.15rem;
+    width: 0.75rem; height: 0.75rem; border-radius: 50%;
+    background: var(--surface); border: 2px solid var(--ink-faint);
+  }
+  .story-node.turn::before { border-color: var(--accent); background: var(--accent); }
+  .story-node-head { display: flex; align-items: baseline; gap: 0.55rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+  .story-date { font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 0.85rem; }
+  .story-tag { font-size: 0.68rem; padding: 0.1rem 0.5rem; border-radius: 999px; background: var(--surface-alt); color: var(--ink-soft); }
+  .story-tag.turn { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .story-node p { margin: 0; font-size: 0.85rem; color: var(--ink-soft); max-width: 42ch; }
+  .story-node .story-pct { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 0.82rem; margin-left: 0.2rem; }
+  .story-node .story-pct.up { color: var(--up); }
+  .story-node .story-pct.down { color: var(--down); }
+
+  .story-summary { margin: 0.4rem 1.15rem 1.4rem; background: var(--accent-soft); border-radius: 10px; padding: 0.9rem 1rem; }
+  .story-summary .ai-label { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 0.65rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--accent); margin-bottom: 0.45rem; }
+  .story-summary p { margin: 0; font-size: 0.85rem; color: var(--ink); }
+
+  @media (max-width: 480px) {
+    .stage { padding: 0; }
+    .app { min-height: 100vh; border-radius: 0; border: none; max-width: 100%; }
+  }
+</style>
+
+<div class="stage">
+  <main class="app" id="app">
+
+    <header class="app-topbar">
+      <button class="back-btn" id="backBtn" aria-label="뒤로 가기" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <span class="brand" id="topbarBrand"><span class="mark">N</span>escio</span>
+      <span class="topbar-title" id="topbarTitle" hidden></span>
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="테마 전환">
+        <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+    </header>
+
+    <div class="app-body" id="appBody">
+
+      <!-- ===== ONBOARDING ===== -->
+      <section class="screen flush visible" data-screen="onboarding" id="screen-onboarding" style="position:relative;">
+        <button class="onboard-skip" id="skipOnboard" type="button">건너뛰기</button>
+        <div class="onboard-track" id="onboardTrack">
+          <div class="onboard-slide">
+            <svg class="onboard-art" viewBox="0 0 260 160" fill="none">
+              <rect x="14" y="20" width="110" height="26" rx="5" fill="var(--surface-alt)"/>
+              <rect x="14" y="54" width="150" height="16" rx="4" fill="var(--surface-alt)"/>
+              <rect x="14" y="76" width="90" height="16" rx="4" fill="var(--surface-alt)"/>
+              <rect x="136" y="20" width="110" height="26" rx="5" fill="var(--surface-alt)"/>
+              <rect x="14" y="104" width="130" height="16" rx="4" fill="var(--surface-alt)"/>
+              <rect x="14" y="126" width="70" height="16" rx="4" fill="var(--surface-alt)"/>
+              <path d="M92 40 L168 108" stroke="var(--rule)" stroke-width="2" stroke-dasharray="3 5"/>
+              <circle cx="92" cy="40" r="4" fill="var(--ink-faint)"/>
+              <circle cx="168" cy="108" r="4" fill="var(--ink-faint)"/>
+              <text x="130" y="76" text-anchor="middle" font-size="15" fill="var(--ink-faint)" font-family="IBM Plex Mono, monospace">?</text>
+            </svg>
+            <h2>뉴스는 많은데,<br>이유는 안 알려주죠</h2>
+            <p>관심종목에 급등락이 뜨면, 어떤 뉴스와 연결된 건지 직접 찾아 해석해야 했어요.</p>
+          </div>
+          <div class="onboard-slide">
+            <svg class="onboard-art" viewBox="0 0 260 160" fill="none">
+              <rect x="30" y="18" width="200" height="124" rx="10" fill="var(--surface)" stroke="var(--rule)"/>
+              <rect x="46" y="34" width="90" height="14" rx="4" fill="var(--ink-soft)" opacity="0.5"/>
+              <rect x="142" y="34" width="42" height="18" rx="4" fill="var(--down-soft)"/>
+              <rect x="46" y="60" width="168" height="1" fill="var(--rule)"/>
+              <rect x="46" y="74" width="168" height="10" rx="3" fill="var(--surface-alt)"/>
+              <rect x="46" y="90" width="120" height="10" rx="3" fill="var(--surface-alt)"/>
+              <rect x="46" y="110" width="168" height="34" rx="6" fill="var(--accent-soft)"/>
+              <rect x="58" y="120" width="80" height="7" rx="3" fill="var(--accent)" opacity="0.55"/>
+              <rect x="58" y="132" width="120" height="7" rx="3" fill="var(--accent)" opacity="0.4"/>
+            </svg>
+            <h2>Nescio가<br>맥락을 짚어드려요</h2>
+            <p>등락률과 관련 뉴스를 AI가 엮어서, 왜 오르고 내렸는지 3~4문장으로 설명해요.</p>
+          </div>
+          <div class="onboard-slide">
+            <svg class="onboard-art" viewBox="0 0 260 160" fill="none">
+              <line x1="40" y1="24" x2="40" y2="136" stroke="var(--rule)" stroke-width="2"/>
+              <circle cx="40" cy="30" r="5" fill="var(--ink-faint)"/>
+              <circle cx="40" cy="80" r="5" fill="var(--ink-faint)"/>
+              <circle cx="40" cy="130" r="5" fill="var(--accent)"/>
+              <rect x="58" y="18" width="150" height="24" rx="5" fill="var(--surface-alt)"/>
+              <rect x="58" y="68" width="150" height="24" rx="5" fill="var(--surface-alt)"/>
+              <rect x="58" y="118" width="150" height="24" rx="5" fill="var(--accent-soft)"/>
+            </svg>
+            <h2>급등락엔 이어지는<br>이야기가 있어요</h2>
+            <p>처음 떨어진 이유부터 이후 반전까지, 하나의 흐름으로 계속 이어붙여 보여줘요.</p>
+          </div>
+        </div>
+        <div class="onboard-dots" id="onboardDots">
+          <span class="active"></span><span></span><span></span>
+        </div>
+        <div class="onboard-footer">
+          <button class="btn-primary" id="onboardNext" type="button">다음</button>
+        </div>
+      </section>
+
+      <!-- ===== REGISTER ===== -->
+      <section class="screen" data-screen="register" id="screen-register">
+        <span class="eyebrow">STEP 1</span>
+        <h1 class="big-title">관심종목을 등록해주세요</h1>
+        <p class="lede">등록한 종목의 뉴스와 시세를 자동으로 모아드려요. 최소 1개면 시작할 수 있어요.</p>
+
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="text" id="stockSearch" placeholder="종목명 또는 코드 검색 (예: 삼성전자)" autocomplete="off">
+        </div>
+
+        <div class="stock-list" id="stockList"></div>
+
+        <div class="my-picks-label">
+          <span class="section-label" style="margin:0;">내 관심종목</span>
+        </div>
+        <div class="chip-row" id="chipRow"></div>
+
+        <div class="register-footer">
+          <button class="btn-primary" id="registerDone" type="button" disabled>
+            <span id="registerDoneLabel">종목을 1개 이상 추가해주세요</span>
+          </button>
+          <p class="register-hint">언제든 &lsquo;관심종목&rsquo; 탭에서 추가·삭제할 수 있어요</p>
+        </div>
+      </section>
+
+      <!-- ===== HOME ===== -->
+      <section class="screen" data-screen="home" id="screen-home">
+        <div class="home-head">
+          <div>
+            <span class="eyebrow">오늘의 브리핑</span>
+            <div class="home-date" id="homeDate"></div>
+          </div>
+          <button class="icon-btn" id="goRegisterFromHome" type="button" aria-label="종목 추가">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+
+        <button class="spotlight" id="spotlightBtn" type="button" hidden>
+          <span class="spotlight-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 11-14h-7l1-6z"/></svg></span>
+          <span class="spotlight-body">
+            <span class="spotlight-eyebrow">오늘 살펴볼 이슈</span>
+            <span class="spotlight-title" id="spotlightTitle"></span>
+          </span>
+          <span class="spotlight-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+        </button>
+
+        <div class="section-label">내 관심종목</div>
+        <div class="watch-list" id="watchList"></div>
+      </section>
+
+      <!-- ===== BRIEFING DETAIL ===== -->
+      <section class="screen flush" data-screen="briefing" id="screen-briefing"></section>
+
+      <!-- ===== STORY (원인 브리핑) ===== -->
+      <section class="screen flush" data-screen="story" id="screen-story"></section>
+
+    </div>
+
+    <nav class="tabbar" id="tabbar">
+      <button class="tab-btn active" data-tab="home" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+        홈
+      </button>
+      <button class="tab-btn" data-tab="register" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        관심종목
+      </button>
+    </nav>
+
+  </main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- Mock data ---------- */
+  var CATALOG = [
+    { code: "000660", name: "SK하이닉스", price: 271000, pct: 3.87, hasStory: true },
+    { code: "005930", name: "삼성전자", price: 118500, pct: 1.24, hasStory: false },
+    { code: "035420", name: "NAVER", price: 246500, pct: 2.15, hasStory: false },
+    { code: "035720", name: "카카오", price: 61200, pct: -2.63, hasStory: false },
+    { code: "373220", name: "LG에너지솔루션", price: 412000, pct: 0.61, hasStory: false },
+    { code: "005380", name: "현대차", price: 231000, pct: -0.88, hasStory: false },
+    { code: "068270", name: "셀트리온", price: 189200, pct: 1.02, hasStory: false },
+    { code: "207940", name: "삼성바이오로직스", price: 1042000, pct: 0.19, hasStory: false },
+    { code: "005490", name: "POSCO홀딩스", price: 398500, pct: -1.47, hasStory: false },
+    { code: "000270", name: "기아", price: 118900, pct: 0.42, hasStory: false }
+  ];
+
+  var NOTES = {
+    "000660": "CXMT 상장 이슈로 급락했다가, 반전 소식에 반등 흐름",
+    "005930": "AI 서버용 메모리 수주 소식에 완만한 상승",
+    "035420": "생성형 AI 검색 결과 공개 이후 매수세 유입",
+    "035720": "플랫폼 규제 논의 재점화로 약세"
+  };
+
+  var SPARKS = {
+    "000660": [50,46,30,18,16,22,32,40,46,52],
+    "005930": [20,21,23,24,26,27,29,31,33,35],
+    "035420": [16,19,22,26,29,33,36,39,42,45],
+    "035720": [40,38,36,33,30,27,24,21,18,15]
+  };
+
+  var BRIEFINGS = {
+    "000660": {
+      date: "2026.07.31 · 中 CXMT 상하이 증시 상장일",
+      news: [
+        "애플, 아이폰·맥북용 D램 공급망에 中 창신메모리(CXMT) 테스트 물량 포함 검토",
+        "CXMT, 상하이 증시 상장 첫날 급등 — 中 정부의 “메모리 굴기” 상징으로 부각"
+      ],
+      flow: [
+        { k: "사건", b: "애플의 CXMT 테스트 + CXMT 상장 흥행", result: false },
+        { k: "시장 해석", b: "中 D램 굴기 우려 + 가격 협상력 위협", result: false },
+        { k: "결과", b: "SK하이닉스 등 메모리株 동반 급락", result: true }
+      ],
+      analogy: "단골 손님(애플)이 “옆 가게(CXMT)도 더 싸게 판다던데?”라며 흥정을 건 상황이에요. 처음엔 단골을 뺏길까 봐 가게(삼성·SK하이닉스) 주인이 긴장했어요.",
+      ai: [
+        "이날 하락은 두 소식이 겹치며 증폭됐습니다. 애플이 CXMT를 가격 협상 지렛대로 쓰려 한다는 보도가 먼저 나왔고, 이어 CXMT의 성공적인 상장이 “중국의 D램 생산능력 확장” 우려를 다시 불러왔습니다.",
+        "즉 시장은 CXMT의 현재 실적보다, 장기적으로 한국 메모리 기업의 가격 결정력이 흔들릴 가능성 자체를 더 우려한 것으로 해석됩니다."
+      ],
+      related: [
+        { co: "샌디스크", pct: -11.0 },
+        { co: "마이크론", pct: -2.2 },
+        { co: "코스피 지수", pct: -10.8 }
+      ]
+    },
+    "005930": {
+      date: "2026.08.20 · AI 서버용 메모리 수주 소식",
+      news: [
+        "삼성전자, 북미 AI 서버 업체향 고대역폭 메모리 신규 공급계약 체결",
+        "업계, “내년 상반기까지 물량 완판” 평가"
+      ],
+      flow: [
+        { k: "사건", b: "북미 AI 서버 업체와 신규 공급계약 체결", result: false },
+        { k: "시장 해석", b: "고마진 메모리 매출 비중 확대 기대", result: false },
+        { k: "결과", b: "삼성전자 완만한 상승", result: true }
+      ],
+      analogy: "단골 손님 하나가 “내년 거까지 미리 예약할게요”라고 확답을 준 상황이라, 가게 입장에선 앞으로의 매출을 미리 확보한 셈이에요.",
+      ai: [
+        "이번 계약은 규모 자체보다 “장기 확정 물량”이라는 점이 중요합니다. 수요가 들쭉날쭉한 범용 메모리 대신, 고마진 AI向 메모리 비중을 늘릴 근거가 생겼다는 해석입니다."
+      ],
+      related: [
+        { co: "SK하이닉스", pct: 1.8 },
+        { co: "필라델피아 반도체지수", pct: 0.9 },
+        { co: "코스피 지수", pct: 0.4 }
+      ]
+    },
+    "035420": {
+      date: "2026.08.19 · 생성형 AI 검색 결과 공개",
+      news: [
+        "NAVER, 자체 LLM 기반 대화형 검색 결과 정식 공개",
+        "베타 사용자 피드백 “기존 검색보다 체류시간 길다”"
+      ],
+      flow: [
+        { k: "사건", b: "자체 LLM 기반 대화형 검색 정식 공개", result: false },
+        { k: "시장 해석", b: "광고·커머스 연계 매출 확대 기대", result: false },
+        { k: "결과", b: "NAVER 매수세 유입", result: true }
+      ],
+      analogy: "가게 안내 직원을 사람에서 훨씬 똑똑한 상담원으로 바꾼 셈이라, 손님이 가게에 더 오래 머무를 거라는 기대가 반영된 거예요.",
+      ai: [
+        "핵심은 체류시간입니다. 검색 결과에 머무는 시간이 길어질수록 광고·커머스 연계 매출로 이어질 여지가 커진다는 게 시장의 해석입니다."
+      ],
+      related: [
+        { co: "카카오", pct: -0.6 },
+        { co: "코스닥 지수", pct: 0.7 },
+        { co: "코스피 지수", pct: 0.4 }
+      ]
+    },
+    "035720": {
+      date: "2026.08.21 · 플랫폼 규제 논의 재점화",
+      news: [
+        "국회, 플랫폼 자사 우대 규제 법안 재상정",
+        "주요 플랫폼 기업 대상 공정거래 조사 착수 보도"
+      ],
+      flow: [
+        { k: "사건", b: "플랫폼 규제 법안 재상정 + 조사 착수 보도", result: false },
+        { k: "시장 해석", b: "커머스·광고 매출 성장에 제동 우려", result: false },
+        { k: "결과", b: "카카오 약세", result: true }
+      ],
+      analogy: "가게가 자기 매대를 더 잘 보이는 자리에 놓아왔는데, 그러지 말라는 규칙이 새로 생길 수도 있다는 소문이 돈 상황이에요.",
+      ai: [
+        "아직 확정된 규제는 아니지만, 시장은 “불확실성” 자체를 가격에 반영합니다. 법안 통과 여부보다 논의가 얼마나 빨리 진전되는지가 다음 변수로 꼽힙니다."
+      ],
+      related: [
+        { co: "NAVER", pct: -0.4 },
+        { co: "코스닥 지수", pct: -0.5 },
+        { co: "코스피 지수", pct: -0.2 }
+      ]
+    }
+  };
+
+  var STORY = {
+    "000660": {
+      intro: "SK하이닉스 · 7/31 급락부터 지금까지",
+      nodes: [
+        { date: "7/31 (금)", tag: "급락", turn: false, pct: -7.5, dir: "down", text: "애플의 CXMT 테스트 검토 + CXMT 상장 흥행 소식이 겹치며 메모리株 동반 급락." },
+        { date: "8/3 (월)", tag: "관망", turn: false, pct: -0.4, dir: "down", text: "시장, CXMT의 실제 생산 경쟁력에 의문을 제기하기 시작 — 낙폭 축소." },
+        { date: "8/6 (수)", tag: "반전", turn: true, pct: 4.2, dir: "up", text: "CXMT가 구형 공정 한계로 웨이퍼가 30% 더 필요해 오히려 비쌌고, 물량 대부분이 화웨이·샤오미向으로 계약돼 있었다는 보도." },
+        { date: "8/8 (금)", tag: "재평가", turn: true, pct: 3.87, dir: "up", text: "애플의 “저가 대안 지렛대”가 무산되며, 고마진 AI 서버용 메모리로 생산 전환 기대가 반영." }
+      ],
+      summary: "“중국발 저가 경쟁 우려”로 시작된 급락이, 실제로는 근거가 약했다는 게 확인되면서 오히려 재평가로 이어진 흐름입니다. 처음의 공포와 이후의 반전을 한 이슈로 이어서 보면, 시장이 무엇을 오해했었는지가 보입니다."
+    }
+  };
+
+  /* ---------- State ---------- */
+  var state = {
+    watchlist: [],
+    onboarded: false
+  };
+
+  function loadState() {
+    try {
+      var raw = localStorage.getItem("nescio-proto-v1");
+      if (!raw) return;
+      var parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.watchlist)) state = parsed;
+    } catch (e) { /* ignore */ }
+  }
+  function saveState() {
+    try { localStorage.setItem("nescio-proto-v1", JSON.stringify(state)); } catch (e) { /* ignore */ }
+  }
+
+  /* ---------- Nav ---------- */
+  var screens = Array.prototype.slice.call(document.querySelectorAll(".screen"));
+  var tabbar = document.getElementById("tabbar");
+  var backBtn = document.getElementById("backBtn");
+  var topbarBrand = document.getElementById("topbarBrand");
+  var topbarTitle = document.getElementById("topbarTitle");
+  var appBody = document.getElementById("appBody");
+  var navStack = [];
+
+  function showScreen(name, opts) {
+    opts = opts || {};
+    screens.forEach(function (s) { s.classList.toggle("visible", s.dataset.screen === name); });
+    appBody.scrollTop = 0;
+
+    var isDetail = name === "briefing" || name === "story";
+    var isTabScreen = name === "home" || name === "register";
+
+    backBtn.style.display = isDetail ? "flex" : "none";
+    topbarBrand.hidden = isDetail;
+    topbarTitle.hidden = !isDetail;
+    topbarTitle.textContent = opts.title || "";
+    tabbar.classList.toggle("visible", isTabScreen);
+
+    if (isTabScreen) {
+      Array.prototype.forEach.call(document.querySelectorAll(".tab-btn"), function (b) {
+        b.classList.toggle("active", b.dataset.tab === name);
+      });
+    }
+    if (!opts.fromBack) navStack.push({ name: name, opts: opts });
+  }
+
+  backBtn.addEventListener("click", function () {
+    navStack.pop();
+    var prev = navStack.length ? navStack[navStack.length - 1] : { name: "home", opts: {} };
+    showScreen(prev.name, Object.assign({}, prev.opts, { fromBack: true }));
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll(".tab-btn"), function (btn) {
+    btn.addEventListener("click", function () {
+      navStack = [];
+      if (btn.dataset.tab === "home") renderHome();
+      showScreen(btn.dataset.tab);
+    });
+  });
+
+  /* ---------- Theme toggle ---------- */
+  var themeToggle = document.getElementById("themeToggle");
+  var root = document.documentElement;
+  themeToggle.addEventListener("click", function () {
+    var current = root.getAttribute("data-theme");
+    var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var effectiveDark = current ? current === "dark" : prefersDark;
+    root.setAttribute("data-theme", effectiveDark ? "light" : "dark");
+  });
+
+  /* ---------- Onboarding ---------- */
+  var slideIndex = 0;
+  var track = document.getElementById("onboardTrack");
+  var dots = Array.prototype.slice.call(document.querySelectorAll("#onboardDots span"));
+  var nextBtn = document.getElementById("onboardNext");
+
+  function renderSlide() {
+    track.style.transform = "translateX(-" + (slideIndex * 100) + "%)";
+    dots.forEach(function (d, i) { d.classList.toggle("active", i === slideIndex); });
+    nextBtn.textContent = slideIndex === dots.length - 1 ? "관심종목 등록하고 시작하기" : "다음";
+  }
+  nextBtn.addEventListener("click", function () {
+    if (slideIndex < dots.length - 1) {
+      slideIndex++;
+      renderSlide();
+    } else {
+      goToRegister();
+    }
+  });
+  document.getElementById("skipOnboard").addEventListener("click", goToRegister);
+
+  function goToRegister() {
+    state.onboarded = true;
+    saveState();
+    navStack = [];
+    renderRegister();
+    showScreen("register");
+  }
+
+  /* ---------- Register screen ---------- */
+  var stockListEl = document.getElementById("stockList");
+  var chipRowEl = document.getElementById("chipRow");
+  var searchInput = document.getElementById("stockSearch");
+  var registerDoneBtn = document.getElementById("registerDone");
+  var registerDoneLabel = document.getElementById("registerDoneLabel");
+
+  function isAdded(code) {
+    return state.watchlist.indexOf(code) !== -1;
+  }
+
+  function toggleWatch(code) {
+    var idx = state.watchlist.indexOf(code);
+    if (idx === -1) state.watchlist.push(code);
+    else state.watchlist.splice(idx, 1);
+    saveState();
+    renderRegister();
+  }
+
+  function renderRegister(filter) {
+    filter = (filter || "").trim().toLowerCase();
+    var items = CATALOG.filter(function (s) {
+      if (!filter) return true;
+      return s.name.toLowerCase().indexOf(filter) !== -1 || s.code.indexOf(filter) !== -1;
+    });
+
+    stockListEl.innerHTML = items.map(function (s) {
+      var added = isAdded(s.code);
+      return (
+        '<div class="stock-row">' +
+          '<div class="stock-avatar">' + s.name.slice(0, 1) + '</div>' +
+          '<div class="stock-meta"><div class="name">' + s.name + '</div><div class="code">' + s.code + '</div></div>' +
+          '<div class="stock-price">' + s.price.toLocaleString("ko-KR") + '원</div>' +
+          '<button class="add-btn' + (added ? ' added' : '') + '" data-code="' + s.code + '" type="button" aria-label="' + (added ? s.name + ' 삭제' : s.name + ' 추가') + '">' +
+            (added
+              ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg>'
+              : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>') +
+          '</button>' +
+        '</div>'
+      );
+    }).join("") || '<p class="chip-empty" style="padding:1rem 0.15rem;">검색 결과가 없어요</p>';
+
+    Array.prototype.forEach.call(stockListEl.querySelectorAll(".add-btn"), function (btn) {
+      btn.addEventListener("click", function () { toggleWatch(btn.dataset.code); });
+    });
+
+    var picked = CATALOG.filter(function (s) { return isAdded(s.code); });
+    chipRowEl.innerHTML = picked.length
+      ? picked.map(function (s) {
+          return (
+            '<span class="chip">' + s.name +
+              '<button data-code="' + s.code + '" type="button" aria-label="' + s.name + ' 삭제">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>' +
+              '</button>' +
+            '</span>'
+          );
+        }).join("")
+      : '<span class="chip-empty">아직 등록한 종목이 없어요</span>';
+
+    Array.prototype.forEach.call(chipRowEl.querySelectorAll("button[data-code]"), function (btn) {
+      btn.addEventListener("click", function () { toggleWatch(btn.dataset.code); });
+    });
+
+    registerDoneBtn.disabled = picked.length === 0;
+    registerDoneLabel.textContent = picked.length === 0
+      ? "종목을 1개 이상 추가해주세요"
+      : "완료 · 홈으로 이동 (" + picked.length + "개)";
+  }
+
+  searchInput.addEventListener("input", function () { renderRegister(searchInput.value); });
+  registerDoneBtn.addEventListener("click", function () {
+    navStack = [];
+    renderHome();
+    showScreen("home");
+  });
+  document.getElementById("goRegisterFromHome").addEventListener("click", function () {
+    renderRegister(searchInput.value);
+    showScreen("register");
+  });
+
+  /* ---------- Sparkline helper ---------- */
+  function buildSpark(points, w, h, dotColorClass) {
+    var max = Math.max.apply(null, points), min = Math.min.apply(null, points);
+    var range = (max - min) || 1;
+    var step = w / (points.length - 1);
+    var coords = points.map(function (p, i) {
+      var x = i * step;
+      var y = h - ((p - min) / range) * (h - 6) - 3;
+      return [x, y];
+    });
+    var line = coords.map(function (c) { return c.join(","); }).join(" ");
+    var area = line + " " + w + "," + h + " 0," + h;
+    var minIdx = points.indexOf(min);
+    var last = coords[coords.length - 1];
+    return (
+      '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-hidden="true">' +
+        '<polyline class="spark-line" points="' + line + '" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<polygon class="spark-area" points="' + area + '" opacity="0.55"/>' +
+        '<circle class="' + dotColorClass + '" cx="' + coords[minIdx][0] + '" cy="' + coords[minIdx][1] + '" r="2.6"/>' +
+        '<circle class="spark-dot-end" cx="' + last[0] + '" cy="' + last[1] + '" r="2.6"/>' +
+      '</svg>'
+    );
+  }
+
+  /* ---------- Home screen ---------- */
+  var homeDateEl = document.getElementById("homeDate");
+  var spotlightBtn = document.getElementById("spotlightBtn");
+  var spotlightTitle = document.getElementById("spotlightTitle");
+  var watchListEl = document.getElementById("watchList");
+
+  function renderHome() {
+    homeDateEl.textContent = "2026.08.23 (일)";
+    var picks = CATALOG.filter(function (s) { return isAdded(s.code); });
+
+    var story = picks.find(function (s) { return s.hasStory; });
+    if (story) {
+      spotlightBtn.hidden = false;
+      spotlightTitle.textContent = story.name + " · " + Math.abs(story.pct) + "% 급등락 이어지는 이야기";
+      spotlightBtn.onclick = function () { openBriefing(story.code); };
+    } else {
+      spotlightBtn.hidden = true;
+    }
+
+    if (!picks.length) {
+      watchListEl.innerHTML =
+        '<div class="empty-state">아직 등록한 관심종목이 없어요.<br>종목을 등록하면 여기서 오늘의 브리핑을 볼 수 있어요.' +
+        '<div><button class="btn-primary" id="emptyRegisterBtn" type="button" style="width:auto; padding:0.7rem 1.3rem; margin-top:1.1rem; display:inline-flex;">관심종목 등록하기</button></div></div>';
+      var eb = document.getElementById("emptyRegisterBtn");
+      if (eb) eb.addEventListener("click", function () { renderRegister(); showScreen("register"); });
+      return;
+    }
+
+    watchListEl.innerHTML = picks.map(function (s) {
+      var up = s.pct >= 0;
+      var spark = SPARKS[s.code] || [20,20,20,20,20,20,20,20,20,20];
+      return (
+        '<button class="watch-card" data-code="' + s.code + '" type="button">' +
+          '<div class="watch-main">' +
+            '<div class="watch-name">' + s.name + '</div>' +
+            '<div class="watch-note">' + (NOTES[s.code] || "") + '</div>' +
+          '</div>' +
+          '<div class="watch-spark">' + buildSpark(spark, 56, 28, "spark-dot-down") + '</div>' +
+          '<div class="watch-figures">' +
+            '<div class="watch-price">' + s.price.toLocaleString("ko-KR") + '</div>' +
+            '<div class="watch-change ' + (up ? "up" : "down") + '">' + (up ? "▲" : "▼") + " " + Math.abs(s.pct).toFixed(2) + '%</div>' +
+          '</div>' +
+        '</button>'
+      );
+    }).join("");
+
+    Array.prototype.forEach.call(watchListEl.querySelectorAll(".watch-card"), function (btn) {
+      btn.addEventListener("click", function () { openBriefing(btn.dataset.code); });
+    });
+  }
+
+  /* ---------- Briefing detail ---------- */
+  var briefingScreen = document.getElementById("screen-briefing");
+
+  function openBriefing(code) {
+    var stock = CATALOG.filter(function (s) { return s.code === code; })[0];
+    var data = BRIEFINGS[code];
+    if (!stock || !data) return;
+    var up = stock.pct >= 0;
+    var spark = SPARKS[code] || [20,20,20,20,20,20,20,20,20,20];
+
+    briefingScreen.innerHTML =
+      '<div class="brief-hero">' +
+        '<div class="brief-ticker-row"><span class="brief-name">' + stock.name + '</span>' +
+          '<span class="change-pill ' + (up ? "up" : "down") + '">' + (up ? "▲" : "▼") + " " + Math.abs(stock.pct).toFixed(2) + '%</span></div>' +
+        '<div class="brief-date">' + data.date + '</div>' +
+      '</div>' +
+      '<div class="spark-wrap">' + buildSpark(spark, 150, 46, "spark-dot-down") +
+        '<div class="spark-caption"><strong>최근 흐름 (예시)</strong><span>서사 이해용 목업 그래프</span></div></div>' +
+      '<div class="brief-block"><ul class="news-list">' +
+        data.news.map(function (n) { return "<li>" + n + "</li>"; }).join("") +
+      '</ul></div>' +
+      '<div class="brief-block"><div class="flow-label">무슨 일이 있었길래?</div><div class="causal-flow">' +
+        data.flow.map(function (f, i) {
+          var connector = i < data.flow.length - 1
+            ? '<div class="flow-connector"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h14M13 6l6 6-6 6"/></svg></div>' : "";
+          return '<div class="flow-node' + (f.result ? " result" : "") + '"><span class="flow-kicker">' + f.k + '</span><span class="flow-body">' + f.b + '</span></div>' + connector;
+        }).join("") +
+      '</div></div>' +
+      '<div class="brief-block"><div class="analogy-box"><span class="analogy-mark">“</span><span><strong>쉽게 비유하면</strong> — ' + data.analogy + '</span></div></div>' +
+      '<div class="brief-block"><div class="ai-callout"><span class="ai-label">Nescio의 해설 (AI 추정)</span>' +
+        data.ai.map(function (p) { return "<p>" + p + "</p>"; }).join("") +
+        '<p class="ai-disclaimer">AI의 해석입니다. 투자의 책임은 본인에게 있습니다.</p>' +
+      '</div></div>' +
+      '<div class="brief-block"><div class="flow-label">함께 흔들린 관련 기업</div><div class="related-grid">' +
+        data.related.map(function (r) {
+          var rup = r.pct >= 0;
+          return '<div class="related-stat"><div class="co">' + r.co + '</div><div class="pct ' + (rup ? "up" : "down") + '">' + (rup ? "▲" : "▼") + " " + Math.abs(r.pct).toFixed(1) + '%</div></div>';
+        }).join("") +
+      '</div></div>' +
+      (stock.hasStory
+        ? '<button class="story-cta" id="storyCtaBtn" type="button"><span class="story-cta-text"><strong>이어지는 이야기 보기</strong><span>급락부터 반전까지, 전체 흐름 한 번에 보기</span></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>'
+        : "") +
+      '<div class="brief-foot"></div>';
+
+    if (stock.hasStory) {
+      document.getElementById("storyCtaBtn").addEventListener("click", function () { openStory(code); });
+    }
+    showScreen("briefing", { title: stock.name + " 브리핑" });
+  }
+
+  /* ---------- Story detail ---------- */
+  var storyScreen = document.getElementById("screen-story");
+
+  function openStory(code) {
+    var stock = CATALOG.filter(function (s) { return s.code === code; })[0];
+    var data = STORY[code];
+    if (!stock || !data) return;
+
+    storyScreen.innerHTML =
+      '<div class="story-intro"><span class="eyebrow">원인 브리핑</span><h1 class="big-title">' + data.intro + '</h1>' +
+        '<p class="lede">그날그날의 스냅샷이 아니라, 처음 떨어진 이유부터 이후 반전까지 하나의 흐름으로 이어붙였어요.</p></div>' +
+      '<div class="story-timeline">' +
+        data.nodes.map(function (n) {
+          return (
+            '<div class="story-node' + (n.turn ? " turn" : "") + '">' +
+              '<div class="story-node-head"><span class="story-date">' + n.date + '</span>' +
+                '<span class="story-tag' + (n.turn ? " turn" : "") + '">' + n.tag + '</span>' +
+                '<span class="story-pct ' + n.dir + '">' + (n.dir === "up" ? "▲" : "▼") + " " + Math.abs(n.pct).toFixed(1) + '%</span></div>' +
+              '<p>' + n.text + '</p>' +
+            '</div>'
+          );
+        }).join("") +
+      '</div>' +
+      '<div class="story-summary"><span class="ai-label">지금까지의 흐름 (AI 요약)</span><p>' + data.summary + '</p></div>';
+
+    showScreen("story", { title: stock.name + " · 이어지는 이야기" });
+  }
+
+  /* ---------- Init ---------- */
+  loadState();
+  if (state.onboarded) {
+    renderRegister();
+    renderHome();
+    showScreen(state.watchlist.length ? "home" : "register");
+  } else {
+    renderSlide();
+    showScreen("onboarding");
+  }
+})();
+</script>
