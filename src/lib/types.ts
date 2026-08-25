@@ -34,6 +34,7 @@ export type NewsItem = {
 export type Price = {
   close: number | null;
   changeRate: number | null;
+  marketCap: number | null;
 };
 
 export type CauseImpact = "high" | "medium" | "low";

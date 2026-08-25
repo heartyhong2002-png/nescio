@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { CauseCardButton, CauseCardLink } from "@/components/CauseCard";
 import CauseDetailView from "@/components/CauseDetailView";
-import { changeArrow, changeEmoji, changeDirection, formatPrice } from "@/lib/format";
+import { changeArrow, changeEmoji, changeDirection, formatMarketCap, formatPrice } from "@/lib/format";
 import { useStockBriefing } from "@/lib/use-briefing";
 import { useWatchlist } from "@/lib/storage";
 
@@ -54,7 +54,7 @@ function StockBriefingContent() {
                   </div>
                 ))}
               </div>
-              <MetricsRow />
+              <MetricsRow marketCap={analysis.price.marketCap} />
             </div>
 
             <div className="desktop-col desktop-side">
@@ -98,7 +98,7 @@ function StockBriefingContent() {
               ))}
             </div>
 
-            <MetricsRow />
+            <MetricsRow marketCap={analysis.price.marketCap} />
 
             {analysis.briefing.aiComment && (
               <div className="placeholder-box" style={{ textAlign: "left", padding: 14, marginTop: 4 }}>
@@ -191,17 +191,23 @@ function StockHeader({
   );
 }
 
-function MetricsRow() {
+function MetricsRow({ marketCap }: { marketCap: number | null }) {
+  const metrics = [
+    { label: "PER", value: "—" },
+    { label: "PBR", value: "—" },
+    { label: "배당", value: "—" },
+    { label: "시가총액", value: formatMarketCap(marketCap) },
+  ];
   return (
     <>
       <div className="section-title">회사 숫자로 보기</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-        {["PER", "PBR", "배당", "시가총액"].map((label) => (
+        {metrics.map(({ label, value }) => (
           <div key={label} className="card-outline" style={{ flex: 1, padding: 11 }}>
             <div className="muted" style={{ fontSize: 10 }}>
               {label}
             </div>
-            <div style={{ fontSize: 14, marginTop: 4 }}>—</div>
+            <div style={{ fontSize: 14, marginTop: 4 }}>{value}</div>
           </div>
         ))}
       </div>

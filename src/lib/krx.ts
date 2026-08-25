@@ -6,6 +6,7 @@ type KrxRow = {
   ISU_NM?: string;
   TDD_CLSPRC?: string;
   FLUC_RT?: string;
+  MKTCAP?: string;
 };
 
 const KRX_BASE_URL = "https://data-dbg.krx.co.kr/svc/apis/sto";
@@ -43,29 +44,30 @@ export async function listMarketStocks(market: Market, key: string): Promise<Sto
 }
 
 function rowToPrice(row: KrxRow | undefined) {
-  if (!row) return { close: null, changeRate: null };
+  if (!row) return { close: null, changeRate: null, marketCap: null };
   return {
     close: Number(String(row.TDD_CLSPRC).replaceAll(",", "")),
     changeRate: Number(String(row.FLUC_RT).replaceAll(",", "")),
+    marketCap: row.MKTCAP ? Number(String(row.MKTCAP).replaceAll(",", "")) : null,
   };
 }
 
 /** Looks up the latest close/changeRate for a single ticker, trying both markets. */
 export async function getPriceForTicker(ticker: string) {
   const key = serverEnv("KRX_AUTH_KEY");
-  if (!key || !ticker) return { close: null, changeRate: null };
+  if (!key || !ticker) return { close: null, changeRate: null, marketCap: null };
   for (const market of ["KOSPI", "KOSDAQ"] as Market[]) {
     const rows = await fetchLatestMarketRows(market, key);
     const row = rows.find((item) => item.ISU_CD === ticker);
     if (row) return rowToPrice(row);
   }
-  return { close: null, changeRate: null };
+  return { close: null, changeRate: null, marketCap: null };
 }
 
 /** Batched lookup for multiple tickers — fetches each market's snapshot once, not once per ticker. */
 export async function getPricesForTickers(tickers: string[]) {
   const key = serverEnv("KRX_AUTH_KEY");
-  const result = new Map<string, { close: number | null; changeRate: number | null }>();
+  const result = new Map<string, { close: number | null; changeRate: number | null; marketCap: number | null }>();
   if (!key || tickers.length === 0) return result;
 
   const wanted = new Set(tickers);

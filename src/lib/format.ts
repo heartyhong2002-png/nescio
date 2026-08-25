@@ -24,3 +24,12 @@ export function formatChangeRate(rate: number | null) {
   if (rate === null || Number.isNaN(rate)) return "데이터 없음";
   return `${changeArrow(rate)} ${Math.abs(rate).toFixed(2)}%${changeEmoji(rate)}`;
 }
+
+export function formatMarketCap(value: number | null) {
+  if (value === null || Number.isNaN(value)) return "—";
+  const jo = Math.floor(value / 1e12);
+  const eok = Math.round((value % 1e12) / 1e8);
+  if (jo > 0) return eok > 0 ? `${jo}조 ${eok}억` : `${jo}조`;
+  if (eok > 0) return `${eok}억`;
+  return `${value.toLocaleString("ko-KR")}원`;
+}

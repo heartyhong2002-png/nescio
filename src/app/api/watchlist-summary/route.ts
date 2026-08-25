@@ -32,7 +32,7 @@ export async function POST(request: Request) {
 
     const items = await Promise.all(
       stocks.map(async (stock) => {
-        const price = prices.get(stock.ticker) ?? { close: null, changeRate: null };
+        const price = prices.get(stock.ticker) ?? { close: null, changeRate: null, marketCap: null };
         const newsCount =
           clientId && clientSecret ? await getNewsCount(stock.name, clientId, clientSecret) : null;
         return { ...stock, ...price, newsCount };
