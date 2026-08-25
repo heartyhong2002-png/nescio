@@ -1,0 +1,89 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { FormEvent, useState } from "react";
+import { useAuth } from "@/lib/storage";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const { login } = useAuth();
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!email.trim() || !password.trim()) {
+      setError("이메일과 비밀번호를 입력해 주세요.");
+      return;
+    }
+    login(email.trim());
+    router.push("/onboarding/persona");
+  }
+
+  return (
+    <main className="page">
+      <div className="container" style={{ paddingTop: 24, paddingBottom: 32 }}>
+        <div className="back-row">
+          <Link href="/onboarding">← 뒤로</Link>
+        </div>
+
+        <div className="title-lg" style={{ margin: "24px 0 8px" }}>
+          {mode === "login" ? "시작하기" : "회원가입"}
+        </div>
+        <p className="muted" style={{ fontSize: 14, marginBottom: 32 }}>
+          브리핑을 저장하려면 계정이 필요해요.
+        </p>
+
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+          <input
+            className="field"
+            type="email"
+            placeholder="이메일"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
+          />
+          <input
+            className="field"
+            type="password"
+            placeholder="비밀번호"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+          />
+          {error && <div className="error-box">{error}</div>}
+          <button type="submit" className="btn btn-primary btn-block">
+            {mode === "login" ? "로그인" : "가입하고 시작하기"}
+          </button>
+        </form>
+
+        <p className="muted" style={{ fontSize: 12, textAlign: "center" }}>
+          {mode === "login" ? (
+            <>
+              계정이 없으신가요?{" "}
+              <button type="button" style={{ textDecoration: "underline", color: "var(--ink)" }} onClick={() => setMode("signup")}>
+                회원가입
+              </button>
+            </>
+          ) : (
+            <>
+              이미 계정이 있으신가요?{" "}
+              <button type="button" style={{ textDecoration: "underline", color: "var(--ink)" }} onClick={() => setMode("login")}>
+                로그인
+              </button>
+            </>
+          )}
+        </p>
+
+        <div style={{ flex: 1 }} />
+
+        <div className="placeholder-box" style={{ padding: 14, textAlign: "left", fontSize: 12, lineHeight: 1.55 }}>
+          이메일 · 비밀번호만 사용하는 데모 로그인입니다. 소셜 로그인 연동은 범위에서 제외했습니다.
+        </div>
+      </div>
+    </main>
+  );
+}
