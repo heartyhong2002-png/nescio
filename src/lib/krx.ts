@@ -80,3 +80,58 @@ export async function getPricesForTickers(tickers: string[]) {
   }
   return result;
 }
+
+export type PricePoint = { date: string; close: number };
+
+async function resolveMarket(ticker: string, key: string): Promise<Market | null> {
+  for (const market of ["KOSPI", "KOSDAQ"] as Market[]) {
+    const rows = await fetchLatestMarketRows(market, key);
+    if (rows.some((row) => row.ISU_CD === ticker)) return market;
+  }
+  return null;
+}
+
+/** Weekday-only calendar dates for the last `calendarDays` days (oldest first), skipping Sat/Sun to cut wasted KRX calls. */
+function weekdayDates(calendarDays: number): string[] {
+  const dates: string[] = [];
+  for (let offset = 0; offset < calendarDays; offset += 1) {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() - offset);
+    const day = date.getUTCDay();
+    if (day !== 0 && day !== 6) dates.push(date.toISOString().slice(0, 10).replaceAll("-", ""));
+  }
+  return dates.reverse();
+}
+
+const HISTORY_CONCURRENCY = 8;
+
+/**
+ * Builds a close-price history by calling the single-day `stk_bydd_trd` snapshot once per weekday
+ * in range (this KRX key isn't authorized for a proper date-range endpoint — see HANDOFF.md).
+ * Requests run in small parallel batches; still O(calendarDays) KRX calls, so the "1년" range is slow.
+ */
+export async function fetchPriceHistory(ticker: string, calendarDays: number): Promise<PricePoint[]> {
+  const key = serverEnv("KRX_AUTH_KEY");
+  if (!key || !ticker) return [];
+
+  const market = await resolveMarket(ticker, key);
+  if (!market) return [];
+
+  const dates = weekdayDates(calendarDays);
+  const points: PricePoint[] = [];
+  for (let i = 0; i < dates.length; i += HISTORY_CONCURRENCY) {
+    const batch = dates.slice(i, i + HISTORY_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (basDd) => {
+        const rows = await fetchRows(market, basDd, key);
+        return { basDd, row: rows.find((row) => row.ISU_CD === ticker) };
+      }),
+    );
+    for (const { basDd, row } of results) {
+      if (row?.TDD_CLSPRC) points.push({ date: basDd, close: Number(String(row.TDD_CLSPRC).replaceAll(",", "")) });
+    }
+  }
+
+  points.sort((a, b) => a.date.localeCompare(b.date));
+  return points;
+}

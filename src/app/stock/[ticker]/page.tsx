@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { CauseCardButton, CauseCardLink } from "@/components/CauseCard";
 import CauseDetailView from "@/components/CauseDetailView";
+import PriceChart from "@/components/PriceChart";
 import { changeArrow, changeEmoji, changeDirection, formatMarketCap, formatPrice } from "@/lib/format";
 import { useStockBriefing } from "@/lib/use-briefing";
 import { useWatchlist } from "@/lib/storage";
@@ -20,7 +21,7 @@ function StockBriefingContent() {
   const { analysis, loading, error, refresh } = useStockBriefing(ticker, name);
   const { has, toggle } = useWatchlist();
   const [selectedCauseId, setSelectedCauseId] = useState<string | null>(null);
-  const [range, setRange] = useState(0);
+  const [range, setRange] = useState(1); // "1일"(분봉)은 아직 미구현이라 "1주"부터 기본 선택
 
   const displayName = analysis?.stock.name ?? name ?? ticker;
   const causes = analysis?.briefing.causes ?? [];
@@ -165,7 +166,7 @@ function StockHeader({
         </div>
       </div>
 
-      <div className="placeholder-box" style={{ height: 150, marginBottom: 10 }}>가격 차트</div>
+      <PriceChart key={`${analysis.stock.ticker}-${RANGES[range]}`} ticker={analysis.stock.ticker} range={RANGES[range]} />
       <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
         {RANGES.map((label, index) => (
           <button
