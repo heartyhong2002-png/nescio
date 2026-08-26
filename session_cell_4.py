@@ -1,0 +1,21 @@
+price_df = get_stock_history(STOCK_TICKER, LOOKBACK_DAYS)
+news_df = search_stock_news(STOCK_NAME, NEWS_COUNT)
+reports_df = get_stock_reports(STOCK_TICKER, REPORT_COUNT)
+
+first_close = float(price_df["종가"].iloc[0])
+last_close = float(price_df["종가"].iloc[-1])
+period_return = (last_close / first_close - 1) * 100
+print(f"종목: {STOCK_NAME} ({STOCK_TICKER})")
+print(f"조회기간: {price_df.index.min().date()} ~ {price_df.index.max().date()}")
+print(f"최근 종가: {last_close:,.0f}원 | 기간 수익률: {period_return:+.2f}%")
+print(f"수집 뉴스: {len(news_df)}건")
+print(f"수집 리포트: {len(reports_df)}건 ({reports_df['source'].iloc[0]})")
+display(price_df.tail(10))
+display(news_df.head(10))
+display(reports_df)
+
+llm_report = analyze_with_llm(STOCK_NAME, STOCK_TICKER, price_df, news_df)
+print()
+print("===== LLM 종합 분석 =====")
+print()
+print(llm_report)
