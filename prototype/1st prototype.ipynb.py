@@ -1,298 +1,407 @@
-{
-  "agentState": {
-    "exportedAt": "2026-08-25T06:19:30.480Z",
-    "conversations": {}
-  },
-  "rpcCalls": [],
-  "languageServerDiagnostics": {
-    "systemInfo": {
-      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/2.9.1 Chrome/146.0.7680.72 Electron/41.0.2 Safari/537.36",
-      "timestamp": "2026-08-25T06:19:30.516Z"
-    },
-    "languageServerLogs": {
-      "$typeName": "exa.codeium_common_pb.LanguageServerDiagnostics",
-      "logs": [
-        "I0825 15:18:23.957325       1 server.go:1461] Starting language server process with pid 33428\n",
-        "I0825 15:18:24.002725       1 server.go:419] Setting GOMAXPROCS to 4\n",
-        "I0825 15:18:24.004981       1 server.go:1513] Language server version: 2.9.1\n",
-        "I0825 15:18:24.004981       1 server.go:570] Language server will attempt to listen on host localhost\n",
-        "I0825 15:18:24.026945       1 server.go:585] Language server listening on random port at 55048 for HTTPS (gRPC)\n",
-        "I0825 15:18:24.027484       1 server.go:593] Language server listening on random port at 55049 for HTTP\n",
-        "I0825 15:18:24.343470       1 auth_provider.go:1085] [AuthProvider] SetEnableBusinessLogin called with enable: true\n",
-        "I0825 15:18:24.344530       1 auth_provider.go:1017] [AuthProvider] SetProjectID called with projectID: \"\"\n",
-        "I0825 15:18:24.345062       1 auth_provider.go:1025] [AuthProvider] SetLocation called with location: \"\"\n",
-        "I0825 15:18:24.345062       1 auth_provider.go:1033] [AuthProvider] SetUserTier called with userTier: \"\", tierDisplayName: \"\"\n",
-        "I0825 15:18:26.581466       1 http_helpers.go:232] URL: https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist Trace: 0xf4e3e22a1f82cf97\n",
-        "I0825 15:18:26.713217      58 http_helpers.go:232] URL: https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist Trace: 0x7a2bc590970ad2d4\n",
-        "I0825 15:18:27.706447      63 http_helpers.go:232] URL: https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels Trace: 0x40a40da6efb431db\n",
-        "I0825 15:18:28.627788      80 http_helpers.go:232] URL: https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist Trace: 0xf22251bc0abacaea\n",
-        "I0825 15:18:28.648223       1 server.go:1755] Generated and saved persistent installation UUID: ba72ddc9-b855-40e5-9a29-750e46415449\n",
-        "I0825 15:18:28.653876       1 server.go:1769] Generated and saved default remote control hostname: desktop-svfbh30-orbital-vortex\n",
-        "W0825 15:18:28.671768       1 launchmanager.go:69] Entering local chrome mode! This is WRONG unless you are running tests or in eval mode on Linux.\n",
-        "I0825 15:18:28.677879     170 migrate.go:50] Migration marker C:\\Users\\홍준기\\.gemini\\config\\.migrated does not exist. Attempting migration from AppDataDir C:\\Users\\홍준기\\.gemini\\antigravity.\n",
-        "W0825 15:18:28.677879       1 defaults.go:757] failed to get cs path: cs path /usr/bin/cs invalid\n",
-        "I0825 15:18:28.679345       1 manager.go:98] Creating trajectory store manager with proto store and SQLite store\n",
-        "I0825 15:18:28.682612     170 migrate.go:158] Migration complete, marked with C:\\Users\\홍준기\\.gemini\\config\\.migrated\n",
-        "I0825 15:18:28.716002       1 sidecar_sdk.go:29] Using bundled agy-node\n",
-        "I0825 15:18:28.720731     180 manager.go:75] Migration [MIGRATION_ID_SIDECAR_USER_CONFIG_BYPASS] is disabled, skipping entirely\n",
-        "I0825 15:18:28.721572     180 manager.go:78] Migration [MIGRATION_ID_POPULATE_PROJECT_UPDATED_AT] is enabled\n",
-        "I0825 15:18:28.721572     180 manager.go:92] Migration [MIGRATION_ID_POPULATE_PROJECT_UPDATED_AT] starting\n",
-        "I0825 15:18:28.725252     180 project_updated_at_migration.go:53] Starting ProjectUpdatedAtMigration (using summaries store)\n",
-        "I0825 15:18:28.725252     180 project_updated_at_migration.go:87] ProjectUpdatedAtMigration: no conversations found for project Outside of Project (outside-of-project), setting to Now\n",
-        "I0825 15:18:28.731309     180 manager.go:112] Migration [MIGRATION_ID_POPULATE_PROJECT_UPDATED_AT] completed successfully in 6.0571ms\n",
-        "I0825 15:18:28.733559     180 manager.go:78] Migration [MIGRATION_ID_SANITY_CHECK_PROJECT_URIS] is enabled\n",
-        "I0825 15:18:28.733559     180 manager.go:92] Migration [MIGRATION_ID_SANITY_CHECK_PROJECT_URIS] starting\n",
-        "I0825 15:18:28.737105     180 project_uris_migration.go:36] Starting ProjectUrisMigration\n",
-        "I0825 15:18:28.737773     180 manager.go:112] Migration [MIGRATION_ID_SANITY_CHECK_PROJECT_URIS] completed successfully in 667.8µs\n",
-        "I0825 15:18:28.740247     180 manager.go:78] Migration [MIGRATION_ID_PLUGIN_ENABLEMENT] is enabled\n",
-        "I0825 15:18:28.740247     180 manager.go:92] Migration [MIGRATION_ID_PLUGIN_ENABLEMENT] starting\n",
-        "I0825 15:18:28.742444     180 manager.go:112] Migration [MIGRATION_ID_PLUGIN_ENABLEMENT] completed successfully in 0s\n",
-        "I0825 15:18:28.746465       1 server.go:1277] Serving UI bundle from embedded assets\n",
-        "I0825 15:18:28.750311       1 server.go:1277] Serving UI bundle from embedded assets\n",
-        "I0825 15:18:28.750311       1 server.go:2780] Auth succeeded, refreshing features and managers\n",
-        "I0825 15:18:29.336059       1 server.go:2786] State refresh took 585ms\n",
-        "I0825 15:18:29.346378       1 server.go:2800] [RemoteControl] Subscription callback triggered.\n",
-        "I0825 15:18:29.346992       1 server.go:2802] [RemoteControl] RemoteControlEnabled value: false\n",
-        "I0825 15:18:29.346992       1 server.go:3064] [RemoteControl] Resolved proxyServerURL: \"\"\n",
-        "I0825 15:18:29.346992       1 server.go:2825] Retroactive projects migration enabled: true\n",
-        "I0825 15:18:29.347511       1 retroactive_migration.go:133] [Retroactive Migration] Initial projects migration is not completed yet (status: MIGRATION_STATUS_UNSPECIFIED). Marking retroactive projects migration as COMPLETED_UNNECESSARY and skipping.\n",
-        "I0825 15:18:29.354248     236 server.go:2800] [RemoteControl] Subscription callback triggered.\n",
-        "I0825 15:18:29.354248     236 server.go:2802] [RemoteControl] RemoteControlEnabled value: false\n",
-        "I0825 15:18:29.354248     236 server.go:3064] [RemoteControl] Resolved proxyServerURL: \"\"\n",
-        "I0825 15:18:29.358118     237 server.go:2800] [RemoteControl] Subscription callback triggered.\n",
-        "I0825 15:18:29.358118     237 server.go:2802] [RemoteControl] RemoteControlEnabled value: false\n",
-        "I0825 15:18:29.358118     237 server.go:3064] [RemoteControl] Resolved proxyServerURL: \"\"\n",
-        "I0825 15:18:29.359180       1 projects_migration.go:581] No conversations found, marking projects migration as complete\n",
-        "I0825 15:18:29.362938     240 server.go:2800] [RemoteControl] Subscription callback triggered.\n",
-        "I0825 15:18:29.362938     240 server.go:2802] [RemoteControl] RemoteControlEnabled value: false\n",
-        "I0825 15:18:29.362938     240 server.go:3064] [RemoteControl] Resolved proxyServerURL: \"\"\n",
-        "I0825 15:18:29.362938       1 profiler.go:154] Continuous pprof profiling is disabled.\n",
-        "I0825 15:18:29.365191       1 server.go:2314] initialized server successfully in 5.3648056s\n",
-        "E0825 15:18:29.958453     141 browser_context.go:179] failed to install playwright: could not install driver: could not install driver: error: got non 200 status code: 404 (404 Not Found) from https:/(truncated...)eedge.net/builds/driver/playwright-1.57.0-win32_x64.zip\nerror: got non 200 status code: 404 (404 Not Found) from https://playwright-verizon.azureedge.net/builds/driver/playwright-1.57.0-win32_x64.zip\n",
-        "I0825 15:18:46.302728    1893 server.go:2800] [RemoteControl] Subscription callback triggered.\n",
-        "I0825 15:18:46.302728    1893 server.go:2802] [RemoteControl] RemoteControlEnabled value: false\n",
-        "I0825 15:18:46.302728    1893 server.go:3064] [RemoteControl] Resolved proxyServerURL: \"\"\n",
-        "I0825 15:18:46.656063    1882 encoder_embed.go:85] Installing/updating embedded webm_encoder binary to C:\\Users\\홍준기\\.gemini\\antigravity\\bin\\webm_encoder.exe\n",
-        "E0825 15:18:46.794953    1939 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.794953    1872 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.796081    1939 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.796081    1872 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.806199    1939 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.806199    1872 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.806199    1939 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.806199    1872 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.807474    1939 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.808084    1939 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.808084    1872 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.808084    1872 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.808761    1872 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.808761    1872 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.808761    1939 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.808761    1939 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.810074    1939 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.810074    1939 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.810856    1872 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.810856    1872 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.811844    1939 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.811844    1939 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.812408    1872 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.812408    1872 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.812897    1872 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.813972    1872 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.813972    1939 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:18:46.814550    1939 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "I0825 15:18:47.763204    1895 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "I0825 15:18:47.763204    1882 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "I0825 15:18:47.773898    1895 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "I0825 15:18:47.775653    1882 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "I0825 15:18:52.189597    2082 server.go:2800] [RemoteControl] Subscription callback triggered.\n",
-        "I0825 15:18:52.189597    2082 server.go:2802] [RemoteControl] RemoteControlEnabled value: false\n",
-        "I0825 15:18:52.189597    2082 server.go:3064] [RemoteControl] Resolved proxyServerURL: \"\"\n",
-        "I0825 15:18:53.257521    2096 server.go:2800] [RemoteControl] Subscription callback triggered.\n",
-        "I0825 15:18:53.257521    2096 server.go:2802] [RemoteControl] RemoteControlEnabled value: false\n",
-        "I0825 15:18:53.257521    2096 server.go:3064] [RemoteControl] Resolved proxyServerURL: \"\"\n",
-        "I0825 15:18:55.632486    2058 server.go:2800] [RemoteControl] Subscription callback triggered.\n",
-        "I0825 15:18:55.632486    2058 server.go:2802] [RemoteControl] RemoteControlEnabled value: false\n",
-        "I0825 15:18:55.632486    2058 server.go:3064] [RemoteControl] Resolved proxyServerURL: \"\"\n",
-        "I0825 15:19:04.963221    2179 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "I0825 15:19:05.082725    2179 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "I0825 15:19:05.121973    2128 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "I0825 15:19:05.136559    2215 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "I0825 15:19:05.154199    2128 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "I0825 15:19:05.176060    2215 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "I0825 15:19:05.193175    2128 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "I0825 15:19:05.200962    2128 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "I0825 15:19:05.219551    2215 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "I0825 15:19:05.221268    2215 encoder_embed.go:126] [CDP Discovery] Successfully discovered Electron WS URL: ws://127.0.0.1:55038/devtools/browser/2167e1f3-68bb-42f5-b221-fc4d4b5d2e5a\n",
-        "E0825 15:19:05.275099    2128 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.275099    2128 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.277179    2128 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.277179    2128 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.277745    2128 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.277745    2128 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.278289    2128 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.278289    2128 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.279416    2128 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.279416    2128 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.279960    2128 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.279960    2128 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.279960    2215 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.279960    2215 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.281185    2128 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.281185    2128 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.281185    2215 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.281729    2215 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.282267    2215 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.282267    2215 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.282810    2215 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.282810    2215 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.283913    2215 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.283913    2215 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.285001    2215 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.285001    2215 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.286157    2215 projects.go:123] projects store: project_store_get_file_missing: missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n",
-        "E0825 15:19:05.286157    2215 errorreport.go:223] missing project file: open C:/Users/홍준기/.gemini/config/projects/.json: The system cannot find the file specified.\n"
-      ]
-    },
-    "recentTrajectories": [],
-    "agentWindowConsoleLogs": [
-      "[INFO] 2026-8-25 15:18:46.568 [SidebarLoad] Conversation list loaded (0 conversations): 22325ms",
-      "[INFO] 2026-8-25 15:18:46.584 [TTIR] Input area rendered. TTIR: 22341ms (iframe-local only — no outer nav timestamp)",
-      "[LOG] 2026-8-25 15:19:4.925 [SettingsService] getConfigurationValue: antigravity.marketplaceGalleryItemURL",
-      "[LOG] 2026-8-25 15:19:4.925 [SettingsService] getConfigurationValue: antigravity.marketplaceExtensionGalleryServiceURL"
-    ],
-    "electronLogs": [
-      "[2026-08-18 01:13:13.835] [info]  [IDE Wizard] C:\\Users\\홍준기\\.gemini\\antigravity not found — user was not migrated, skipping.\r",
-      "[2026-08-18 01:13:13.843] [info]  Starting app (v2.5.0) with dynamic port…\r",
-      "[2026-08-18 01:13:13.845] [info]  ",
-      "Spawning: C:\\Users\\홍준기\\AppData\\Local\\Programs\\antigravity\\resources\\bin\\language_server.exe --standalone --override_ide_name antigravity --subclient_type hub --override_ide_version 2.5.0 --override_user_agent_name antigravity --https_server_port 0 --csrf_token de18002a-5db6-4bb7-b6ab-667f616883ae --app_data_dir antigravity --api_server_url https://generativelanguage.googleapis.com --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com --enable_sidecars",
-      "\r",
-      "[2026-08-18 01:13:14.217] [info]  [Auto-Restart] Port changed! Reloading all windows with URL: https://127.0.0.1:63578/\r",
-      "[2026-08-18 01:13:14.218] [info]  ",
-      "============================================================\r",
-      "[2026-08-18 01:13:14.218] [info]    Local:       https://127.0.0.1:63578/\r",
-      "[2026-08-18 01:13:14.219] [info]    LS Logs:     C:\\Users\\홍준기\\AppData\\Roaming\\Antigravity\\logs\\language_server.log\r",
-      "[2026-08-18 01:13:14.220] [info]    Electron Logs: C:\\Users\\홍준기\\AppData\\Roaming\\Antigravity\\logs\\main.log\r",
-      "[2026-08-18 01:13:14.221] [info]  ============================================================",
-      "\r",
-      "[2026-08-18 01:13:24.430] [info]  [AutoUpdater] Starting auto update checks\r",
-      "[2026-08-18 01:13:24.431] [info]  Checking for update\r",
-      "[2026-08-18 01:13:24.432] [info]  [AutoUpdater] Checking for update…\r",
-      "[2026-08-18 01:13:24.445] [info]  Generated new staging user ID: 14e1a998-b5f6-59b2-99ae-f19ec7c468f7\r",
-      "[2026-08-18 01:13:25.111] [info]  Staging percentage: 1, percentage: 0.7803407292301628, user id: 14e1a998-b5f6-59b2-99ae-f19ec7c468f7\r",
-      "[2026-08-18 01:13:25.113] [info]  Found version 2.8.1 (url: https://storage.googleapis.com/antigravity-public/antigravity-hub/2.8.1-6512087774658560/windows-x64/Antigravity-x64.exe)\r",
-      "[2026-08-18 01:13:25.114] [info]  [AutoUpdater] Update available: 2.8.1\r",
-      "[2026-08-18 01:13:25.115] [info]  Downloading update from https://storage.googleapis.com/antigravity-public/antigravity-hub/2.8.1-6512087774658560/windows-x64/Antigravity-x64.exe\r",
-      "[2026-08-18 01:13:25.118] [debug] updater cache dir: C:\\Users\\홍준기\\AppData\\Local\\antigravity-updater\r",
-      "[2026-08-18 01:13:25.124] [warn]  disableWebInstaller is set to false, you should set it to true if you do not plan on using a web installer. This will default to true in a future version.\r",
-      "[2026-08-18 01:13:25.125] [info]  Download block maps (old: \"https://storage.googleapis.com/antigravity-public/antigravity-hub/2.5.0-6512087774658560/windows-x64/Antigravity-x64.exe.blockmap\", new: https://storage.googleapis.com/antigravity-public/antigravity-hub/2.8.1-6512087774658560/windows-x64/Antigravity-x64.exe.blockmap)\r",
-      "[2026-08-18 01:13:25.585] [error] Cannot download differentially, fallback to full download: Error: Cannot download \"https://storage.googleapis.com/antigravity-public/antigravity-hub/2.8.1-6512087774658560/windows-x64/Antigravity-x64.exe.blockmap\", status 404: ",
-      "    at ClientRequest.<anonymous> (C:\\Users\\홍준기\\AppData\\Local\\Programs\\antigravity\\resources\\app.asar\\node_modules\\electron-updater\\node_modules\\builder-util-runtime\\out\\httpExecutor.js:209:34)",
-      "    at ClientRequest.emit (node:events:508:28)",
-      "    at SimpleURLLoaderWrapper.<anonymous> (node:electron/js2c/browser_init:2:134311)",
-      "    at SimpleURLLoaderWrapper.emit (node:events:508:28)\r",
-      "[2026-08-18 01:13:55.739] [info]  New version 2.8.1 has been downloaded to C:\\Users\\홍준기\\AppData\\Local\\antigravity-updater\\pending\\Antigravity-x64.exe\r",
-      "[2026-08-18 01:13:55.752] [info]  [AutoUpdater] Update downloaded: 2.8.1\r",
-      "[2026-08-18 01:14:18.288] [info]  Install on explicit quitAndInstall\r",
-      "[2026-08-18 01:14:18.289] [info]  Install: isSilent: false, isForceRunAfter: true\r",
-      "[2026-08-18 01:14:18.291] [info]  Executing: C:\\Users\\홍준기\\AppData\\Local\\antigravity-updater\\pending\\Antigravity-x64.exe with args: --updated,--force-run\r",
-      "[2026-08-18 01:14:18.427] [info]  Shutting down language server…\r",
-      "[2026-08-18 01:14:18.494] [info]  Update installer has already been triggered. Quitting application.\r",
-      "[2026-08-18 01:14:55.219] [info]  [IDE Wizard] Already shown, skipping.\r",
-      "[2026-08-18 01:14:55.224] [info]  Starting app (v2.8.1) with dynamic port…\r",
-      "[2026-08-18 01:14:55.225] [info]  ",
-      "Spawning: C:\\Users\\홍준기\\AppData\\Local\\Programs\\antigravity\\resources\\bin\\language_server.exe --standalone --override_ide_name antigravity --subclient_type hub --override_ide_version 2.8.1 --override_user_agent_name antigravity --https_server_port 0 --csrf_token 397430f3-033c-44ff-92b2-8e69980095d2 --app_data_dir antigravity --api_server_url https://generativelanguage.googleapis.com --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com --enable_sidecars",
-      "\r",
-      "[2026-08-18 01:14:55.483] [info]  [Auto-Restart] Port changed! Reloading all windows with URL: https://127.0.0.1:54510/\r",
-      "[2026-08-18 01:14:55.485] [info]  ",
-      "============================================================\r",
-      "[2026-08-18 01:14:55.486] [info]    Local:       https://127.0.0.1:54510/\r",
-      "[2026-08-18 01:14:55.487] [info]    LS Logs:     C:\\Users\\홍준기\\AppData\\Roaming\\Antigravity\\logs\\language_server.log\r",
-      "[2026-08-18 01:14:55.488] [info]    Electron Logs: C:\\Users\\홍준기\\AppData\\Roaming\\Antigravity\\logs\\main.log\r",
-      "[2026-08-18 01:14:55.488] [info]  ============================================================",
-      "\r",
-      "[2026-08-18 01:15:05.694] [info]  [AutoUpdater] Starting auto update checks\r",
-      "[2026-08-18 01:15:05.696] [info]  Checking for update\r",
-      "[2026-08-18 01:15:05.697] [info]  [AutoUpdater] Checking for update…\r",
-      "[2026-08-18 01:15:06.012] [info]  Update for version 2.8.1 is not available (latest version: 2.8.1, downgrade is allowed).\r",
-      "[2026-08-18 01:15:06.014] [info]  [AutoUpdater] Up to date (2.8.1)\r",
-      "[2026-08-18 01:16:11.268] [info]  Shutting down language server…\r",
-      "[2026-08-22 00:26:07.325] [info]  [IDE Wizard] Already shown, skipping.\r",
-      "[2026-08-22 00:26:07.332] [info]  Starting app (v2.8.1) with dynamic port…\r",
-      "[2026-08-22 00:26:07.333] [info]  ",
-      "Spawning: C:\\Users\\홍준기\\AppData\\Local\\Programs\\antigravity\\resources\\bin\\language_server.exe --standalone --override_ide_name antigravity --subclient_type hub --override_ide_version 2.8.1 --override_user_agent_name antigravity --https_server_port 0 --csrf_token 6f33167a-ac01-47a4-9cd7-80989cd1b93c --app_data_dir antigravity --api_server_url https://generativelanguage.googleapis.com --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com --enable_sidecars",
-      "\r",
-      "[2026-08-22 00:26:07.603] [info]  [Auto-Restart] Port changed! Reloading all windows with URL: https://127.0.0.1:53709/\r",
-      "[2026-08-22 00:26:07.605] [info]  ",
-      "============================================================\r",
-      "[2026-08-22 00:26:07.605] [info]    Local:       https://127.0.0.1:53709/\r",
-      "[2026-08-22 00:26:07.606] [info]    LS Logs:     C:\\Users\\홍준기\\AppData\\Roaming\\Antigravity\\logs\\language_server.log\r",
-      "[2026-08-22 00:26:07.606] [info]    Electron Logs: C:\\Users\\홍준기\\AppData\\Roaming\\Antigravity\\logs\\main.log\r",
-      "[2026-08-22 00:26:07.607] [info]  ============================================================",
-      "\r",
-      "[2026-08-22 00:26:17.933] [info]  [AutoUpdater] Starting auto update checks\r",
-      "[2026-08-22 00:26:17.934] [info]  Checking for update\r",
-      "[2026-08-22 00:26:17.935] [info]  [AutoUpdater] Checking for update…\r",
-      "[2026-08-22 00:26:18.237] [info]  Staging percentage: 1, percentage: 0.7803407292301628, user id: 14e1a998-b5f6-59b2-99ae-f19ec7c468f7\r",
-      "[2026-08-22 00:26:18.238] [info]  Found version 2.9.1 (url: https://storage.googleapis.com/antigravity-public/antigravity-hub/2.9.1-4871453687021568/windows-x64/Antigravity-x64.exe)\r",
-      "[2026-08-22 00:26:18.239] [info]  [AutoUpdater] Update available: 2.9.1\r",
-      "[2026-08-22 00:26:18.239] [info]  Downloading update from https://storage.googleapis.com/antigravity-public/antigravity-hub/2.9.1-4871453687021568/windows-x64/Antigravity-x64.exe\r",
-      "[2026-08-22 00:26:18.240] [debug] updater cache dir: C:\\Users\\홍준기\\AppData\\Local\\antigravity-updater\r",
-      "[2026-08-22 00:26:18.244] [info]  Cached update sha512 checksum doesn't match the latest available update. New update must be downloaded. Cached: eD+JDXDkUcBWyMDJEq+BwA8gENnAugpGEsWL3saoXi1ArhEmMakdeQnfJ1Z02sxmcBcY/ZsGHB+LkEcpsHSQ7w==, expected: 3Un8hGqvpGM+3UNe4p20MtLE+Dj7oEqc4w3ExDLgsf/mvR0DwbWMQf5D71yMpomfB9/tnoQjUDOTpHnxsgtDzQ==. Directory for cached update will be cleaned\r",
-      "[2026-08-22 00:26:18.255] [warn]  disableWebInstaller is set to false, you should set it to true if you do not plan on using a web installer. This will default to true in a future version.\r",
-      "[2026-08-22 00:26:18.256] [info]  Download block maps (old: \"https://storage.googleapis.com/antigravity-public/antigravity-hub/2.8.1-4871453687021568/windows-x64/Antigravity-x64.exe.blockmap\", new: https://storage.googleapis.com/antigravity-public/antigravity-hub/2.9.1-4871453687021568/windows-x64/Antigravity-x64.exe.blockmap)\r",
-      "[2026-08-22 00:26:18.477] [error] Cannot download differentially, fallback to full download: Error: Cannot download \"https://storage.googleapis.com/antigravity-public/antigravity-hub/2.9.1-4871453687021568/windows-x64/Antigravity-x64.exe.blockmap\", status 404: ",
-      "    at ClientRequest.<anonymous> (C:\\Users\\홍준기\\AppData\\Local\\Programs\\antigravity\\resources\\app.asar\\node_modules\\electron-updater\\node_modules\\builder-util-runtime\\out\\httpExecutor.js:209:34)",
-      "    at ClientRequest.emit (node:events:508:28)",
-      "    at SimpleURLLoaderWrapper.<anonymous> (node:electron/js2c/browser_init:2:134311)",
-      "    at SimpleURLLoaderWrapper.emit (node:events:508:28)\r",
-      "[2026-08-22 00:26:25.051] [info]  New version 2.9.1 has been downloaded to C:\\Users\\홍준기\\AppData\\Local\\antigravity-updater\\pending\\Antigravity-x64.exe\r",
-      "[2026-08-22 00:26:25.056] [info]  [AutoUpdater] Update downloaded: 2.9.1\r",
-      "[2026-08-22 00:26:26.356] [info]  Install on explicit quitAndInstall\r",
-      "[2026-08-22 00:26:26.357] [info]  Install: isSilent: false, isForceRunAfter: true\r",
-      "[2026-08-22 00:26:26.358] [info]  Executing: C:\\Users\\홍준기\\AppData\\Local\\antigravity-updater\\pending\\Antigravity-x64.exe with args: --updated,--force-run\r",
-      "[2026-08-22 00:26:26.709] [info]  Shutting down language server…\r",
-      "[2026-08-22 00:26:26.768] [info]  Update installer has already been triggered. Quitting application.\r",
-      "[2026-08-22 00:26:55.711] [info]  [IDE Wizard] Already shown, skipping.\r",
-      "[2026-08-22 00:26:55.716] [info]  Starting app (v2.9.1) with dynamic port…\r",
-      "[2026-08-22 00:26:55.740] [info]  Host bridge server listening on http://127.0.0.1:51098\r",
-      "[2026-08-22 00:26:55.742] [info]  ",
-      "Spawning: C:\\Users\\홍준기\\AppData\\Local\\Programs\\antigravity\\resources\\bin\\language_server.exe --standalone --override_ide_name antigravity --subclient_type hub --override_ide_version 2.9.1 --override_user_agent_name antigravity --https_server_port 0 --csrf_token ea4ef94b-af51-412c-800b-01928c5d81d9 --app_data_dir antigravity --api_server_url https://generativelanguage.googleapis.com --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com --enable_sidecars --host_bridge_url=http://127.0.0.1:51098 --host_bridge_token=4759e52350bea6a86fbc5b91db0bce5a96d9d16b037cb534f4905cf1ea26aa78",
-      "\r",
-      "[2026-08-22 00:26:55.958] [info]  [Auto-Restart] Port changed! Reloading all windows with URL: https://127.0.0.1:51099/\r",
-      "[2026-08-22 00:26:55.960] [info]  ",
-      "============================================================\r",
-      "[2026-08-22 00:26:55.960] [info]    Local:       https://127.0.0.1:51099/\r",
-      "[2026-08-22 00:26:55.961] [info]    LS Logs:     C:\\Users\\홍준기\\AppData\\Roaming\\Antigravity\\logs\\language_server.log\r",
-      "[2026-08-22 00:26:55.961] [info]    Electron Logs: C:\\Users\\홍준기\\AppData\\Roaming\\Antigravity\\logs\\main.log\r",
-      "[2026-08-22 00:26:55.962] [info]  ============================================================",
-      "\r",
-      "[2026-08-22 00:27:06.230] [info]  [AutoUpdater] Starting auto update checks\r",
-      "[2026-08-22 00:27:06.231] [info]  Checking for update\r",
-      "[2026-08-22 00:27:06.232] [info]  [AutoUpdater] Checking for update…\r",
-      "[2026-08-22 00:27:06.561] [info]  Update for version 2.9.1 is not available (latest version: 2.9.1, downgrade is allowed).\r",
-      "[2026-08-22 00:27:06.562] [info]  [AutoUpdater] Up to date (2.9.1)\r",
-      "[2026-08-22 00:28:23.155] [info]  Shutting down language server…\r",
-      "[2026-08-25 15:18:23.776] [info]  [IDE Wizard] Already shown, skipping.\r",
-      "[2026-08-25 15:18:23.785] [info]  Starting app (v2.9.1) with dynamic port…\r",
-      "[2026-08-25 15:18:23.813] [info]  Host bridge server listening on http://127.0.0.1:55047\r",
-      "[2026-08-25 15:18:23.814] [info]  ",
-      "Spawning: C:\\Users\\홍준기\\AppData\\Local\\Programs\\antigravity\\resources\\bin\\language_server.exe --standalone --override_ide_name antigravity --subclient_type hub --override_ide_version 2.9.1 --override_user_agent_name antigravity --https_server_port 0 --csrf_token 4d4c0d2c-777e-436e-ae85-686a9daf140a --app_data_dir antigravity --api_server_url https://generativelanguage.googleapis.com --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com --enable_sidecars --host_bridge_url=http://127.0.0.1:55047 --host_bridge_token=85ddc1278ed736c892e7640df6060aa1b401d5108c19bf04d98d18a8b649678a",
-      "\r",
-      "[2026-08-25 15:18:24.027] [info]  [Auto-Restart] Port changed! Reloading all windows with URL: https://127.0.0.1:55048/\r",
-      "[2026-08-25 15:18:24.028] [info]  ",
-      "============================================================\r",
-      "[2026-08-25 15:18:24.029] [info]    Local:       https://127.0.0.1:55048/\r",
-      "[2026-08-25 15:18:24.029] [info]    LS Logs:     C:\\Users\\홍준기\\AppData\\Roaming\\Antigravity\\logs\\language_server.log\r",
-      "[2026-08-25 15:18:24.030] [info]    Electron Logs: C:\\Users\\홍준기\\AppData\\Roaming\\Antigravity\\logs\\main.log\r",
-      "[2026-08-25 15:18:24.030] [info]  ============================================================",
-      "\r",
-      "[2026-08-25 15:18:34.315] [info]  [AutoUpdater] Starting auto update checks\r",
-      "[2026-08-25 15:18:34.319] [info]  Checking for update\r",
-      "[2026-08-25 15:18:34.321] [info]  [AutoUpdater] Checking for update…\r",
-      "[2026-08-25 15:18:34.724] [info]  Staging percentage: 0.1, percentage: 0.7803407292301628, user id: 14e1a998-b5f6-59b2-99ae-f19ec7c468f7\r",
-      "[2026-08-25 15:18:34.725] [info]  Update for version 2.9.1 is not available (latest version: 2.10.0, downgrade is allowed).\r",
-      "[2026-08-25 15:18:34.725] [info]  [AutoUpdater] Up to date (2.10.0)"
-    ]
-  }
-}
+# SK하이닉스 종합 분석: 주가 + 네이버 뉴스 + LLM
+# 필요한 패키지: pykrx, requests, pandas, python-dotenv
+import os
+import sys
+import datetime as dt
+import json
+import contextlib
+import io
+import re
+import requests
+import time
+from pathlib import Path
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+import pandas as pd
+from dotenv import load_dotenv
+from email.utils import parsedate_to_datetime
+from html import unescape
+from IPython.display import display
+with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+    from pykrx import stock
+
+_dotenv_paths = []
+for _base_path in (Path.cwd(), Path.cwd().parent, Path.cwd().parent.parent):
+    _dotenv_paths.extend([
+        _base_path / ".env",
+        _base_path / "notebooks" / ".env",
+    ])
+if "__file__" in globals():
+    _dotenv_paths.extend([
+        Path(__file__).resolve().with_name(".env"),
+        Path(__file__).resolve().parents[1] / "notebooks" / ".env",
+    ])
+for _dotenv_path in _dotenv_paths:
+    if _dotenv_path.is_file():
+        load_dotenv(_dotenv_path, override=True)
+
+STOCK_NAME = "SK하이닉스"
+STOCK_TICKER = "000660"
+LOOKBACK_DAYS = 30
+NEWS_COUNT = 20
+REPORT_COUNT = 20
+
+KIS_BASE_URL = os.getenv("KIS_BASE_URL", "https://openapi.koreainvestment.com:9443")
+KIS_TOKEN_URL = f"{KIS_BASE_URL}/oauth2/tokenP"
+KIS_RESEARCH_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/invest-opinion"
+
+
+def _clean_html(value: str) -> str:
+    return unescape(value.replace("<b>", "").replace("</b>", "")).strip()
+
+
+def get_stock_history(ticker: str, days: int = 30) -> pd.DataFrame:
+    """최근 영업일 주가와 거래량을 조회한다."""
+    end = dt.date.today()
+    start = end - dt.timedelta(days=days)
+    history = stock.get_market_ohlcv_by_date(
+        start.strftime("%Y%m%d"), end.strftime("%Y%m%d"), ticker
+    )
+    if history.empty:
+        raise RuntimeError(f"{ticker} 종목의 주가 데이터를 찾지 못했습니다.")
+    return history
+
+
+def search_stock_news(query: str, display: int = 20) -> pd.DataFrame:
+    """네이버 뉴스 검색 API에서 최신 관련 기사를 가져온다."""
+    client_id = os.getenv("NAVER_CLIENT_ID")
+    client_secret = os.getenv("NAVER_CLIENT_SECRET")
+    if not client_id or not client_secret:
+        raise RuntimeError(".env에 NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET을 설정하세요.")
+
+    response = requests.get(
+        "https://openapi.naver.com/v1/search/news.json",
+        headers={
+            "X-Naver-Client-Id": client_id,
+            "X-Naver-Client-Secret": client_secret,
+        },
+        params={"query": query, "display": display, "sort": "date"},
+        timeout=20,
+    )
+    if not response.ok:
+        raise RuntimeError(f"네이버 뉴스 API 오류 ({response.status_code}): {response.text}")
+
+    rows = []
+    for item in response.json().get("items", []):
+        published_at = item.get("pubDate")
+        rows.append({
+            "title": _clean_html(item.get("title", "")),
+            "description": _clean_html(item.get("description", "")),
+            "link": item.get("link", ""),
+            "pubDate": (
+                parsedate_to_datetime(published_at)
+                if published_at
+                else None
+            ),
+        })
+    return pd.DataFrame(rows)
+
+
+def _number(value):
+    """문자열 숫자에서 쉼표·통화기호를 제거해 숫자로 변환한다."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    text = str(value).replace(",", "").replace("원", "").strip()
+    match = re.search(r"-?\d+(?:\.\d+)?", text)
+    return float(match.group()) if match else None
+
+
+def _recommendation(value: str) -> str:
+    """증권사별 투자의견을 매수·중립·매도로 통일한다."""
+    text = str(value or "").strip().lower().replace(" ", "")
+    if any(word in text for word in ("매수", "buy", "outperform", "overweight", "strongbuy")):
+        return "매수"
+    if any(word in text for word in ("매도", "sell", "underperform", "underweight", "reduce")):
+        return "매도"
+    if any(word in text for word in ("중립", "보유", "hold", "neutral", "marketperform")):
+        return "중립"
+    return str(value or "").strip()
+
+
+def _report_frame(rows) -> pd.DataFrame:
+    columns = ["date", "broker", "title", "recommendation", "target_price", "source", "url"]
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    for column in columns:
+        if column not in frame:
+            frame[column] = None
+    frame["recommendation"] = frame["recommendation"].map(_recommendation)
+    frame["target_price"] = frame["target_price"].map(_number)
+    return frame[columns].reset_index(drop=True)
+
+
+KIS_TOKEN_CACHE_PATH = Path(".kis_token_cache.json")
+
+
+def _kis_access_token(force_refresh: bool = False) -> str:
+    app_key = os.getenv("KIS_APP_KEY")
+    app_secret = os.getenv("KIS_APP_SECRET")
+    if not app_key or not app_secret:
+        raise RuntimeError(".env에 KIS_APP_KEY와 KIS_APP_SECRET을 설정하세요.")
+    if not force_refresh and KIS_TOKEN_CACHE_PATH.exists():
+        try:
+            cache = json.loads(KIS_TOKEN_CACHE_PATH.read_text(encoding="utf-8"))
+            if (
+                cache.get("app_key") == app_key
+                and time.time() < cache.get("expires_at", 0)
+                and cache.get("access_token")
+            ):
+                return cache["access_token"]
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    response = requests.post(
+        KIS_TOKEN_URL,
+        json={
+            "grant_type": "client_credentials",
+            "appkey": app_key,
+            "appsecret": app_secret,
+        },
+        timeout=20,
+    )
+    if not response.ok:
+        raise RuntimeError(f"KIS 토큰 발급 오류 ({response.status_code}): {response.text}")
+    payload = response.json()
+    token = payload.get("access_token")
+    if not token:
+        raise RuntimeError("KIS 토큰 응답에 access_token이 없습니다.")
+    KIS_TOKEN_CACHE_PATH.write_text(
+        json.dumps({
+            "app_key": app_key,
+            "access_token": token,
+            "expires_at": time.time() + int(payload.get("expires_in", 86400)) - 300,
+        }),
+        encoding="utf-8",
+    )
+    return token
+
+
+def _get_kis_reports(ticker: str, count: int) -> pd.DataFrame:
+    app_key = os.getenv("KIS_APP_KEY")
+    app_secret = os.getenv("KIS_APP_SECRET")
+    token = _kis_access_token()
+    authorization = f"Bearer {token}"
+    end_date = dt.date.today()
+    start_date = end_date - dt.timedelta(days=90)
+    response = requests.get(
+        KIS_RESEARCH_URL,
+        headers={
+            "authorization": authorization,
+            "appkey": app_key,
+            "appsecret": app_secret,
+            "tr_id": "FHKST663300C0",
+            "custtype": "P",
+            "content-type": "application/json; charset=utf-8",
+        },
+        params={
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_COND_SCR_DIV_CODE": "16633",
+            "FID_INPUT_ISCD": ticker,
+            "FID_INPUT_DATE_1": start_date.strftime("%Y%m%d"),
+            "FID_INPUT_DATE_2": end_date.strftime("%Y%m%d"),
+        },
+        timeout=20,
+    )
+    if not response.ok:
+        raise RuntimeError(f"KIS 종목투자의견 API 오류 ({response.status_code}): {response.text}")
+    payload = response.json()
+    if str(payload.get("rt_cd", "0")) != "0":
+        raise RuntimeError(f"KIS 종목투자의견 API 오류: {payload.get('msg1', payload)}")
+
+    output = payload.get("output1") or payload.get("output") or []
+    if isinstance(output, dict):
+        output = [output]
+    rows = []
+    for item in output:
+        rows.append({
+            "date": item.get("stck_bsop_date") or item.get("date") or item.get("rpt_dt"),
+            "broker": (
+                item.get("mbcr_name")
+                or item.get("증권사")
+                or item.get("brk_name")
+                or item.get("broker_name")
+                or item.get("invt_opnn_org")
+            ),
+            "title": item.get("rpt_nm") or item.get("report_title") or item.get("title"),
+            "recommendation": (
+                item.get("invt_opnn")
+                or item.get("invt_opnn_cls")
+                or item.get("opinion")
+                or item.get("recommendation")
+            ),
+            "target_price": (
+                item.get("hts_goal_prc")
+                or item.get("목표주가")
+                or item.get("stck_tgpr")
+                or item.get("target_price")
+                or item.get("tgt_prc")
+            ),
+            "source": "KIS",
+            "url": item.get("url") or item.get("report_url"),
+        })
+    frame = _report_frame(rows)
+    if frame.empty:
+        raise RuntimeError("KIS 종목투자의견 API가 리포트를 반환하지 않았습니다.")
+    return frame.head(count)
+
+
+def _get_naver_reports(ticker: str, count: int) -> pd.DataFrame:
+    url = f"https://finance.naver.com/research/company_list.naver?searchType=itemCode&itemCode={ticker}"
+    response = requests.get(
+        url,
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=20,
+    )
+    response.raise_for_status()
+    tables = pd.read_html(response.text)
+    rows = []
+    for table in tables:
+        table.columns = [str(column).strip() for column in table.columns]
+        opinion_column = next((c for c in table.columns if "의견" in c), None)
+        target_column = next((c for c in table.columns if "목표" in c), None)
+        if not opinion_column or not target_column:
+            continue
+        for _, item in table.iterrows():
+            rows.append({
+                "date": item.get("날짜") or item.get("작성일"),
+                "broker": item.get("증권사"),
+                "title": item.get("제목"),
+                "recommendation": item.get(opinion_column),
+                "target_price": item.get(target_column),
+                "source": "네이버 증권",
+                "url": url,
+            })
+    frame = _report_frame(rows)
+    if frame.empty:
+        raise RuntimeError("네이버 증권 리서치 탭에서 리포트를 찾지 못했습니다.")
+    return frame.head(count)
+
+
+def _get_hankyung_reports(ticker: str, count: int) -> pd.DataFrame:
+    url = f"https://consensus.hankyung.com/analysis/search?item_code={ticker}"
+    response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
+    response.raise_for_status()
+    tables = pd.read_html(response.text)
+    rows = []
+    for table in tables:
+        table.columns = [str(column).strip() for column in table.columns]
+        opinion_column = next((c for c in table.columns if "의견" in c), None)
+        target_column = next((c for c in table.columns if "목표" in c), None)
+        if not opinion_column or not target_column:
+            continue
+        for _, item in table.iterrows():
+            rows.append({
+                "date": item.get("작성일") or item.get("날짜"),
+                "broker": item.get("증권사"),
+                "title": item.get("리포트명") or item.get("제목"),
+                "recommendation": item.get(opinion_column),
+                "target_price": item.get(target_column),
+                "source": "한경컨센서스",
+                "url": url,
+            })
+    frame = _report_frame(rows)
+    if frame.empty:
+        raise RuntimeError("한경컨센서스에서 리포트를 찾지 못했습니다.")
+    return frame.head(count)
+
+
+def get_stock_reports(ticker: str, count: int = 20) -> pd.DataFrame:
+    """KIS 종목투자의견을 조회하고 실패하면 네이버, 한경 순으로 폴백한다."""
+    if not re.fullmatch(r"\d{6}", ticker):
+        raise ValueError("ticker는 6자리 숫자여야 합니다.")
+
+    errors = []
+    for source in (_get_kis_reports, _get_naver_reports, _get_hankyung_reports):
+        try:
+            reports = source(ticker, count)
+            if not reports.empty:
+                return reports
+        except (requests.RequestException, ValueError, RuntimeError, ImportError) as error:
+            errors.append(f"{source.__name__}: {error}")
+    raise RuntimeError("증권사 리포트를 수집하지 못했습니다. " + " | ".join(errors))
+
+
+def analyze_with_llm(stock_name: str, ticker: str, history: pd.DataFrame, news: pd.DataFrame) -> str:
+    """주가 흐름과 뉴스의 관계를 xAI LLM에 분석시킨다."""
+    api_key = os.getenv("XAI_API_KEY")
+    if not api_key:
+        raise RuntimeError(".env에 XAI_API_KEY를 설정하세요.")
+
+    price = history.copy().reset_index()
+    price_text = price.tail(15).to_string(index=False)
+    news_text = (
+        news[["title", "description", "pubDate", "link"]].to_string(index=False)
+        if not news.empty
+        else "관련 뉴스 없음"
+    )
+
+    system = """너는 한국 주식 리서치 애널리스트다. 제공된 데이터만 근거로 분석하고, 확인된 사실과 해석을 구분하라.
+투자 매수·매도 권유나 확정적인 미래 예측은 하지 말라."""
+    prompt = f"""다음은 {stock_name}({ticker})의 최근 주가와 네이버 뉴스다.
+
+[주가 데이터]
+{price_text}
+
+[관련 뉴스]
+{news_text}
+
+아래 형식으로 한국어 종합 분석을 작성해라.
+1. 최근 주가 흐름: 기간 수익률, 고점·저점, 거래량 변화
+2. 핵심 뉴스 요약: 주가에 영향을 줄 수 있는 뉴스 3~5개
+3. 주가 변동 원인: 뉴스와 주가·거래량의 시간적 흐름을 연결한 근거 중심 분석
+4. 긍정 요인과 부정 요인
+5. 추가 확인할 리스크와 다음 거래일에 관찰할 지표
+각 항목은 간결한 문단 또는 bullet로 작성하고, 근거가 부족하면 '판단 유보'라고 표시해라."""
+
+    response = requests.post(
+        "https://api.x.ai/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": os.getenv("XAI_MODEL", "grok-4-1-fast-non-reasoning"),
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.2,
+        },
+        timeout=120,
+    )
+    if not response.ok:
+        raise RuntimeError(f"xAI API 오류 ({response.status_code}): {response.text}")
+    return response.json()["choices"][0]["message"]["content"]
+
+
+price_df = get_stock_history(STOCK_TICKER, LOOKBACK_DAYS)
+news_df = search_stock_news(STOCK_NAME, NEWS_COUNT)
+try:
+    reports_df = get_stock_reports(STOCK_TICKER, REPORT_COUNT)
+except RuntimeError as error:
+    print(f"증권사 리포트 수집 건너뜀: {error}")
+    reports_df = pd.DataFrame(
+        columns=["date", "broker", "title", "recommendation", "target_price", "source", "url"]
+    )
+
+first_close = float(price_df["종가"].iloc[0])
+last_close = float(price_df["종가"].iloc[-1])
+period_return = (last_close / first_close - 1) * 100
+print(f"종목: {STOCK_NAME} ({STOCK_TICKER})")
+print(f"조회기간: {price_df.index.min().date()} ~ {price_df.index.max().date()}")
+print(f"최근 종가: {last_close:,.0f}원 | 기간 수익률: {period_return:+.2f}%")
+print(f"수집 뉴스: {len(news_df)}건")
+report_source = reports_df["source"].iloc[0] if not reports_df.empty else "없음"
+print(f"수집 리포트: {len(reports_df)}건 ({report_source})")
+display(price_df.tail(10))
+display(news_df.head(10))
+display(reports_df)
+
+llm_report = analyze_with_llm(STOCK_NAME, STOCK_TICKER, price_df, news_df)
+print()
+print("===== LLM 종합 분석 =====")
+print()
+print(llm_report)
