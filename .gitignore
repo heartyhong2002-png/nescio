@@ -54,3 +54,6 @@ __pycache__/
 
 # local cleanup staging (safe to delete)
 _to_delete/
+
+# Claude Code local settings
+.claude/
