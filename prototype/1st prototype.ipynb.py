@@ -47,21 +47,92 @@ KIS_BASE_URL = os.getenv("KIS_BASE_URL", "https://openapi.koreainvestment.com:94
 KIS_TOKEN_URL = f"{KIS_BASE_URL}/oauth2/tokenP"
 KIS_RESEARCH_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/invest-opinion"
 
+KRX_OPEN_API_BASE = "https://data-dbg.krx.co.kr/svc/apis/sto"
+KRX_MARKET_ENDPOINTS = ("stk_bydd_trd", "ksq_bydd_trd")  # 유가증권(KOSPI), 코스닥(KOSDAQ)
+
 
 def _clean_html(value: str) -> str:
     return unescape(value.replace("<b>", "").replace("</b>", "")).strip()
 
 
-def get_stock_history(ticker: str, days: int = 30) -> pd.DataFrame:
-    """최근 영업일 주가와 거래량을 조회한다."""
+def _get_history_pykrx(ticker: str, days: int) -> pd.DataFrame:
     end = dt.date.today()
     start = end - dt.timedelta(days=days)
     history = stock.get_market_ohlcv_by_date(
         start.strftime("%Y%m%d"), end.strftime("%Y%m%d"), ticker
     )
     if history.empty:
-        raise RuntimeError(f"{ticker} 종목의 주가 데이터를 찾지 못했습니다.")
+        raise RuntimeError(f"{ticker} 종목의 주가 데이터를 찾지 못했습니다 (pykrx).")
     return history
+
+
+def _krx_open_api_rows(endpoint: str, bas_dd: str, key: str) -> list:
+    response = requests.get(
+        f"{KRX_OPEN_API_BASE}/{endpoint}",
+        params={"AUTH_KEY": key, "basDd": bas_dd},
+        timeout=20,
+    )
+    if not response.ok:
+        raise RuntimeError(f"KRX 공식 API 오류 ({response.status_code}): {response.text}")
+    return response.json().get("OutBlock_1") or []
+
+
+def _get_history_krx_open_api(ticker: str, days: int) -> pd.DataFrame:
+    """pykrx 장애 시의 폴백. KRX 공식 Open API는 날짜 범위 조회를 지원하지 않아
+    하루치 전체 시장 스냅샷(stk/ksq_bydd_trd)을 평일마다 반복 호출해서 직접 히스토리를 만든다."""
+    key = os.getenv("KRX_AUTH_KEY")
+    if not key:
+        raise RuntimeError("KRX_AUTH_KEY가 설정되어 있지 않습니다.")
+
+    end = dt.date.today()
+    weekdays = [
+        (end - dt.timedelta(days=offset))
+        for offset in range(days + 1)
+        if (end - dt.timedelta(days=offset)).weekday() < 5
+    ]
+
+    market_endpoint = None
+    rows_by_date = {}
+    for date in weekdays:
+        bas_dd = date.strftime("%Y%m%d")
+        endpoints = (market_endpoint,) if market_endpoint else KRX_MARKET_ENDPOINTS
+        for endpoint in endpoints:
+            rows = _krx_open_api_rows(endpoint, bas_dd, key)
+            row = next((item for item in rows if item.get("ISU_CD") == ticker), None)
+            if row:
+                market_endpoint = endpoint
+                rows_by_date[bas_dd] = row
+                break
+
+    if not rows_by_date:
+        raise RuntimeError(f"{ticker} 종목의 주가 데이터를 찾지 못했습니다 (KRX 공식 API).")
+
+    records = [
+        {
+            "날짜": pd.to_datetime(bas_dd, format="%Y%m%d"),
+            "시가": float(row["TDD_OPNPRC"]),
+            "고가": float(row["TDD_HGPRC"]),
+            "저가": float(row["TDD_LWPRC"]),
+            "종가": float(row["TDD_CLSPRC"]),
+            "거래량": float(row["ACC_TRDVOL"]),
+            "등락률": float(row["FLUC_RT"]),
+        }
+        for bas_dd, row in sorted(rows_by_date.items())
+    ]
+    return pd.DataFrame(records).set_index("날짜")
+
+
+def get_stock_history(ticker: str, days: int = 30) -> pd.DataFrame:
+    """최근 영업일 주가와 거래량을 조회한다. pykrx가 실패하면 KRX 공식 API로 폴백한다."""
+    errors = []
+    for source in (_get_history_pykrx, _get_history_krx_open_api):
+        try:
+            history = source(ticker, days)
+            if not history.empty:
+                return history
+        except (requests.RequestException, ValueError, RuntimeError, ImportError, KeyError) as error:
+            errors.append(f"{source.__name__}: {error}")
+    raise RuntimeError(f"{ticker} 종목의 주가 데이터를 찾지 못했습니다. " + " | ".join(errors))
 
 
 def search_stock_news(query: str, display: int = 20) -> pd.DataFrame:
@@ -377,31 +448,33 @@ def analyze_with_llm(stock_name: str, ticker: str, history: pd.DataFrame, news: 
     return response.json()["choices"][0]["message"]["content"]
 
 
-price_df = get_stock_history(STOCK_TICKER, LOOKBACK_DAYS)
-news_df = search_stock_news(STOCK_NAME, NEWS_COUNT)
-try:
-    reports_df = get_stock_reports(STOCK_TICKER, REPORT_COUNT)
-except RuntimeError as error:
-    print(f"증권사 리포트 수집 건너뜀: {error}")
-    reports_df = pd.DataFrame(
-        columns=["date", "broker", "title", "recommendation", "target_price", "source", "url"]
-    )
 
-first_close = float(price_df["종가"].iloc[0])
-last_close = float(price_df["종가"].iloc[-1])
-period_return = (last_close / first_close - 1) * 100
-print(f"종목: {STOCK_NAME} ({STOCK_TICKER})")
-print(f"조회기간: {price_df.index.min().date()} ~ {price_df.index.max().date()}")
-print(f"최근 종가: {last_close:,.0f}원 | 기간 수익률: {period_return:+.2f}%")
-print(f"수집 뉴스: {len(news_df)}건")
-report_source = reports_df["source"].iloc[0] if not reports_df.empty else "없음"
-print(f"수집 리포트: {len(reports_df)}건 ({report_source})")
-display(price_df.tail(10))
-display(news_df.head(10))
-display(reports_df)
+if __name__ == "__main__":
+    price_df = get_stock_history(STOCK_TICKER, LOOKBACK_DAYS)
+    news_df = search_stock_news(STOCK_NAME, NEWS_COUNT)
+    try:
+        reports_df = get_stock_reports(STOCK_TICKER, REPORT_COUNT)
+    except RuntimeError as error:
+        print(f"증권사 리포트 수집 건너뜀: {error}")
+        reports_df = pd.DataFrame(
+            columns=["date", "broker", "title", "recommendation", "target_price", "source", "url"]
+        )
 
-llm_report = analyze_with_llm(STOCK_NAME, STOCK_TICKER, price_df, news_df)
-print()
-print("===== LLM 종합 분석 =====")
-print()
-print(llm_report)
+    first_close = float(price_df["종가"].iloc[0])
+    last_close = float(price_df["종가"].iloc[-1])
+    period_return = (last_close / first_close - 1) * 100
+    print(f"종목: {STOCK_NAME} ({STOCK_TICKER})")
+    print(f"조회기간: {price_df.index.min().date()} ~ {price_df.index.max().date()}")
+    print(f"최근 종가: {last_close:,.0f}원 | 기간 수익률: {period_return:+.2f}%")
+    print(f"수집 뉴스: {len(news_df)}건")
+    report_source = reports_df["source"].iloc[0] if not reports_df.empty else "없음"
+    print(f"수집 리포트: {len(reports_df)}건 ({report_source})")
+    display(price_df.tail(10))
+    display(news_df.head(10))
+    display(reports_df)
+
+    llm_report = analyze_with_llm(STOCK_NAME, STOCK_TICKER, price_df, news_df)
+    print()
+    print("===== LLM 종합 분석 =====")
+    print()
+    print(llm_report)
