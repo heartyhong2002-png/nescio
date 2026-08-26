@@ -62,6 +62,14 @@ In `src/app/stock/[ticker]/page.tsx`:
    same row *is* wired (see below). See the KRX constraint above before
    trying to fill these in.
 
+   **Update (2026-08-26): out of MVP scope by product decision, not just
+   blocked by the API gap.** PER/PBR/dividend yield are valuation/screening
+   metrics — they don't feed the app's core loop (explain *why* the price
+   moved today), so they don't fit the concept even if the data source
+   problem got solved. Leave the `—` placeholders as-is; don't spend time
+   re-attempting the KRX permission request or the unofficial scrape path
+   unless the product scope explicitly changes.
+
 ## What IS wired up
 
 `MKTCAP` was already present in the `stk_bydd_trd` response we fetch for
