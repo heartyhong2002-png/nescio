@@ -1,4 +1,4 @@
-"""1st prototype.ipynb.py의 파이프라인 함수를 그대로 재사용해
+"""analysis_pipeline.py의 파이프라인 함수를 그대로 재사용해
 5개 종목에 대해 순차적으로 통합 테스트를 실행한다.
 
 원본 스크립트는 수정하지 않는다(단, 모듈로 임포트했을 때 맨 아래 실행부가
@@ -20,7 +20,7 @@ import time
 import traceback
 from pathlib import Path
 
-SCRIPT_PATH = Path(__file__).resolve().with_name("1st prototype.ipynb.py")
+SCRIPT_PATH = Path(__file__).resolve().with_name("analysis_pipeline.py")
 REQUIRED_FUNCTIONS = (
     "get_stock_history",
     "search_stock_news",
@@ -38,7 +38,7 @@ TEST_STOCKS = [
 
 
 def _load_pipeline_module():
-    """1st prototype.ipynb.py를 모듈로 로드해 파이프라인 함수를 가져온다."""
+    """analysis_pipeline.py를 모듈로 로드해 파이프라인 함수를 가져온다."""
     if not SCRIPT_PATH.is_file():
         raise RuntimeError(f"스크립트를 찾지 못했습니다: {SCRIPT_PATH}")
 

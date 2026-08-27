@@ -60,4 +60,4 @@ _to_delete/
 
 # session backup / snapshot artifacts (not source of truth)
 *.bak
-/prototype/3rd prototype/
+/legacy-ui-mockup/3rd prototype/

@@ -1,4 +1,4 @@
-"""1st prototype.ipynb.py 파이프라인을 커맨드라인에서 실행하기 위한 스크립트.
+"""analysis_pipeline.py 파이프라인을 커맨드라인에서 실행하기 위한 스크립트.
 
 종목명과 종목코드를 인자로 받아 주가(KRX 공식 API) 조회, 네이버 뉴스 수집,
 LLM 종합 분석(1단계 NVIDIA 사실 분석 → 2단계 xAI '쩐형' 캐릭터 재작성)을 한 번에
@@ -18,11 +18,11 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     sys.stderr.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
 
-SCRIPT_PATH = Path(__file__).resolve().with_name("1st prototype.ipynb.py")
+SCRIPT_PATH = Path(__file__).resolve().with_name("analysis_pipeline.py")
 
 
 def _load_pipeline_module():
-    """1st prototype.ipynb.py를 모듈로 로드해 파이프라인 함수를 가져온다."""
+    """analysis_pipeline.py를 모듈로 로드해 파이프라인 함수를 가져온다."""
     if not SCRIPT_PATH.is_file():
         raise RuntimeError(f"스크립트를 찾지 못했습니다: {SCRIPT_PATH}")
 

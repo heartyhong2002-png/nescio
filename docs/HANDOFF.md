@@ -1,3 +1,5 @@
+> **참고 (8/27 정리):** 이 문서는 2026-08-25 세션이 남긴 핸드오프 메모입니다. 이후 저장소 구조가 정리되어(backend/ -> data-pipeline/, prototype/ -> legacy-ui-mockup/ 등) 아래 경로 언급 중 일부는 최신 구조와 다를 수 있습니다. 최신 구조는 루트의 README.md를 참고하세요.
+
 # Handoff notes (2026-08-25)
 
 Written for whichever AI assistant picks this project up next. Read this before
