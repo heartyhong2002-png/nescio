@@ -25,6 +25,16 @@ export function formatChangeRate(rate: number | null) {
   return `${changeArrow(rate)} ${Math.abs(rate).toFixed(2)}%${changeEmoji(rate)}`;
 }
 
+export function formatMultiple(value: number | null) {
+  if (value === null || Number.isNaN(value)) return "—";
+  return `${value.toFixed(2)}배`;
+}
+
+export function formatPercent(value: number | null) {
+  if (value === null || Number.isNaN(value)) return "—";
+  return `${value.toFixed(2)}%`;
+}
+
 export function formatMarketCap(value: number | null) {
   if (value === null || Number.isNaN(value)) return "—";
   const jo = Math.floor(value / 1e12);

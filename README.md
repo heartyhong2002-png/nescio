@@ -48,7 +48,9 @@ npm run dev
 | `XAI_API_KEY` | 2단계 캐릭터 톤 재작성 (xAI Grok) | 필수 |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 관련 뉴스 검색 (네이버 뉴스 API) | 필수 |
 | `KRX_AUTH_KEY` | 종목 목록·일별 시세 (KRX Open API) | 필수 |
+| `KIS_APP_KEY` / `KIS_APP_SECRET` | 분봉·기간별 차트, PER/PBR/배당/시가총액 (한국투자증권 Open API) | 필수 |
 | `NVIDIA_MODEL` / `XAI_MODEL` | 각 단계에서 쓸 모델명 오버라이드 | 선택 (기본값 있음) |
+| `KIS_BASE_URL` | KIS API 베이스 URL 오버라이드 (기본: 실전 `openapi.koreainvestment.com:9443`) | 선택 |
 
 ## 배포
 

@@ -53,24 +53,45 @@ official API, could break anytime) — the user explicitly declined to use that
 approach for now. **Do not silently wire up PER/PBR from an unofficial
 scrape** — ask first if you're picking this back up.
 
-## Known gaps (intentionally left, not bugs)
+## Known gaps
 
-In `src/app/stock/[ticker]/page.tsx`:
+**Update (2026-08-27): the two gaps below are now wired via the KIS
+(한국투자증권) Open API — `src/lib/kis.ts`.** `KIS_APP_KEY`/`KIS_APP_SECRET`
+were already in `notebooks/.env`. KIS is an official authenticated API (not
+the unofficial `data.krx.co.kr` scrape the earlier note warned against), so
+the "ask first" concern doesn't apply.
 
-1. **Price chart** — `<div className="placeholder-box">가격 차트</div>` is
-   literally just text, no chart library, no data fetch. The range tabs
-   (1일/1주/1개월/1년) update local state (`range`) but nothing reads it yet.
-2. **PER / PBR / 배당** in `MetricsRow` — still render `—`. Market cap in the
-   same row *is* wired (see below). See the KRX constraint above before
-   trying to fill these in.
+1. **Price chart** — DONE. `src/components/PriceChart.tsx` renders a Recharts
+   area chart for all four tabs. `GET /api/price-history?ticker&range`:
+   - `1일` → KIS 분봉 `inquire-time-dailychartprice` (FHKST03010230), 4
+     paginated calls (120 one-min bars each, anchors 11:00/13:00/15:00/15:30).
+     This endpoint also serves past-day minute bars (KIS keeps ~1yr), so
+     `fetchIntradayHistory` walks back up to 5 days to show the **last
+     trading day** on weekends/holidays instead of an empty chart.
+   - `1주`/`1개월` → KIS `inquire-daily-itemchartprice` (FHKST03010100),
+     daily candles, one call. `1년` → same endpoint, weekly candles (the
+     100-row/call cap rules out a year of dailies). Falls back to the old
+     KRX per-weekday loop if KIS fails.
+2. **PER / PBR / 배당 / 시가총액** in `MetricsRow` — DONE via
+   `GET /api/valuation?ticker`:
+   - `inquire-price` (FHKST01010100): `per`, `pbr`, `eps`, `bps`,
+     `hts_avls` (시가총액, 억원 → ×1e8), `stck_prpr` (현재가).
+   - 배당수익률: `inquire-price` has no dividend field, so
+     `fetchDividendYield` sums per-share cash dividends **paid in the last
+     12 months** from `ksdinfo/dividend` (TR `HHKDB669102C0`, filtered by
+     `SHT_CD`) and divides by `stck_prpr`. KIS's own `divi_rate` is a
+     par-value ratio, not a yield — don't use it. Rows with an empty
+     `divi_pay_dt` (amount-TBD announcements, `per_sto_divi_amt` "0") are
+     skipped. Non-fatal: any failure → `null` → renders `—`.
+   Note: the live KIS dataset this was tested against has inflated prices
+   (Samsung ~266k, SK Hynix ~1.77M) so some computed yields look tiny — the
+   math is right; real-priced tickers (Kia 5.4%, KB 2.9%) check out.
 
-   **Update (2026-08-26): out of MVP scope by product decision, not just
-   blocked by the API gap.** PER/PBR/dividend yield are valuation/screening
-   metrics — they don't feed the app's core loop (explain *why* the price
-   moved today), so they don't fit the concept even if the data source
-   problem got solved. Leave the `—` placeholders as-is; don't spend time
-   re-attempting the KRX permission request or the unofficial scrape path
-   unless the product scope explicitly changes.
+KIS notes: OAuth token (`/oauth2/tokenP`) lasts 24h, issue limited to ~1/min
+— cached in memory + `.kis_token_cache.json` (gitignored). Per-appkey
+"초당 거래건수" limit (EGW00201) is strict; all calls are serialized through
+a ~300ms throttle in `kis.ts` with retry/backoff. Responses cached in-memory
+60s (charts) / 10min (valuation). Cold `1일` load ≈ 1.7s; everything else <1s.
 
 ## What IS wired up
 

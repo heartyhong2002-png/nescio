@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { CauseCardButton, CauseCardLink } from "@/components/CauseCard";
 import CauseDetailView from "@/components/CauseDetailView";
 import PriceChart from "@/components/PriceChart";
-import { changeArrow, changeEmoji, changeDirection, formatMarketCap, formatPrice } from "@/lib/format";
+import { changeArrow, changeEmoji, changeDirection, formatMarketCap, formatMultiple, formatPercent, formatPrice } from "@/lib/format";
+import type { Valuation } from "@/lib/types";
 import { useStockBriefing } from "@/lib/use-briefing";
 import { useWatchlist } from "@/lib/storage";
 
@@ -21,7 +22,7 @@ function StockBriefingContent() {
   const { analysis, loading, error, refresh } = useStockBriefing(ticker, name);
   const { has, toggle } = useWatchlist();
   const [selectedCauseId, setSelectedCauseId] = useState<string | null>(null);
-  const [range, setRange] = useState(1); // "1일"(분봉)은 아직 미구현이라 "1주"부터 기본 선택
+  const [range, setRange] = useState(0); // "1일"(분봉) 기본 선택
 
   const displayName = analysis?.stock.name ?? name ?? ticker;
   const causes = analysis?.briefing.causes ?? [];
@@ -55,7 +56,7 @@ function StockBriefingContent() {
                   </div>
                 ))}
               </div>
-              <MetricsRow marketCap={analysis.price.marketCap} />
+              <MetricsRow ticker={analysis.stock.ticker} marketCap={analysis.price.marketCap} />
             </div>
 
             <div className="desktop-col desktop-side">
@@ -99,7 +100,7 @@ function StockBriefingContent() {
               ))}
             </div>
 
-            <MetricsRow marketCap={analysis.price.marketCap} />
+            <MetricsRow ticker={analysis.stock.ticker} marketCap={analysis.price.marketCap} />
 
             {analysis.briefing.aiComment && (
               <div className="placeholder-box" style={{ textAlign: "left", padding: 14, marginTop: 4 }}>
@@ -192,12 +193,35 @@ function StockHeader({
   );
 }
 
-function MetricsRow({ marketCap }: { marketCap: number | null }) {
+function useValuation(ticker: string) {
+  const [valuation, setValuation] = useState<Valuation | null>(null);
+
+  useEffect(() => {
+    if (!ticker) return;
+    let cancelled = false;
+    fetch(`/api/valuation?ticker=${encodeURIComponent(ticker)}`)
+      .then(async (response) => {
+        const data = await response.json();
+        if (!cancelled && response.ok) setValuation(data.valuation);
+      })
+      .catch(() => {
+        /* 지표는 부가 정보라 실패해도 조용히 대시(—) 유지 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker]);
+
+  return valuation;
+}
+
+function MetricsRow({ ticker, marketCap }: { ticker: string; marketCap: number | null }) {
+  const valuation = useValuation(ticker);
   const metrics = [
-    { label: "PER", value: "—" },
-    { label: "PBR", value: "—" },
-    { label: "배당", value: "—" },
-    { label: "시가총액", value: formatMarketCap(marketCap) },
+    { label: "PER", value: formatMultiple(valuation?.per ?? null) },
+    { label: "PBR", value: formatMultiple(valuation?.pbr ?? null) },
+    { label: "배당", value: formatPercent(valuation?.dividendYield ?? null) },
+    { label: "시가총액", value: formatMarketCap(valuation?.marketCap ?? marketCap) },
   ];
   return (
     <>

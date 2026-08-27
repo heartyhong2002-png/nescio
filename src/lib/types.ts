@@ -60,6 +60,15 @@ export type Briefing = {
   aiComment: string;
 };
 
+export type Valuation = {
+  per: number | null;
+  pbr: number | null;
+  eps: number | null;
+  bps: number | null;
+  marketCap: number | null; // 원 단위
+  dividendYield: number | null; // % (최근 1년 주당 현금배당금 / 현재가)
+};
+
 export type Analysis = {
   stock: Stock;
   price: Price;
