@@ -1,26 +1,20 @@
-# SK하이닉스 종합 분석: 주가 + 네이버 뉴스 + LLM
-# 필요한 패키지: pykrx, requests, pandas, python-dotenv
+"""주가(KRX 공식 Open API) + 네이버 뉴스 + LLM 종합 분석 파이프라인.
+
+1st prototype.ipynb의 코드를 그대로 옮긴 스크립트다. integration_test에서
+importlib로 로드해 재사용하므로, 노트북의 실행 셀(마지막 부분)은
+`if __name__ == "__main__":` 가드 안에 있다.
+"""
 import os
-import sys
 import datetime as dt
-import json
-import contextlib
-import io
 import re
 import requests
-import time
+import json
 from pathlib import Path
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
 import pandas as pd
 from dotenv import load_dotenv
 from email.utils import parsedate_to_datetime
 from html import unescape
 from IPython.display import display
-with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-    from pykrx import stock
 
 _dotenv_paths = []
 for _base_path in (Path.cwd(), Path.cwd().parent, Path.cwd().parent.parent):
@@ -37,102 +31,78 @@ for _dotenv_path in _dotenv_paths:
     if _dotenv_path.is_file():
         load_dotenv(_dotenv_path, override=True)
 
-STOCK_NAME = "SK하이닉스"
-STOCK_TICKER = "000660"
+STOCK_NAME = "GST"
+STOCK_TICKER = "083450"
 LOOKBACK_DAYS = 30
 NEWS_COUNT = 20
-REPORT_COUNT = 20
 
-KIS_BASE_URL = os.getenv("KIS_BASE_URL", "https://openapi.koreainvestment.com:9443")
-KIS_TOKEN_URL = f"{KIS_BASE_URL}/oauth2/tokenP"
-KIS_RESEARCH_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/invest-opinion"
-
-KRX_OPEN_API_BASE = "https://data-dbg.krx.co.kr/svc/apis/sto"
-KRX_MARKET_ENDPOINTS = ("stk_bydd_trd", "ksq_bydd_trd")  # 유가증권(KOSPI), 코스닥(KOSDAQ)
+# 공식 KRX Open API(data-dbg.krx.co.kr)의 일별매매정보 엔드포인트만 사용한다.
+# PER/PBR/배당수익률은 공식 API에 없고 data.krx.co.kr 비공식 스크래핑 경로뿐이라
+# 이번 리라이트에서는 다루지 않는다 (HANDOFF.md의 제품 범위 결정을 따름).
+KRX_BASE_URL = "https://data-dbg.krx.co.kr/svc/apis/sto"
+KRX_MARKET_PATHS = ("stk", "ksq")  # 코스피, 코스닥
 
 
 def _clean_html(value: str) -> str:
     return unescape(value.replace("<b>", "").replace("</b>", "")).strip()
 
 
-def _get_history_pykrx(ticker: str, days: int) -> pd.DataFrame:
-    end = dt.date.today()
-    start = end - dt.timedelta(days=days)
-    history = stock.get_market_ohlcv_by_date(
-        start.strftime("%Y%m%d"), end.strftime("%Y%m%d"), ticker
-    )
-    if history.empty:
-        raise RuntimeError(f"{ticker} 종목의 주가 데이터를 찾지 못했습니다 (pykrx).")
-    return history
+def _krx_auth_key() -> str:
+    key = os.getenv("KRX_AUTH_KEY")
+    if not key:
+        raise RuntimeError(".env에 KRX_AUTH_KEY를 설정하세요.")
+    return key
 
 
-def _krx_open_api_rows(endpoint: str, bas_dd: str, key: str) -> list:
+def _fetch_krx_day(market_path: str, bas_dd: str, key: str) -> list:
+    """공식 KRX 일별매매정보 API에서 특정 날짜의 전체 종목 스냅샷을 가져온다."""
     response = requests.get(
-        f"{KRX_OPEN_API_BASE}/{endpoint}",
+        f"{KRX_BASE_URL}/{market_path}_bydd_trd",
         params={"AUTH_KEY": key, "basDd": bas_dd},
         timeout=20,
     )
     if not response.ok:
-        raise RuntimeError(f"KRX 공식 API 오류 ({response.status_code}): {response.text}")
+        raise RuntimeError(f"KRX {market_path} API 오류 ({response.status_code}): {response.text}")
     return response.json().get("OutBlock_1") or []
 
 
-def _get_history_krx_open_api(ticker: str, days: int) -> pd.DataFrame:
-    """pykrx 장애 시의 폴백. KRX 공식 Open API는 날짜 범위 조회를 지원하지 않아
-    하루치 전체 시장 스냅샷(stk/ksq_bydd_trd)을 평일마다 반복 호출해서 직접 히스토리를 만든다."""
-    key = os.getenv("KRX_AUTH_KEY")
-    if not key:
-        raise RuntimeError("KRX_AUTH_KEY가 설정되어 있지 않습니다.")
-
-    end = dt.date.today()
-    weekdays = [
-        (end - dt.timedelta(days=offset))
-        for offset in range(days + 1)
-        if (end - dt.timedelta(days=offset)).weekday() < 5
-    ]
-
-    market_endpoint = None
-    rows_by_date = {}
-    for date in weekdays:
-        bas_dd = date.strftime("%Y%m%d")
-        endpoints = (market_endpoint,) if market_endpoint else KRX_MARKET_ENDPOINTS
-        for endpoint in endpoints:
-            rows = _krx_open_api_rows(endpoint, bas_dd, key)
-            row = next((item for item in rows if item.get("ISU_CD") == ticker), None)
-            if row:
-                market_endpoint = endpoint
-                rows_by_date[bas_dd] = row
-                break
-
-    if not rows_by_date:
-        raise RuntimeError(f"{ticker} 종목의 주가 데이터를 찾지 못했습니다 (KRX 공식 API).")
-
-    records = [
-        {
-            "날짜": pd.to_datetime(bas_dd, format="%Y%m%d"),
-            "시가": float(row["TDD_OPNPRC"]),
-            "고가": float(row["TDD_HGPRC"]),
-            "저가": float(row["TDD_LWPRC"]),
-            "종가": float(row["TDD_CLSPRC"]),
-            "거래량": float(row["ACC_TRDVOL"]),
-            "등락률": float(row["FLUC_RT"]),
-        }
-        for bas_dd, row in sorted(rows_by_date.items())
-    ]
-    return pd.DataFrame(records).set_index("날짜")
+def _collect_krx_rows(ticker: str, days: int, market_path: str, key: str) -> list:
+    rows = []
+    date = dt.date.today()
+    checked = 0
+    max_checked = days * 2 + 10  # 주말·공휴일을 감안해 넉넉히 조회
+    while len(rows) < days and checked < max_checked:
+        day_rows = _fetch_krx_day(market_path, date.strftime("%Y%m%d"), key)
+        row = next((item for item in day_rows if item.get("ISU_CD") == ticker), None)
+        if row:
+            rows.append(row)
+        date -= dt.timedelta(days=1)
+        checked += 1
+    return rows
 
 
 def get_stock_history(ticker: str, days: int = 30) -> pd.DataFrame:
-    """최근 영업일 주가와 거래량을 조회한다. pykrx가 실패하면 KRX 공식 API로 폴백한다."""
-    errors = []
-    for source in (_get_history_pykrx, _get_history_krx_open_api):
-        try:
-            history = source(ticker, days)
-            if not history.empty:
-                return history
-        except (requests.RequestException, ValueError, RuntimeError, ImportError, KeyError) as error:
-            errors.append(f"{source.__name__}: {error}")
-    raise RuntimeError(f"{ticker} 종목의 주가 데이터를 찾지 못했습니다. " + " | ".join(errors))
+    """공식 KRX 일별매매정보 API로 최근 영업일 주가·거래량을 조회한다.
+
+    data.krx.co.kr을 스크래핑하는 pykrx 대신 KRX_AUTH_KEY로 인증하는 공식 API만 사용한다
+    (비공식 스크래핑을 쓰지 않는다는 프로젝트 방침, HANDOFF.md 참고).
+    """
+    key = _krx_auth_key()
+    for market_path in KRX_MARKET_PATHS:
+        rows = _collect_krx_rows(ticker, days, market_path, key)
+        if rows:
+            frame = pd.DataFrame(rows)
+            frame["날짜"] = pd.to_datetime(frame["BAS_DD"])
+            frame = frame.set_index("날짜").sort_index()
+            return pd.DataFrame({
+                "시가": frame["TDD_OPNPRC"].astype(float),
+                "고가": frame["TDD_HGPRC"].astype(float),
+                "저가": frame["TDD_LWPRC"].astype(float),
+                "종가": frame["TDD_CLSPRC"].astype(float),
+                "거래량": frame["ACC_TRDVOL"].astype(float).astype("int64"),
+                "등락률": frame["FLUC_RT"].astype(float),
+            })
+    raise RuntimeError(f"{ticker} 종목의 주가 데이터를 찾지 못했습니다.")
 
 
 def search_stock_news(query: str, display: int = 20) -> pd.DataFrame:
@@ -170,236 +140,11 @@ def search_stock_news(query: str, display: int = 20) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _number(value):
-    """문자열 숫자에서 쉼표·통화기호를 제거해 숫자로 변환한다."""
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return None
-    text = str(value).replace(",", "").replace("원", "").strip()
-    match = re.search(r"-?\d+(?:\.\d+)?", text)
-    return float(match.group()) if match else None
-
-
-def _recommendation(value: str) -> str:
-    """증권사별 투자의견을 매수·중립·매도로 통일한다."""
-    text = str(value or "").strip().lower().replace(" ", "")
-    if any(word in text for word in ("매수", "buy", "outperform", "overweight", "strongbuy")):
-        return "매수"
-    if any(word in text for word in ("매도", "sell", "underperform", "underweight", "reduce")):
-        return "매도"
-    if any(word in text for word in ("중립", "보유", "hold", "neutral", "marketperform")):
-        return "중립"
-    return str(value or "").strip()
-
-
-def _report_frame(rows) -> pd.DataFrame:
-    columns = ["date", "broker", "title", "recommendation", "target_price", "source", "url"]
-    frame = pd.DataFrame(rows)
-    if frame.empty:
-        return pd.DataFrame(columns=columns)
-    for column in columns:
-        if column not in frame:
-            frame[column] = None
-    frame["recommendation"] = frame["recommendation"].map(_recommendation)
-    frame["target_price"] = frame["target_price"].map(_number)
-    return frame[columns].reset_index(drop=True)
-
-
-KIS_TOKEN_CACHE_PATH = Path(".kis_token_cache.json")
-
-
-def _kis_access_token(force_refresh: bool = False) -> str:
-    app_key = os.getenv("KIS_APP_KEY")
-    app_secret = os.getenv("KIS_APP_SECRET")
-    if not app_key or not app_secret:
-        raise RuntimeError(".env에 KIS_APP_KEY와 KIS_APP_SECRET을 설정하세요.")
-    if not force_refresh and KIS_TOKEN_CACHE_PATH.exists():
-        try:
-            cache = json.loads(KIS_TOKEN_CACHE_PATH.read_text(encoding="utf-8"))
-            if (
-                cache.get("app_key") == app_key
-                and time.time() < cache.get("expires_at", 0)
-                and cache.get("access_token")
-            ):
-                return cache["access_token"]
-        except (OSError, json.JSONDecodeError):
-            pass
-
-    response = requests.post(
-        KIS_TOKEN_URL,
-        json={
-            "grant_type": "client_credentials",
-            "appkey": app_key,
-            "appsecret": app_secret,
-        },
-        timeout=20,
-    )
-    if not response.ok:
-        raise RuntimeError(f"KIS 토큰 발급 오류 ({response.status_code}): {response.text}")
-    payload = response.json()
-    token = payload.get("access_token")
-    if not token:
-        raise RuntimeError("KIS 토큰 응답에 access_token이 없습니다.")
-    KIS_TOKEN_CACHE_PATH.write_text(
-        json.dumps({
-            "app_key": app_key,
-            "access_token": token,
-            "expires_at": time.time() + int(payload.get("expires_in", 86400)) - 300,
-        }),
-        encoding="utf-8",
-    )
-    return token
-
-
-def _get_kis_reports(ticker: str, count: int) -> pd.DataFrame:
-    app_key = os.getenv("KIS_APP_KEY")
-    app_secret = os.getenv("KIS_APP_SECRET")
-    token = _kis_access_token()
-    authorization = f"Bearer {token}"
-    end_date = dt.date.today()
-    start_date = end_date - dt.timedelta(days=90)
-    response = requests.get(
-        KIS_RESEARCH_URL,
-        headers={
-            "authorization": authorization,
-            "appkey": app_key,
-            "appsecret": app_secret,
-            "tr_id": "FHKST663300C0",
-            "custtype": "P",
-            "content-type": "application/json; charset=utf-8",
-        },
-        params={
-            "FID_COND_MRKT_DIV_CODE": "J",
-            "FID_COND_SCR_DIV_CODE": "16633",
-            "FID_INPUT_ISCD": ticker,
-            "FID_INPUT_DATE_1": start_date.strftime("%Y%m%d"),
-            "FID_INPUT_DATE_2": end_date.strftime("%Y%m%d"),
-        },
-        timeout=20,
-    )
-    if not response.ok:
-        raise RuntimeError(f"KIS 종목투자의견 API 오류 ({response.status_code}): {response.text}")
-    payload = response.json()
-    if str(payload.get("rt_cd", "0")) != "0":
-        raise RuntimeError(f"KIS 종목투자의견 API 오류: {payload.get('msg1', payload)}")
-
-    output = payload.get("output1") or payload.get("output") or []
-    if isinstance(output, dict):
-        output = [output]
-    rows = []
-    for item in output:
-        rows.append({
-            "date": item.get("stck_bsop_date") or item.get("date") or item.get("rpt_dt"),
-            "broker": (
-                item.get("mbcr_name")
-                or item.get("증권사")
-                or item.get("brk_name")
-                or item.get("broker_name")
-                or item.get("invt_opnn_org")
-            ),
-            "title": item.get("rpt_nm") or item.get("report_title") or item.get("title"),
-            "recommendation": (
-                item.get("invt_opnn")
-                or item.get("invt_opnn_cls")
-                or item.get("opinion")
-                or item.get("recommendation")
-            ),
-            "target_price": (
-                item.get("hts_goal_prc")
-                or item.get("목표주가")
-                or item.get("stck_tgpr")
-                or item.get("target_price")
-                or item.get("tgt_prc")
-            ),
-            "source": "KIS",
-            "url": item.get("url") or item.get("report_url"),
-        })
-    frame = _report_frame(rows)
-    if frame.empty:
-        raise RuntimeError("KIS 종목투자의견 API가 리포트를 반환하지 않았습니다.")
-    return frame.head(count)
-
-
-def _get_naver_reports(ticker: str, count: int) -> pd.DataFrame:
-    url = f"https://finance.naver.com/research/company_list.naver?searchType=itemCode&itemCode={ticker}"
-    response = requests.get(
-        url,
-        headers={"User-Agent": "Mozilla/5.0"},
-        timeout=20,
-    )
-    response.raise_for_status()
-    tables = pd.read_html(response.text)
-    rows = []
-    for table in tables:
-        table.columns = [str(column).strip() for column in table.columns]
-        opinion_column = next((c for c in table.columns if "의견" in c), None)
-        target_column = next((c for c in table.columns if "목표" in c), None)
-        if not opinion_column or not target_column:
-            continue
-        for _, item in table.iterrows():
-            rows.append({
-                "date": item.get("날짜") or item.get("작성일"),
-                "broker": item.get("증권사"),
-                "title": item.get("제목"),
-                "recommendation": item.get(opinion_column),
-                "target_price": item.get(target_column),
-                "source": "네이버 증권",
-                "url": url,
-            })
-    frame = _report_frame(rows)
-    if frame.empty:
-        raise RuntimeError("네이버 증권 리서치 탭에서 리포트를 찾지 못했습니다.")
-    return frame.head(count)
-
-
-def _get_hankyung_reports(ticker: str, count: int) -> pd.DataFrame:
-    url = f"https://consensus.hankyung.com/analysis/search?item_code={ticker}"
-    response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
-    response.raise_for_status()
-    tables = pd.read_html(response.text)
-    rows = []
-    for table in tables:
-        table.columns = [str(column).strip() for column in table.columns]
-        opinion_column = next((c for c in table.columns if "의견" in c), None)
-        target_column = next((c for c in table.columns if "목표" in c), None)
-        if not opinion_column or not target_column:
-            continue
-        for _, item in table.iterrows():
-            rows.append({
-                "date": item.get("작성일") or item.get("날짜"),
-                "broker": item.get("증권사"),
-                "title": item.get("리포트명") or item.get("제목"),
-                "recommendation": item.get(opinion_column),
-                "target_price": item.get(target_column),
-                "source": "한경컨센서스",
-                "url": url,
-            })
-    frame = _report_frame(rows)
-    if frame.empty:
-        raise RuntimeError("한경컨센서스에서 리포트를 찾지 못했습니다.")
-    return frame.head(count)
-
-
-def get_stock_reports(ticker: str, count: int = 20) -> pd.DataFrame:
-    """KIS 종목투자의견을 조회하고 실패하면 네이버, 한경 순으로 폴백한다."""
-    if not re.fullmatch(r"\d{6}", ticker):
-        raise ValueError("ticker는 6자리 숫자여야 합니다.")
-
-    errors = []
-    for source in (_get_kis_reports, _get_naver_reports, _get_hankyung_reports):
-        try:
-            reports = source(ticker, count)
-            if not reports.empty:
-                return reports
-        except (requests.RequestException, ValueError, RuntimeError, ImportError) as error:
-            errors.append(f"{source.__name__}: {error}")
-    raise RuntimeError("증권사 리포트를 수집하지 못했습니다. " + " | ".join(errors))
-
-
-def analyze_with_llm(stock_name: str, ticker: str, history: pd.DataFrame, news: pd.DataFrame) -> str:
-    """주가 흐름과 뉴스의 관계를 xAI LLM에 분석시킨다."""
-    api_key = os.getenv("XAI_API_KEY")
+def analyze_raw(stock_name: str, ticker: str, history: pd.DataFrame, news: pd.DataFrame) -> str:
+    """주가 흐름과 뉴스의 관계를 NVIDIA LLM으로 1차 분석한다 (사실 확인 목적, formal한 문체 허용)."""
+    api_key = os.getenv("NVIDIA_API_KEY")
     if not api_key:
-        raise RuntimeError(".env에 XAI_API_KEY를 설정하세요.")
+        raise RuntimeError(".env에 NVIDIA_API_KEY를 설정하세요.")
 
     price = history.copy().reset_index()
     price_text = price.tail(15).to_string(index=False)
@@ -428,6 +173,95 @@ def analyze_with_llm(stock_name: str, ticker: str, history: pd.DataFrame, news: 
 각 항목은 간결한 문단 또는 bullet로 작성하고, 근거가 부족하면 '판단 유보'라고 표시해라."""
 
     response = requests.post(
+        "https://integrate.api.nvidia.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3-super-120b-a12b"),
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.2,
+        },
+        timeout=120,
+    )
+    if not response.ok:
+        raise RuntimeError(f"NVIDIA API 오류 ({response.status_code}): {response.text}")
+    return response.json()["choices"][0]["message"]["content"]
+
+
+# ---------------------------------------------------------------------------
+# 2단계: "쩐형" 캐릭터로 재작성 (xAI Grok) — 1단계에서 나온 사실은 그대로 두고 톤만 바꾼다.
+# ---------------------------------------------------------------------------
+
+_JEONHYUNG_TONE_RULES = {
+    "mild": (
+        "말투 강도: 순한맛. 순화된 감탄사만 써라(헐, 미쳤다, 실화냐). "
+        "반말+장난기는 있지만 진짜 욕설은 절대 쓰지 마라."
+    ),
+    "medium": (
+        "말투 강도: 중간맛. 인터넷 밈체 허용(개- 접두어, ㅋㅋㅋ). "
+        "여전히 진짜 욕설은 쓰지 마라."
+    ),
+    "spicy": (
+        "말투 강도: 매운맛. '존나' 같은 순화된 강한 슬랭까지 써도 된다. "
+        "단 혐오·비하·특정 대상 조롱은 항상 금지."
+    ),
+    "nuclear": (
+        "말투 강도: 핵매운맛. 이 캐릭터의 최고 텐션 모드다. "
+        "'존나', '개-', '미친', '씨발' 같은 표현을 감탄사로 마음껏 섞어 써도 좋다. "
+        "느낌표 남발, 과장된 리액션, 초딩 개그 다 좋다 — 텐션을 최대로 끌어올려라. "
+        "단, 아래 공통 금지사항은 강도와 무관하게 항상 지켜야 한다."
+    ),
+}
+
+_JEONHYUNG_SYSTEM_TEMPLATE = """너는 '쩐형'이라는 캐릭터야. 주식 초보 앞에서 능글맞게 훈수 두는 친한 형/누나.
+성격: 잘난 척하다가 능청스럽게 넘어감, 가끔 유치한 드립도 침. 절대 고지식하게 안 씀.
+
+{tone_rule}
+
+방향별 리액션 규칙:
+- 급등: 살짝 들뜬 톤 + 호들갑
+- 급락: 놀란 척하다 침착하게 수습하는 톤
+- 횡보: 심드렁하게, "에이 뭐 볼 거 있다고" 식
+
+비유 소재 풀: 연애, 스포츠, 게임, 학교/시험 중 하나를 매번 다르게 골라서 써라.
+
+공통 금지사항 (강도 무관, 항상 지켜라):
+- 특정 인물·기업을 비하하거나 조롱하는 표현 금지
+- 성별·지역·세대 등 특정 집단을 향한 비하·혐오 표현 금지
+- "사야 한다/팔아야 한다" 같은 직접적 투자 지시 문장 금지 — 재미있게 설명하되 판단은 독자 몫으로 남겨라
+
+아래 [1단계 분석]에 있는 사실만 사용해서 다시 써라. 새로운 사실을 지어내지 마라.
+반드시 아래 JSON 스키마로만 답해라 (다른 텍스트 없이 JSON 객체만):
+{{
+  "one_line_summary": "카드용 한 줄 요약, 공백 포함 15자 내외",
+  "causal_steps": [{{"icon": "news|trend|cooldown|risk", "text": "한 문장, 쉬운 말"}}],
+  "plain_explanation": "3~4문장, 쩐형 톤으로",
+  "positive_factor": "긍정 요인 한 문장",
+  "risk_factor": "리스크 한 문장",
+  "watch_next": "다음에 확인하면 좋은 것 한 문장"
+}}"""
+
+
+def rewrite_plain(stock_name: str, ticker: str, raw_analysis: str, tone: str = "nuclear") -> dict:
+    """1단계(analyze_raw) 결과를 '쩐형' 캐릭터 톤으로 재작성한다 (xAI Grok, JSON 강제 출력)."""
+    api_key = os.getenv("XAI_API_KEY")
+    if not api_key:
+        raise RuntimeError(".env에 XAI_API_KEY를 설정하세요.")
+    if tone not in _JEONHYUNG_TONE_RULES:
+        raise ValueError(f"알 수 없는 tone입니다: {tone} (mild/medium/spicy/nuclear 중 선택)")
+
+    system = _JEONHYUNG_SYSTEM_TEMPLATE.format(tone_rule=_JEONHYUNG_TONE_RULES[tone])
+    prompt = f"""[1단계 분석]
+종목: {stock_name}({ticker})
+
+{raw_analysis}"""
+
+    response = requests.post(
         "https://api.x.ai/v1/chat/completions",
         headers={
             "Authorization": f"Bearer {api_key}",
@@ -439,26 +273,44 @@ def analyze_with_llm(stock_name: str, ticker: str, history: pd.DataFrame, news: 
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt},
             ],
-            "temperature": 0.2,
+            "temperature": 0.9,
+            "response_format": {"type": "json_object"},
         },
-        timeout=120,
+        timeout=60,
     )
     if not response.ok:
         raise RuntimeError(f"xAI API 오류 ({response.status_code}): {response.text}")
-    return response.json()["choices"][0]["message"]["content"]
 
+    content = response.json()["choices"][0]["message"]["content"]
+    try:
+        plain = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"xAI 응답이 JSON이 아닙니다: {content[:300]}") from exc
+
+    # 면책 문구는 캐릭터 톤과 무관하게 코드에서 고정으로 붙인다 (모델이 빼먹어도 항상 붙게).
+    plain["disclaimer"] = "이 코멘트는 참고용 설명이며, 투자 판단과 책임은 본인에게 있습니다."
+    return plain
+
+
+def analyze_with_llm(
+    stock_name: str,
+    ticker: str,
+    history: pd.DataFrame,
+    news: pd.DataFrame,
+    tone: str = "nuclear",
+) -> dict:
+    """1단계(NVIDIA 사실 분석) → 2단계(xAI '쩐형' 재작성)를 순서대로 실행한다.
+
+    반환값: {"raw": "1단계 원본 분석 텍스트", "plain": {...2단계 JSON 스키마...}}
+    """
+    raw = analyze_raw(stock_name, ticker, history, news)
+    plain = rewrite_plain(stock_name, ticker, raw, tone=tone)
+    return {"raw": raw, "plain": plain}
 
 
 if __name__ == "__main__":
     price_df = get_stock_history(STOCK_TICKER, LOOKBACK_DAYS)
     news_df = search_stock_news(STOCK_NAME, NEWS_COUNT)
-    try:
-        reports_df = get_stock_reports(STOCK_TICKER, REPORT_COUNT)
-    except RuntimeError as error:
-        print(f"증권사 리포트 수집 건너뜀: {error}")
-        reports_df = pd.DataFrame(
-            columns=["date", "broker", "title", "recommendation", "target_price", "source", "url"]
-        )
 
     first_close = float(price_df["종가"].iloc[0])
     last_close = float(price_df["종가"].iloc[-1])
@@ -467,14 +319,15 @@ if __name__ == "__main__":
     print(f"조회기간: {price_df.index.min().date()} ~ {price_df.index.max().date()}")
     print(f"최근 종가: {last_close:,.0f}원 | 기간 수익률: {period_return:+.2f}%")
     print(f"수집 뉴스: {len(news_df)}건")
-    report_source = reports_df["source"].iloc[0] if not reports_df.empty else "없음"
-    print(f"수집 리포트: {len(reports_df)}건 ({report_source})")
     display(price_df.tail(10))
     display(news_df.head(10))
-    display(reports_df)
 
-    llm_report = analyze_with_llm(STOCK_NAME, STOCK_TICKER, price_df, news_df)
+    llm_result = analyze_with_llm(STOCK_NAME, STOCK_TICKER, price_df, news_df)
     print()
-    print("===== LLM 종합 분석 =====")
+    print("===== 1단계: 원본 분석 (NVIDIA) =====")
     print()
-    print(llm_report)
+    print(llm_result["raw"])
+    print()
+    print("===== 2단계: 쩐형 코멘트 (xAI, 핵매운맛) =====")
+    print()
+    print(json.dumps(llm_result["plain"], ensure_ascii=False, indent=2))

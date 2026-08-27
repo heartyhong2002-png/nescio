@@ -57,3 +57,7 @@ _to_delete/
 
 # Claude Code local settings
 .claude/
+
+# session backup / snapshot artifacts (not source of truth)
+*.bak
+/prototype/3rd prototype/

@@ -4,12 +4,13 @@
 원본 스크립트는 수정하지 않는다(단, 모듈로 임포트했을 때 맨 아래 실행부가
 자동으로 돌지 않도록 `if __name__ == "__main__":` 가드만 걸려 있어야 한다).
 importlib로 스크립트를 모듈로 로드해 그 안에 정의된
-get_stock_history / search_stock_news / get_stock_reports / analyze_with_llm
-함수를 종목별로 호출한다. get_stock_reports는 KIS→네이버→한경 폴백을
-포함하므로, 이 컴퓨터·이 .env 조합에서 리포트 수집까지 실제로 되는지도
-함께 검증된다. 종목 하나가 실패해도 나머지 종목은 계속 진행하고,
+get_stock_history / search_stock_news / analyze_with_llm
+함수를 종목별로 호출한다. 종목 하나가 실패해도 나머지 종목은 계속 진행하고,
 종목 사이에는 뉴스/LLM API의 초당 요청 제한과 "진짜 버그"를 구분할 수
 있도록 짧게 대기한 뒤, 마지막에 종목별 성공/실패를 요약해서 보여준다.
+
+analyze_with_llm은 이제 1단계(NVIDIA 사실 분석) + 2단계(xAI '쩐형' 재작성)를
+모두 실행하고 {"raw": str, "plain": dict}를 반환한다.
 
 실행: python "integration_test prototype.py"
 """
@@ -23,7 +24,6 @@ SCRIPT_PATH = Path(__file__).resolve().with_name("1st prototype.ipynb.py")
 REQUIRED_FUNCTIONS = (
     "get_stock_history",
     "search_stock_news",
-    "get_stock_reports",
     "analyze_with_llm",
 )
 STOCK_INTERVAL_SECONDS = 1.0
@@ -54,7 +54,7 @@ def _load_pipeline_module():
     return module
 
 
-def _run_stock(module, name: str, ticker: str, lookback_days: int, news_count: int, report_count: int):
+def _run_stock(module, name: str, ticker: str, lookback_days: int, news_count: int):
     try:
         price_df = module.get_stock_history(ticker, lookback_days)
     except Exception as exc:
@@ -69,20 +69,14 @@ def _run_stock(module, name: str, ticker: str, lookback_days: int, news_count: i
     print(f"  뉴스 {len(news_df)}건 수집")
 
     try:
-        reports_df = module.get_stock_reports(ticker, report_count)
-    except Exception as exc:
-        raise RuntimeError(f"[리포트] {exc}") from exc
-    report_source = reports_df["source"].iloc[0] if not reports_df.empty else "없음"
-    print(f"  리포트 {len(reports_df)}건 수집 ({report_source})")
-
-    try:
-        report = module.analyze_with_llm(name, ticker, price_df, news_df)
+        result = module.analyze_with_llm(name, ticker, price_df, news_df)
     except Exception as exc:
         raise RuntimeError(f"[LLM] {exc}") from exc
-    print(f"  LLM 분석 {len(report)}자 생성")
+    plain_explanation = result.get("plain", {}).get("plain_explanation", "")
+    print(f"  1단계 분석 {len(result['raw'])}자 생성, 2단계 쩐형 코멘트 {len(plain_explanation)}자 생성")
 
 
-def run_integration_test(lookback_days: int = 30, news_count: int = 20, report_count: int = 20) -> bool:
+def run_integration_test(lookback_days: int = 30, news_count: int = 20) -> bool:
     module = _load_pipeline_module()
 
     results = []
@@ -91,7 +85,7 @@ def run_integration_test(lookback_days: int = 30, news_count: int = 20, report_c
         print(f"[{name} ({ticker})] 테스트 시작")
         print("=" * 60)
         try:
-            _run_stock(module, name, ticker, lookback_days, news_count, report_count)
+            _run_stock(module, name, ticker, lookback_days, news_count)
             results.append((name, ticker, True, None))
         except Exception as exc:
             print(f"  실패: {exc}")

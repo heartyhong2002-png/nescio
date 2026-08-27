@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/server-env";
 import { getPriceForTicker } from "@/lib/krx";
-import { Briefing, Cause, NewsItem } from "@/lib/types";
+import { Briefing, Cause, NewsItem, Price } from "@/lib/types";
 
 const NAVER_URL = "https://openapi.naver.com/v1/search/news.json";
 
@@ -24,8 +24,10 @@ async function getNews(query: string): Promise<NewsItem[]> {
   }));
 }
 
+// 프론트(CauseCard/CauseDetailView 등)가 이미 이 스키마로 렌더링하고 있어서 그대로 유지한다.
+// 2단계(쩐형) 응답도 이 스키마에 맞춰 나오도록 강제한다.
 const RESPONSE_SCHEMA = `{
-  "oneLiner": string,               // 오늘 시세가 왜 그렇게 움직였는지 한 문장 (14세 눈높이, 존댓말)
+  "oneLiner": string,               // 오늘 시세가 왜 그렇게 움직였는지 한 문장 (쩐형 말투로, 임팩트 있게)
   "causes": [
     {
       "title": string,              // 원인 제목 (예: "공급 계약 체결")
@@ -41,7 +43,7 @@ const RESPONSE_SCHEMA = `{
       "similarCase": string         // 과거 비슷한 사례 1~2줄 (없으면 빈 문자열)
     }
   ],
-  "aiComment": string                // 전체 흐름 3~4문장 정리, 투자 권유 문구 금지
+  "aiComment": string                // 전체 흐름 3~4문장 정리, 쩐형 캐릭터 톤 유지, 투자 권유 문구 금지
 }`;
 
 function coerceBriefing(raw: unknown, news: NewsItem[]): Briefing {
@@ -87,52 +89,165 @@ function coerceBriefing(raw: unknown, news: NewsItem[]): Briefing {
   };
 }
 
-async function askModel(prompt: string): Promise<unknown> {
-  const apiKey = serverEnv("XAI_API_KEY");
-  const url = "https://api.x.ai/v1/chat/completions";
-  const model = serverEnv("XAI_MODEL") || "grok-4-1-fast-non-reasoning";
-  if (!apiKey) throw new Error("XAI_API_KEY를 .env에 설정하세요.");
-  const response = await fetch(url, {
+// ---------------------------------------------------------------------------
+// 1단계: NVIDIA — 사실 확인 목적의 원본 분석 (formal한 문체 허용, 캐릭터 없음)
+// ---------------------------------------------------------------------------
+async function analyzeRaw(name: string, ticker: string, price: Price, news: NewsItem[]): Promise<string> {
+  const apiKey = serverEnv("NVIDIA_API_KEY");
+  if (!apiKey) throw new Error("NVIDIA_API_KEY를 .env에 설정하세요.");
+  const model = serverEnv("NVIDIA_MODEL") || "nvidia/nemotron-3-super-120b-a12b";
+
+  const priceText = `종가: ${price.close ?? "데이터 없음"}, 등락률: ${price.changeRate ?? "데이터 없음"}%, 시가총액: ${price.marketCap ?? "데이터 없음"}`;
+  const newsText = news.length
+    ? news.map((item, index) => `${index}. ${item.title} (${item.pubDate})\n${item.description}`).join("\n")
+    : "관련 뉴스 없음";
+
+  const system =
+    "너는 한국 주식 리서치 애널리스트다. 제공된 데이터만 근거로 분석하고, 확인된 사실과 해석을 구분하라. " +
+    "투자 매수·매도 권유나 확정적인 미래 예측은 하지 말라.";
+  const prompt = `다음은 ${name}(${ticker})의 최근 시세와 네이버 뉴스다.
+
+[시세 데이터]
+${priceText}
+
+[관련 뉴스]
+${newsText}
+
+아래 형식으로 한국어 종합 분석을 작성해라.
+1. 최근 주가 흐름
+2. 핵심 뉴스 요약: 주가에 영향을 줄 수 있는 뉴스 3~5개
+3. 주가 변동 원인: 뉴스와 시세의 흐름을 연결한 근거 중심 분석
+4. 긍정 요인과 부정 요인
+5. 추가 확인할 리스크와 다음에 관찰할 지표
+각 항목은 간결한 문단 또는 bullet로 작성하고, 근거가 부족하면 '판단 유보'라고 표시해라.`;
+
+  const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
       temperature: 0.2,
-      response_format: { type: "json_object" },
       messages: [
-        {
-          role: "system",
-          content:
-            "너는 한국 주식 뉴스 분석가다. 제공된 뉴스와 시세 데이터만 근거로 주가 변동의 원인을 분석해 아래 JSON 스키마에 맞춰 한국어로 응답한다. " +
-            "사실과 추론을 구분하고 투자 권유는 하지 않는다. 근거가 부족한 값은 빈 문자열이나 빈 배열로 둔다. JSON 외의 텍스트는 출력하지 않는다.\n\n" +
-            `스키마:\n${RESPONSE_SCHEMA}`,
-        },
+        { role: "system", content: system },
         { role: "user", content: prompt },
       ],
     }),
     cache: "no-store",
   });
-  if (!response.ok) throw new Error(`LLM API 오류 (${response.status})`);
+  if (!response.ok) throw new Error(`NVIDIA API 오류 (${response.status}): ${await response.text()}`);
   const content = (await response.json()).choices?.[0]?.message?.content as string;
+  if (!content) throw new Error("NVIDIA 응답이 비어 있습니다.");
+  return content;
+}
+
+// ---------------------------------------------------------------------------
+// 2단계: xAI Grok — "쩐형" 캐릭터로 재작성 (1단계 사실은 그대로, 톤만 바꾼다)
+// ---------------------------------------------------------------------------
+type Tone = "mild" | "medium" | "spicy" | "nuclear";
+
+const TONE_RULES: Record<Tone, string> = {
+  mild: "말투 강도: 순한맛. 순화된 감탄사만 써라(헐, 미쳤다, 실화냐). 반말+장난기는 있지만 진짜 욕설은 절대 쓰지 마라.",
+  medium: "말투 강도: 중간맛. 인터넷 밈체 허용(개- 접두어, ㅋㅋㅋ). 여전히 진짜 욕설은 쓰지 마라.",
+  spicy: "말투 강도: 매운맛. '존나' 같은 순화된 강한 슬랭까지 써도 된다. 단 혐오·비하·특정 대상 조롱은 항상 금지.",
+  nuclear:
+    "말투 강도: 핵매운맛. 이 캐릭터의 최고 텐션 모드다. '존나', '개-', '미친', '씨발' 같은 표현을 감탄사로 마음껏 섞어 써도 좋다. " +
+    "느낌표 남발, 과장된 리액션, 초딩 개그 다 좋다 — 텐션을 최대로 끌어올려라. 단, 아래 공통 금지사항은 강도와 무관하게 항상 지켜야 한다.",
+};
+
+// 톤 강도 선택 UI가 아직 없어서 기본값으로 고정 — 사용자 요청에 따라 nuclear(핵매운맛).
+const DEFAULT_TONE: Tone = "nuclear";
+
+// 캐릭터 톤과 무관하게 코드에서 항상 붙이는 면책 문구 (모델이 빼먹어도 항상 붙게).
+const DISCLAIMER = "이 코멘트는 참고용 설명이며, 투자 판단과 책임은 본인에게 있습니다.";
+
+function buildJeonhyungSystem(tone: Tone): string {
+  return `너는 '쩐형'이라는 캐릭터야. 주식 초보 앞에서 능글맞게 훈수 두는 친한 형/누나.
+성격: 잘난 척하다가 능청스럽게 넘어감, 가끔 유치한 드립도 침. 절대 고지식하게 안 씀.
+
+${TONE_RULES[tone]}
+
+방향별 리액션 규칙:
+- 급등: 살짝 들뜬 톤 + 호들갑
+- 급락: 놀란 척하다 침착하게 수습하는 톤
+- 횡보: 심드렁하게, "에이 뭐 볼 거 있다고" 식
+
+비유 소재 풀: 연애, 스포츠, 게임, 학교/시험 중 하나를 매번 다르게 골라서 써라.
+
+공통 금지사항 (강도 무관, 항상 지켜라):
+- 특정 인물·기업을 비하하거나 조롱하는 표현 금지
+- 성별·지역·세대 등 특정 집단을 향한 비하·혐오 표현 금지
+- "사야 한다/팔아야 한다" 같은 직접적 투자 지시 문장 금지 — 재미있게 설명하되 판단은 독자 몫으로 남겨라
+
+아래 [1단계 분석]과 [뉴스 목록]에 있는 사실만 근거로 써라. 새로운 사실을 지어내지 마라.
+사실과 추론을 구분하고, 근거가 부족한 값은 빈 문자열이나 빈 배열로 둔다. JSON 외의 텍스트는 출력하지 않는다.
+
+스키마:
+${RESPONSE_SCHEMA}`;
+}
+
+async function rewritePlain(
+  name: string,
+  ticker: string,
+  rawAnalysis: string,
+  news: NewsItem[],
+  tone: Tone,
+): Promise<Briefing> {
+  const apiKey = serverEnv("XAI_API_KEY");
+  if (!apiKey) throw new Error("XAI_API_KEY를 .env에 설정하세요.");
+  const model = serverEnv("XAI_MODEL") || "grok-4-1-fast-non-reasoning";
+
+  const system = buildJeonhyungSystem(tone);
+  const prompt = `[1단계 분석]
+종목: ${name}(${ticker})
+
+${rawAnalysis}
+
+[뉴스 목록 (인덱스: 제목 (게재일))]
+${news.length ? news.map((item, index) => `${index}. ${item.title} (${item.pubDate})`).join("\n") : "없음"}`;
+
+  const response = await fetch("https://api.x.ai/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      temperature: 0.9,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: prompt },
+      ],
+    }),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`xAI API 오류 (${response.status}): ${await response.text()}`);
+  const content = (await response.json()).choices?.[0]?.message?.content as string;
+
+  let raw: unknown;
   try {
-    return JSON.parse(content);
+    raw = JSON.parse(content);
   } catch {
-    throw new Error("LLM 응답을 해석하지 못했습니다.");
+    throw new Error(`xAI 응답이 JSON이 아닙니다: ${(content ?? "").slice(0, 300)}`);
   }
+
+  const briefing = coerceBriefing(raw, news);
+  briefing.aiComment = briefing.aiComment ? `${briefing.aiComment}\n\n${DISCLAIMER}` : DISCLAIMER;
+  return briefing;
 }
 
 export async function POST(request: Request) {
   try {
-    const { name, ticker } = await request.json();
+    const body = await request.json();
+    const { name, ticker } = body as { name?: unknown; ticker?: unknown };
     if (typeof name !== "string" || !name.trim()) return NextResponse.json({ error: "종목명이 필요합니다." }, { status: 400 });
 
-    const [news, price] = await Promise.all([getNews(name), getPriceForTicker(typeof ticker === "string" ? ticker : "")]);
-    const prompt = `${name}(${ticker || "티커 미등록"}) 분석 요청\n현재 등락률: ${price.changeRate ?? "데이터 없음"}%\n관련 뉴스 (인덱스: 제목 (게재일)):\n${news
-      .map((item, index) => `${index}. ${item.title} (${item.pubDate})\n${item.description}`)
-      .join("\n")}`;
+    const requestedTone = (body as { tone?: unknown }).tone;
+    const tone: Tone =
+      typeof requestedTone === "string" && requestedTone in TONE_RULES ? (requestedTone as Tone) : DEFAULT_TONE;
 
-    const raw = await askModel(prompt);
-    const briefing = coerceBriefing(raw, news);
+    const [news, price] = await Promise.all([getNews(name), getPriceForTicker(typeof ticker === "string" ? ticker : "")]);
+
+    const raw = await analyzeRaw(name, typeof ticker === "string" ? ticker : "", price, news);
+    const briefing = await rewritePlain(name, typeof ticker === "string" ? ticker : "", raw, news, tone);
 
     return NextResponse.json({
       stock: { name, ticker: ticker || "" },
