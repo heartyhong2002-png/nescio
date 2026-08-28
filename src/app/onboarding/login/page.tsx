@@ -25,15 +25,15 @@ export default function LoginPage() {
 
   return (
     <main className="page">
-      <div className="container" style={{ paddingTop: 24, paddingBottom: 32 }}>
-        <div className="back-row">
+      <div className="flow flow-center">
+        <div className="back-row" style={{ width: "100%" }}>
           <Link href="/onboarding">← 뒤로</Link>
         </div>
 
-        <div className="title-lg" style={{ margin: "24px 0 8px" }}>
+        <div className="title-lg" style={{ margin: "16px 0 8px", alignSelf: "flex-start" }}>
           {mode === "login" ? "시작하기" : "회원가입"}
         </div>
-        <p className="muted" style={{ fontSize: 14, marginBottom: 32 }}>
+        <p className="muted" style={{ fontSize: 14, marginBottom: 28, alignSelf: "flex-start" }}>
           브리핑을 저장하려면 계정이 필요해요.
         </p>
 
@@ -78,9 +78,7 @@ export default function LoginPage() {
           )}
         </p>
 
-        <div style={{ flex: 1 }} />
-
-        <div className="placeholder-box" style={{ padding: 14, textAlign: "left", fontSize: 12, lineHeight: 1.55 }}>
+        <div className="note-box" style={{ marginTop: 24, textAlign: "left" }}>
           이메일 · 비밀번호만 사용하는 데모 로그인입니다. 소셜 로그인 연동은 범위에서 제외했습니다.
         </div>
       </div>

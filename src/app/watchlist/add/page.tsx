@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
+import AppShell from "@/components/AppShell";
 import { recommendStocksForSectors, SECTORS, SECTOR_STOCKS } from "@/lib/sectors";
 import { useOnboardingProfile, useRecentSearches, useWatchlist } from "@/lib/storage";
 import { Stock } from "@/lib/types";
@@ -18,9 +19,6 @@ function WatchlistAddContent() {
 
   const [tab, setTab] = useState<"recommend" | "sector">("recommend");
   const [query, setQuery] = useState("");
-  // Lazy-read once: only feeds the search-results list, which never renders on
-  // first paint (query starts empty on both server and client), so there's no
-  // hydration-mismatch risk in reading sessionStorage synchronously here.
   const [allStocks, setAllStocks] = useState<Stock[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -50,7 +48,7 @@ function WatchlistAddContent() {
   const searchResults = useMemo(() => {
     const trimmed = query.trim();
     if (!trimmed) return [];
-    return allStocks.filter((stock) => stock.name.includes(trimmed) || stock.ticker.includes(trimmed)).slice(0, 20);
+    return allStocks.filter((stock) => stock.name.includes(trimmed) || stock.ticker.includes(trimmed)).slice(0, 24);
   }, [allStocks, query]);
 
   function finish() {
@@ -73,39 +71,40 @@ function WatchlistAddContent() {
   const searching = query.trim().length > 0;
 
   return (
-    <main className="page">
-      <div className="container" style={{ paddingTop: 20, paddingBottom: 28 }}>
-        {!searching && (
-          <>
-            <div className="title-lg" style={{ marginBottom: 4 }}>
-              관심종목 담기
-            </div>
-            <p className="muted" style={{ fontSize: 13, marginBottom: 18 }}>
-              고른 섹터에서 먼저 추천했어요.
-            </p>
-          </>
-        )}
-
-        <div className="search-field" style={{ marginBottom: searching ? 20 : 18 }}>
-          🔍
-          <input
-            placeholder="종목명 · 티커 검색"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          {searching && (
-            <button className="btn-ghost" onClick={() => setQuery("")}>
-              취소
-            </button>
-          )}
+    <AppShell narrow bare={fromOnboarding}>
+      <div className="topbar" style={{ alignItems: "flex-start" }}>
+        <div>
+          <div className="page-title">관심종목 담기</div>
+          <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>
+            {fromOnboarding ? "고른 섹터에서 먼저 추천했어요." : "종목이나 섹터를 검색해 담아보세요."}
+          </p>
         </div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--accent)", whiteSpace: "nowrap" }}>
+          {watchlist.length}개 담김
+        </div>
+      </div>
 
-        {searching ? (
-          <>
-            <div className="eyebrow" style={{ marginBottom: 10 }}>
-              검색 결과
+      <div className="search-field" style={{ marginBottom: 20 }}>
+        🔍
+        <input placeholder="종목명 · 티커 검색" value={query} onChange={(event) => setQuery(event.target.value)} />
+        {searching && (
+          <button className="btn-ghost" onClick={() => setQuery("")}>
+            취소
+          </button>
+        )}
+      </div>
+
+      {searching ? (
+        <>
+          <div className="eyebrow" style={{ marginBottom: 12 }}>
+            검색 결과
+          </div>
+          {searchResults.length === 0 ? (
+            <div className="placeholder-box" style={{ padding: 20 }}>
+              찾는 종목이 없어요. 티커로도 검색해 보세요.
             </div>
-            <div style={{ borderTop: "1px solid var(--line)" }}>
+          ) : (
+            <div className="list-panel">
               {searchResults.map((stock) => (
                 <StockRow
                   key={stock.ticker}
@@ -117,94 +116,86 @@ function WatchlistAddContent() {
                   }}
                 />
               ))}
-              {searchResults.length === 0 && (
-                <div className="placeholder-box" style={{ padding: 14, marginTop: 12 }}>
-                  찾는 종목이 없어요. 티커로도 검색해 보세요.
-                </div>
-              )}
             </div>
+          )}
 
-            {recentSearches.length > 0 && (
-              <>
-                <div className="eyebrow" style={{ margin: "26px 0 10px" }}>
-                  최근 검색
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {recentSearches.map((term) => (
-                    <button key={term} className="chip" onClick={() => remove(term)}>
-                      {term} ×
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="tabs" style={{ marginBottom: 18 }}>
-              <button className={`tab ${tab === "recommend" ? "active" : ""}`} onClick={() => setTab("recommend")}>
-                추천
-              </button>
-              <button className={`tab ${tab === "sector" ? "active" : ""}`} onClick={() => setTab("sector")}>
-                섹터 · 테마
-              </button>
-            </div>
+          {recentSearches.length > 0 && (
+            <>
+              <div className="eyebrow" style={{ margin: "26px 0 10px" }}>
+                최근 검색
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {recentSearches.map((term) => (
+                  <button key={term} className="chip" onClick={() => remove(term)}>
+                    {term} ×
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="tabs" style={{ marginBottom: 20 }}>
+            <button className={`tab ${tab === "recommend" ? "active" : ""}`} onClick={() => setTab("recommend")}>
+              추천
+            </button>
+            <button className={`tab ${tab === "sector" ? "active" : ""}`} onClick={() => setTab("sector")}>
+              섹터 · 테마
+            </button>
+          </div>
 
-            {tab === "recommend" ? (
-              <div style={{ borderTop: "1px solid var(--line)" }}>
+          {tab === "recommend" ? (
+            <>
+              <div className="list-panel">
                 {recommended.map((stock) => (
                   <StockRow key={stock.ticker} stock={stock} added={has(stock.ticker)} onToggle={() => toggle(stock)} />
                 ))}
-                {stocksError && <div className="error-box" style={{ marginTop: 12 }}>{stocksError}</div>}
               </div>
-            ) : (
-              <>
-                <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>
-                  섹터를 담으면 그 안 주요 종목 뉴스를 한 번에 받아요.
-                </p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
-                  {SECTORS.map((sector) => {
-                    const allAdded = sectorAllAdded(sector.id);
-                    return (
-                      <button
-                        key={sector.id}
-                        className={`option-row ${allAdded ? "selected" : ""}`}
-                        onClick={() => toggleSectorBundle(sector.id)}
-                      >
-                        <div>
-                          <div className="option-title">{sector.label}</div>
-                          <div className="option-desc">
-                            주요 {SECTOR_STOCKS[sector.id].length}종목 · {sector.description}
-                          </div>
+              {stocksError && <div className="error-box" style={{ marginTop: 12 }}>{stocksError}</div>}
+            </>
+          ) : (
+            <>
+              <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>
+                섹터를 담으면 그 안 주요 종목 뉴스를 한 번에 받아요.
+              </p>
+              <div className="grid-cards cols-2" style={{ marginBottom: 14 }}>
+                {SECTORS.map((sector) => {
+                  const allAdded = sectorAllAdded(sector.id);
+                  return (
+                    <button
+                      key={sector.id}
+                      className={`option-row ${allAdded ? "selected" : ""}`}
+                      onClick={() => toggleSectorBundle(sector.id)}
+                    >
+                      <div>
+                        <div className="option-title">{sector.label}</div>
+                        <div className="option-desc">
+                          주요 {SECTOR_STOCKS[sector.id].length}종목 · {sector.description}
                         </div>
-                        <span className={`pill ${allAdded ? "filled" : ""}`}>{allAdded ? "담김" : "+ 담기"}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="placeholder-box" style={{ padding: 13, textAlign: "left", marginBottom: 14 }}>
-                  섹터를 담으면 개별 종목 편집 화면으로 이어짐 (마이 &gt; 관심종목 관리)
-                </div>
-              </>
-            )}
-          </>
-        )}
+                      </div>
+                      <span className={`pill ${allAdded ? "filled" : ""}`}>{allAdded ? "담김" : "+ 담기"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
+      )}
 
-        <div style={{ flex: 1 }} />
-
-        {!searching && (
-          <button className="btn btn-primary btn-block" disabled={watchlist.length === 0} onClick={finish}>
-            {fromOnboarding ? `${watchlist.length}개 담고 시작하기` : "완료"}
-          </button>
-        )}
-
-        {!fromOnboarding && (
-          <div className="back-row" style={{ justifyContent: "center", paddingTop: 12 }}>
-            <Link href="/">← 홈으로</Link>
-          </div>
-        )}
+      <div style={{ display: "flex", gap: 10, marginTop: 32, alignItems: "center" }}>
+        <button
+          className="btn btn-primary"
+          style={{ minWidth: 180 }}
+          disabled={watchlist.length === 0}
+          onClick={finish}
+        >
+          {fromOnboarding ? `${watchlist.length}개 담고 시작하기` : "완료"}
+        </button>
+        {!fromOnboarding && <Link href="/" className="btn-ghost">← 홈으로</Link>}
       </div>
-    </main>
+    </AppShell>
   );
 }
 
@@ -212,8 +203,8 @@ function StockRow({ stock, added, onToggle }: { stock: Stock; added: boolean; on
   return (
     <div className="list-row">
       <div className="stock-icon">{stock.name.slice(0, 1)}</div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 14, fontWeight: 500 }}>{stock.name}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>{stock.name}</div>
         <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
           {stock.ticker} · {stock.market}
         </div>

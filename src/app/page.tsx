@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import BottomNav from "@/components/BottomNav";
+import AppShell from "@/components/AppShell";
 import { changeArrow, changeEmoji, changeDirection, formatPrice } from "@/lib/format";
 import { useOnboarded, useWatchlist } from "@/lib/storage";
 import { Stock } from "@/lib/types";
@@ -37,6 +37,7 @@ export default function HomePage() {
         if (!res.ok) throw new Error(data.error || "관심종목 요약을 불러오지 못했습니다.");
         if (!cancelled) setItems(data.items);
       } catch (err) {
+        if (!cancelled) setItems([]);
         if (!cancelled) setError(err instanceof Error ? err.message : "관심종목 요약을 불러오지 못했습니다.");
       }
     })();
@@ -47,77 +48,149 @@ export default function HomePage() {
 
   if (!hydrated || !onboarded) return null;
 
-  const mover = items && items.length > 0
-    ? [...items].sort((a, b) => Math.abs(b.changeRate ?? 0) - Math.abs(a.changeRate ?? 0))[0]
-    : null;
+  const mover =
+    items && items.length > 0
+      ? [...items].sort((a, b) => Math.abs(b.changeRate ?? 0) - Math.abs(a.changeRate ?? 0))[0]
+      : null;
+  const newsAlerts = items?.filter((item) => (item.newsCount ?? 0) > 0).length ?? 0;
+  const rows: SummaryItem[] =
+    items ?? watchlist.map((stock) => ({ ...stock, close: null, changeRate: null, newsCount: null }));
+  const loading = items === null && watchlist.length > 0;
 
   return (
-    <main className="page with-bottom-nav">
-      <div className="container" style={{ paddingTop: 20 }}>
-        <div className="topbar">
-          <div className="title-md">오늘의 브리핑</div>
-          <Link href="/alerts" className="muted" style={{ fontSize: 12 }}>
-            🔔 {items?.filter((item) => (item.newsCount ?? 0) > 0).length ?? 0}
-          </Link>
-        </div>
+    <AppShell>
+      <div className="topbar">
+        <div className="page-title">오늘의 브리핑</div>
+        <Link href="/alerts" className="muted" style={{ fontSize: 13 }}>
+          🔔 새 소식 {newsAlerts}
+        </Link>
+      </div>
 
-        {mover && (
-          <Link href={`/stock/${mover.ticker}?name=${encodeURIComponent(mover.name)}`} className="hero-card" style={{ display: "block", marginBottom: 20 }}>
-            <div className="eyebrow" style={{ marginBottom: 8 }}>
-              가장 중요한 소식
+      {error && <div className="error-box" style={{ marginBottom: 16 }}>{error}</div>}
+
+      {watchlist.length === 0 ? (
+        <Link href="/watchlist/add" className="placeholder-box" style={{ padding: 36, fontSize: 14 }}>
+          아직 담은 종목이 없어요. 눌러서 관심종목을 담아보세요.
+        </Link>
+      ) : (
+        <div className="home-grid">
+          <div>
+            {mover ? (
+              <Link
+                href={`/stock/${mover.ticker}?name=${encodeURIComponent(mover.name)}`}
+                className="hero-card"
+                style={{ display: "block", marginBottom: 22 }}
+              >
+                <div className="eyebrow" style={{ marginBottom: 10 }}>
+                  가장 크게 움직인 종목
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.45, marginBottom: 10 }}>
+                  {mover.name}(이)가 오늘 가장 크게 움직였어요
+                </div>
+                <div style={{ fontSize: 14, color: "rgba(255,255,255,0.9)", lineHeight: 1.55 }}>
+                  {formatPrice(mover.close)}원 · {changeArrow(mover.changeRate)}{" "}
+                  {Math.abs(mover.changeRate ?? 0).toFixed(2)}%{changeEmoji(mover.changeRate)} — 왜 그런지 브리핑에서 확인하세요.
+                </div>
+                <div style={{ fontSize: 13, marginTop: 14, fontWeight: 600 }}>브리핑 보기 →</div>
+              </Link>
+            ) : loading ? (
+              <div className="skeleton" style={{ height: 150, borderRadius: 18, marginBottom: 22 }} />
+            ) : null}
+
+            <div className="section-title">
+              관심종목 <span className="muted">{watchlist.length}</span>
             </div>
-            <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.5, marginBottom: 8 }}>
-              오늘 관심종목 중 {mover.name}(이)가 가장 크게 움직였어요
-            </div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", lineHeight: 1.55 }}>
-              {formatPrice(mover.close)}원 · {changeArrow(mover.changeRate)} {Math.abs(mover.changeRate ?? 0).toFixed(2)}%
-              {changeEmoji(mover.changeRate)} — 왜 그런지 브리핑에서 확인하세요.
-            </div>
-            <div style={{ fontSize: 12, marginTop: 12, textDecoration: "underline" }}>브리핑 보기 →</div>
-          </Link>
-        )}
-
-        <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-          관심종목 {watchlist.length}
-        </div>
-
-        {error && <div className="error-box" style={{ marginBottom: 16 }}>{error}</div>}
-
-        {watchlist.length === 0 ? (
-          <Link href="/watchlist/add" className="placeholder-box" style={{ padding: 24, textAlign: "center" }}>
-            아직 담은 종목이 없어요. 눌러서 관심종목을 담아보세요.
-          </Link>
-        ) : (
-          <div style={{ borderTop: "1px solid var(--line)" }}>
-            {(items ?? watchlist.map((stock) => ({ ...stock, close: null, changeRate: null, newsCount: null }))).map((stock) => {
-              const loading = items === null;
-              const direction = changeDirection(stock.changeRate);
-              return (
-                <Link key={stock.ticker} href={`/stock/${stock.ticker}?name=${encodeURIComponent(stock.name)}`} className="list-row" style={{ color: "inherit" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 500 }}>{stock.name}</div>
-                    <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
-                      {loading ? "불러오는 중…" : stock.newsCount !== null ? `오늘 뉴스 ${stock.newsCount}건` : "뉴스 정보 없음"}
-                    </div>
-                  </div>
-                  {loading ? (
-                    <div className="skeleton" style={{ width: 60, height: 30 }} />
-                  ) : (
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 13 }}>{formatPrice(stock.close)}</div>
-                      <div className={`price-${direction}`} style={{ fontSize: 11, marginTop: 3 }}>
-                        {changeArrow(stock.changeRate)} {stock.changeRate !== null ? `${Math.abs(stock.changeRate).toFixed(2)}%` : "—"}
-                        {changeEmoji(stock.changeRate)}
+            <div className="list-panel">
+              {rows.map((stock) => {
+                const direction = changeDirection(stock.changeRate);
+                return (
+                  <Link
+                    key={stock.ticker}
+                    href={`/stock/${stock.ticker}?name=${encodeURIComponent(stock.name)}`}
+                    className="list-row"
+                    style={{ color: "inherit" }}
+                  >
+                    <div className="stock-icon">{stock.name.slice(0, 1)}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>{stock.name}</div>
+                      <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
+                        {loading
+                          ? "불러오는 중…"
+                          : stock.newsCount !== null
+                            ? `오늘 뉴스 ${stock.newsCount}건`
+                            : "뉴스 정보 없음"}
                       </div>
                     </div>
-                  )}
-                </Link>
-              );
-            })}
+                    {loading ? (
+                      <div className="skeleton" style={{ width: 64, height: 32 }} />
+                    ) : (
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 14, fontWeight: 600 }}>{formatPrice(stock.close)}</div>
+                        <div className={`price-${direction}`} style={{ fontSize: 12, marginTop: 3 }}>
+                          {changeArrow(stock.changeRate)}{" "}
+                          {stock.changeRate !== null ? `${Math.abs(stock.changeRate).toFixed(2)}%` : "—"}
+                          {changeEmoji(stock.changeRate)}
+                        </div>
+                      </div>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
           </div>
-        )}
-      </div>
-      <BottomNav />
-    </main>
+
+          <aside className="home-aside">
+            <div className="card">
+              <div className="eyebrow" style={{ marginBottom: 12 }}>
+                오늘 요약
+              </div>
+              <SummaryStat label="담은 종목" value={`${watchlist.length}개`} />
+              <SummaryStat label="뉴스 있는 종목" value={loading ? "…" : `${newsAlerts}개`} />
+              <SummaryStat
+                label="상승 / 하락"
+                value={
+                  loading || !items
+                    ? "…"
+                    : `${items.filter((i) => (i.changeRate ?? 0) > 0).length} / ${
+                        items.filter((i) => (i.changeRate ?? 0) < 0).length
+                      }`
+                }
+                last
+              />
+              <Link href="/watchlist/add" className="btn btn-secondary btn-block btn-sm" style={{ marginTop: 14 }}>
+                종목 더 담기
+              </Link>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      <style>{`
+        .home-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+        .home-aside { display: none; }
+        @media (min-width: 1000px) {
+          .home-grid { grid-template-columns: minmax(0,1fr) 300px; }
+          .home-aside { display: block; position: sticky; top: calc(var(--header-h) + 22px); align-self: start; }
+        }
+      `}</style>
+    </AppShell>
+  );
+}
+
+function SummaryStat({ label, value, last }: { label: string; value: string; last?: boolean }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "10px 0",
+        borderBottom: last ? "none" : "1px solid var(--line)",
+        fontSize: 13,
+      }}
+    >
+      <span className="muted">{label}</span>
+      <span style={{ fontWeight: 600 }}>{value}</span>
+    </div>
   );
 }

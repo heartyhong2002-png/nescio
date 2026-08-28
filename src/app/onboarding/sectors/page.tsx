@@ -18,7 +18,7 @@ export default function SectorsPage() {
 
   return (
     <main className="page">
-      <div className="container" style={{ paddingTop: 24, paddingBottom: 32 }}>
+      <div className="flow">
         <div className="back-row" style={{ gap: 10 }}>
           <Link href="/onboarding/persona">←</Link>
           <div className="progress-bar">

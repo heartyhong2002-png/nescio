@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const ITEMS = [
-  { href: "/", label: "홈", icon: "🏠" },
+  { href: "/", label: "브리핑", icon: "🏠" },
   { href: "/watchlist/add", label: "담기", icon: "＋" },
   { href: "/alerts", label: "알림", icon: "🔔" },
   { href: "/my", label: "마이", icon: "👤" },

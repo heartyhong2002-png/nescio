@@ -3,10 +3,19 @@
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { CauseCardButton, CauseCardLink } from "@/components/CauseCard";
+import AppShell from "@/components/AppShell";
+import { CauseCardButton } from "@/components/CauseCard";
 import CauseDetailView from "@/components/CauseDetailView";
 import PriceChart from "@/components/PriceChart";
-import { changeArrow, changeEmoji, changeDirection, formatMarketCap, formatMultiple, formatPercent, formatPrice } from "@/lib/format";
+import {
+  changeArrow,
+  changeEmoji,
+  changeDirection,
+  formatMarketCap,
+  formatMultiple,
+  formatPercent,
+  formatPrice,
+} from "@/lib/format";
 import type { Price, Stock, Valuation, ValuationInterpretation } from "@/lib/types";
 import { useStockBriefing } from "@/lib/use-briefing";
 import { useWatchlist } from "@/lib/storage";
@@ -22,7 +31,7 @@ function StockBriefingContent() {
   const { analysis, loading, error, refresh } = useStockBriefing(ticker, name);
   const { has, toggle } = useWatchlist();
   const [selectedCauseId, setSelectedCauseId] = useState<string | null>(null);
-  const [range, setRange] = useState(0); // "1일"(분봉) 기본 선택
+  const [range, setRange] = useState(0);
 
   const displayName = analysis?.stock.name ?? name ?? ticker;
   const causes = analysis?.briefing.causes ?? [];
@@ -30,116 +39,83 @@ function StockBriefingContent() {
   const inWatchlist = has(ticker);
 
   return (
-    <main className="page desktop-briefing">
-      <div className="container desktop-only" style={{ maxWidth: 1280, paddingTop: 20, paddingBottom: 40 }}>
-        <DesktopHeader displayName={displayName} inWatchlist={inWatchlist} onToggle={() => toggle({ name: displayName, ticker, market: "KOSPI" })} />
-
-        {loading && <div className="skeleton" style={{ height: 480, borderRadius: 20 }} />}
-        {error && <div className="error-box">{error} <button className="btn-ghost" onClick={refresh}>다시 시도</button></div>}
-
-        {analysis && !loading && (
-          <div className="desktop-grid">
-            <div className="desktop-col">
-              <div className="muted" style={{ fontSize: 11, marginBottom: 12 }}>
-                관심종목
-              </div>
-              <PricePreview name={displayName} changeRate={analysis.price.changeRate} />
-            </div>
-
-            <div className="desktop-col">
-              <StockHeader analysis={analysis} range={range} setRange={setRange} />
-              <div className="section-title">가격이 움직인 이유</div>
-              <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
-                {causes.map((cause) => (
-                  <div key={cause.id} style={{ flex: 1, minWidth: 0 }}>
-                    <CauseCardButton cause={cause} active={selectedCause?.id === cause.id} onClick={() => setSelectedCauseId(cause.id)} />
-                  </div>
-                ))}
-              </div>
-              <MetricsRow stock={analysis.stock} price={analysis.price} />
-            </div>
-
-            <div className="desktop-col desktop-side">
-              {selectedCause ? <CauseDetailView analysis={analysis} cause={selectedCause} /> : <div className="muted">원인 데이터가 없어요.</div>}
-            </div>
-          </div>
-        )}
+    <AppShell>
+      <div className="back-row">
+        <Link href="/">← 브리핑 목록</Link>
+        <button
+          className={inWatchlist ? undefined : "muted"}
+          onClick={() => toggle({ name: displayName, ticker, market: "KOSPI" })}
+        >
+          {inWatchlist ? "★ 관심종목에 담김" : "☆ 관심종목 담기"}
+        </button>
       </div>
 
-      <div className="container mobile-only" style={{ paddingTop: 18, paddingBottom: 40 }}>
-        <div className="back-row">
-          <Link href="/">← 홈</Link>
-          <button className={inWatchlist ? undefined : "muted"} onClick={() => toggle({ name: displayName, ticker, market: "KOSPI" })}>
-            {inWatchlist ? "★ 담김" : "☆ 담기"}
+      {loading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="skeleton" style={{ height: 64, width: "50%" }} />
+          <div className="skeleton" style={{ height: 220, borderRadius: 14 }} />
+          <div className="skeleton" style={{ height: 260, borderRadius: 14 }} />
+        </div>
+      )}
+
+      {error && (
+        <div className="error-box">
+          {error}{" "}
+          <button className="btn-ghost" onClick={refresh}>
+            다시 시도
           </button>
         </div>
+      )}
 
-        {loading && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div className="skeleton" style={{ height: 60 }} />
-            <div className="skeleton" style={{ height: 130, borderRadius: 12 }} />
-            <div className="skeleton" style={{ height: 200 }} />
-          </div>
-        )}
-
-        {error && (
-          <div className="error-box">
-            {error} <button className="btn-ghost" onClick={refresh}>다시 시도</button>
-          </div>
-        )}
-
-        {analysis && !loading && (
-          <>
+      {analysis && !loading && (
+        <div className="stock-layout">
+          <div>
             <StockHeader analysis={analysis} range={range} setRange={setRange} />
 
             <div className="section-title">가격이 움직인 이유</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-              {causes.length === 0 && <div className="muted" style={{ fontSize: 13 }}>뚜렷한 원인을 찾지 못했어요.</div>}
-              {causes.map((cause) => (
-                <CauseCardLink key={cause.id} cause={cause} href={`/stock/${ticker}/cause/${cause.id}?name=${encodeURIComponent(displayName)}`} />
-              ))}
-            </div>
+            {causes.length === 0 ? (
+              <div className="note-box" style={{ marginBottom: 24 }}>
+                뚜렷한 원인을 찾지 못했어요.
+              </div>
+            ) : (
+              <div className="cause-picker" style={{ marginBottom: 26 }}>
+                {causes.map((cause) => (
+                  <CauseCardButton
+                    key={cause.id}
+                    cause={cause}
+                    active={selectedCause?.id === cause.id}
+                    onClick={() => setSelectedCauseId(cause.id)}
+                  />
+                ))}
+              </div>
+            )}
 
             <MetricsRow stock={analysis.stock} price={analysis.price} />
 
             {analysis.briefing.aiComment && (
-              <div className="placeholder-box" style={{ textAlign: "left", padding: 14, marginTop: 4 }}>
+              <div className="note-box" style={{ marginTop: 8 }}>
                 <div className="eyebrow" style={{ marginBottom: 6 }}>
                   AI가 정리해줬어요
                 </div>
-                <div style={{ fontSize: 12, lineHeight: 1.6 }}>{analysis.briefing.aiComment}</div>
+                <div style={{ fontSize: 12.5, lineHeight: 1.65, whiteSpace: "pre-line" }}>
+                  {analysis.briefing.aiComment}
+                </div>
               </div>
             )}
-          </>
-        )}
-      </div>
-    </main>
-  );
-}
+          </div>
 
-function DesktopHeader({ displayName, inWatchlist, onToggle }: { displayName: string; inWatchlist: boolean; onToggle: () => void }) {
-  return (
-    <div className="back-row" style={{ marginBottom: 8 }}>
-      <Link href="/">← 홈</Link>
-      <div style={{ fontWeight: 600, color: "var(--ink)" }}>{displayName}</div>
-      <button onClick={onToggle}>{inWatchlist ? "★ 담김" : "☆ 담기"}</button>
-    </div>
-  );
-}
-
-function PricePreview({ name, changeRate }: { name: string; changeRate: number | null }) {
-  const direction = changeDirection(changeRate);
-  return (
-    <div className="card-outline" style={{ border: "1px solid var(--accent)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-        <span>{name}</span>
-        <span className={`price-${direction}`}>
-          {changeArrow(changeRate)}
-          {changeRate !== null ? `${Math.abs(changeRate).toFixed(1)}%` : ""}
-          {changeEmoji(changeRate)}
-        </span>
-      </div>
-    </div>
+          <aside className="stock-aside">
+            {selectedCause ? (
+              <CauseDetailView analysis={analysis} cause={selectedCause} />
+            ) : (
+              <div className="muted" style={{ fontSize: 13 }}>
+                원인 데이터가 없어요.
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
+    </AppShell>
   );
 }
 
@@ -155,38 +131,39 @@ function StockHeader({
   const direction = changeDirection(analysis.price.changeRate);
   return (
     <>
-      <div style={{ marginBottom: 14 }}>
-        <div className="title-md">{analysis.stock.name}</div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 6 }}>
-          <div style={{ fontSize: 24, fontWeight: 700 }}>{formatPrice(analysis.price.close)}</div>
-          <div className={`price-${direction}`} style={{ fontSize: 13 }}>
+      <div style={{ marginBottom: 16 }}>
+        <div className="page-title">{analysis.stock.name}</div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 8 }}>
+          <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em" }}>
+            {formatPrice(analysis.price.close)}
+          </div>
+          <div className={`price-${direction}`} style={{ fontSize: 14, fontWeight: 600 }}>
             {changeArrow(analysis.price.changeRate)}
-            {analysis.price.changeRate !== null ? `${Math.abs(analysis.price.changeRate).toFixed(2)}%` : " 데이터 없음"}
+            {analysis.price.changeRate !== null
+              ? ` ${Math.abs(analysis.price.changeRate).toFixed(2)}%`
+              : " 데이터 없음"}
             {changeEmoji(analysis.price.changeRate)}
           </div>
         </div>
       </div>
 
-      <PriceChart key={`${analysis.stock.ticker}-${RANGES[range]}`} ticker={analysis.stock.ticker} range={RANGES[range]} />
-      <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
-        {RANGES.map((label, index) => (
-          <button
-            key={label}
-            className="pill"
-            style={{ borderColor: index === range ? "var(--accent)" : "var(--line)", color: index === range ? "var(--accent)" : "var(--muted)" }}
-            onClick={() => setRange(index)}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+        <PriceChart key={`${analysis.stock.ticker}-${RANGES[range]}`} ticker={analysis.stock.ticker} range={RANGES[range]} />
+        <div className="range-tabs" style={{ marginTop: 4 }}>
+          {RANGES.map((label, index) => (
+            <button key={label} className={index === range ? "active" : undefined} onClick={() => setRange(index)}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {analysis.briefing.oneLiner && (
-        <div style={{ borderLeft: "3px solid var(--accent)", padding: "2px 0 2px 12px", marginBottom: 20 }}>
-          <div className="eyebrow" style={{ marginBottom: 5 }}>
+        <div style={{ borderLeft: "3px solid var(--accent)", padding: "4px 0 4px 14px", margin: "18px 0 24px" }}>
+          <div className="eyebrow" style={{ marginBottom: 6 }}>
             오늘 한 줄
           </div>
-          <div style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.55 }}>{analysis.briefing.oneLiner}</div>
+          <div style={{ fontSize: 15, fontWeight: 500, lineHeight: 1.6 }}>{analysis.briefing.oneLiner}</div>
         </div>
       )}
     </>
@@ -269,46 +246,44 @@ function MetricsRow({ stock, price }: { stock: Stock; price: Price }) {
   const metrics = [
     { key: "per" as const, label: "PER", value: formatMultiple(valuation?.per ?? null) },
     { key: "pbr" as const, label: "PBR", value: formatMultiple(valuation?.pbr ?? null) },
-    { key: "dividend" as const, label: "배당", value: formatPercent(valuation?.dividendYield ?? null) },
+    { key: "dividend" as const, label: "배당수익률", value: formatPercent(valuation?.dividendYield ?? null) },
     { key: "marketCap" as const, label: "시가총액", value: formatMarketCap(valuation?.marketCap ?? price.marketCap) },
   ];
 
   return (
     <>
       <div className="section-title">회사 숫자로 보기</div>
-      <div style={{ display: "flex", gap: 8, marginBottom: interpretation ? 12 : 20 }}>
+      <div className="grid-cards cols-4" style={{ gap: 10, marginBottom: interpretation ? 14 : 24 }}>
         {metrics.map(({ label, value }) => (
-          <div key={label} className="card-outline" style={{ flex: 1, padding: 11 }}>
-            <div className="muted" style={{ fontSize: 10 }}>
-              {label}
-            </div>
-            <div style={{ fontSize: 14, marginTop: 4 }}>{value}</div>
+          <div key={label} className="metric-tile">
+            <div className="metric-label">{label}</div>
+            <div className="metric-value">{value}</div>
           </div>
         ))}
       </div>
 
       {loading && !interpretation && (
-        <div className="muted" style={{ fontSize: 11, marginBottom: 20 }}>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 24 }}>
           이 숫자들 쉽게 풀어보는 중…
         </div>
       )}
 
       {interpretation && (
-        <div className="placeholder-box" style={{ textAlign: "left", padding: 14, marginBottom: 20 }}>
-          <div className="eyebrow" style={{ marginBottom: 8 }}>
+        <div className="note-box" style={{ marginBottom: 24 }}>
+          <div className="eyebrow" style={{ marginBottom: 10 }}>
             이 숫자, 쉽게 풀면
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {metrics.map(({ key, label }) => {
               const note = interpretation[key];
               if (!note?.meaning) return null;
               return (
                 <div key={key}>
-                  <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                  <div style={{ fontSize: 12.5, lineHeight: 1.65 }}>
                     <b>{label}</b> · {note.meaning}
                   </div>
                   {note.interpretation && (
-                    <div className="muted" style={{ fontSize: 11, lineHeight: 1.6, marginTop: 2 }}>
+                    <div className="muted" style={{ fontSize: 11.5, lineHeight: 1.65, marginTop: 3 }}>
                       {note.interpretation}
                     </div>
                   )}

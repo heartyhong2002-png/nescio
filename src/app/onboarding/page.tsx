@@ -33,26 +33,35 @@ export default function OnboardingPage() {
 
   return (
     <main className="page">
-      <div className="container" style={{ paddingTop: 24, paddingBottom: 32 }}>
-        <div className="back-row" style={{ justifyContent: "flex-end" }}>
+      <div className="flow flow-center">
+        <div className="back-row" style={{ justifyContent: "flex-end", width: "100%" }}>
           <button onClick={() => router.push("/onboarding/login")}>건너뛰기</button>
         </div>
 
         <div
-          className="placeholder-box"
-          style={{ flex: 1, minHeight: 220, fontSize: 56, marginBottom: 28 }}
+          style={{
+            fontSize: 64,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: 180,
+            background: "var(--accent-soft)",
+            borderRadius: "var(--radius-lg)",
+            marginBottom: 28,
+            width: "100%",
+          }}
         >
           {slide.icon}
         </div>
 
-        <div className="title-lg" style={{ marginBottom: 12, whiteSpace: "pre-line" }}>
+        <div className="title-lg" style={{ marginBottom: 12, whiteSpace: "pre-line", alignSelf: "flex-start" }}>
           {slide.title}
         </div>
-        <p className="muted" style={{ fontSize: 14, lineHeight: 1.65, marginBottom: 28 }}>
+        <p className="muted" style={{ fontSize: 14, lineHeight: 1.65, marginBottom: 28, alignSelf: "flex-start" }}>
           {slide.body}
         </p>
 
-        <div className="dots" style={{ marginBottom: 20 }}>
+        <div className="dots" style={{ marginBottom: 20, alignSelf: "flex-start" }}>
           {SLIDES.map((_, index) => (
             <span key={index} className={`dot ${index === step ? "active" : ""}`} />
           ))}
