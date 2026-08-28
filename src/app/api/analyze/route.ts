@@ -3,6 +3,8 @@ import { serverEnv } from "@/lib/server-env";
 import { getPriceForTicker } from "@/lib/krx";
 import { Briefing, Cause, NewsItem, Price } from "@/lib/types";
 
+type Lang = "ko" | "en";
+
 const NAVER_URL = "https://openapi.naver.com/v1/search/news.json";
 
 // 같은 종목을 짧은 시간 안에 다시 요청하면(평가 데모 등) 2단계 LLM 파이프라인을 다시 태우지 않고
@@ -32,9 +34,10 @@ async function getNews(query: string): Promise<NewsItem[]> {
 }
 
 // 프론트(CauseCard/CauseDetailView 등)가 이미 이 스키마로 렌더링하고 있어서 그대로 유지한다.
-// 2단계(쩐형) 응답도 이 스키마에 맞춰 나오도록 강제한다.
+// 2단계(쩐형) 응답도 이 스키마에 맞춰 나오도록 강제한다. (필드 이름은 언어와 무관하게 고정,
+// 실제 값 텍스트만 lang에 따라 한국어/영어로 나온다 — 각 언어 시스템 프롬프트가 지시한다.)
 const RESPONSE_SCHEMA = `{
-  "oneLiner": string,               // 오늘 시세가 왜 그렇게 움직였는지 한 문장 (쩐형 말투로, 임팩트 있게)
+  "oneLiner": string,               // 오늘 시세가 왜 그렇게 움직였는지 한 문장 (캐릭터 말투로, 임팩트 있게)
   "causes": [
     {
       "title": string,              // 원인 제목 (예: "공급 계약 체결")
@@ -50,12 +53,14 @@ const RESPONSE_SCHEMA = `{
       "similarCase": string         // 과거 비슷한 사례 1~2줄 (없으면 빈 문자열)
     }
   ],
-  "aiComment": string                // 전체 흐름 3~4문장 정리, 쩐형 캐릭터 톤 유지, 투자 권유 문구 금지
+  "aiComment": string                // 전체 흐름 3~4문장 정리, 캐릭터 톤 유지, 투자 권유 문구 금지
 }`;
 
-function coerceBriefing(raw: unknown, news: NewsItem[]): Briefing {
+function coerceBriefing(raw: unknown, news: NewsItem[], lang: Lang): Briefing {
   const data = (raw ?? {}) as Record<string, unknown>;
   const rawCauses = Array.isArray(data.causes) ? data.causes : [];
+  const fallbackOneLiner = lang === "en" ? "Couldn't prepare a summary of today's move." : "오늘의 시세 변동 요약을 준비하지 못했어요.";
+  const fallbackCauseTitle = (index: number) => (lang === "en" ? `Cause ${index + 1}` : `원인 ${index + 1}`);
 
   const causes: Cause[] = rawCauses.slice(0, 4).map((rawCause, index) => {
     const cause = (rawCause ?? {}) as Record<string, unknown>;
@@ -70,7 +75,7 @@ function coerceBriefing(raw: unknown, news: NewsItem[]): Briefing {
 
     return {
       id: `cause-${index + 1}`,
-      title: typeof cause.title === "string" && cause.title ? cause.title : `원인 ${index + 1}`,
+      title: typeof cause.title === "string" && cause.title ? cause.title : fallbackCauseTitle(index),
       impact,
       summary: typeof cause.summary === "string" ? cause.summary : "",
       conclusion: typeof cause.conclusion === "string" ? cause.conclusion : "",
@@ -90,7 +95,7 @@ function coerceBriefing(raw: unknown, news: NewsItem[]): Briefing {
   });
 
   return {
-    oneLiner: typeof data.oneLiner === "string" && data.oneLiner ? data.oneLiner : "오늘의 시세 변동 요약을 준비하지 못했어요.",
+    oneLiner: typeof data.oneLiner === "string" && data.oneLiner ? data.oneLiner : fallbackOneLiner,
     causes,
     aiComment: typeof data.aiComment === "string" ? data.aiComment : "",
   };
@@ -226,7 +231,34 @@ async function withGeminiFallback(
 // ---------------------------------------------------------------------------
 // 1단계: NVIDIA (폴백 Gemini) — 사실 확인 목적의 원본 분석 (formal한 문체, 캐릭터 없음)
 // ---------------------------------------------------------------------------
-function buildRawAnalysisPrompt(name: string, ticker: string, price: Price, news: NewsItem[]) {
+function buildRawAnalysisPrompt(name: string, ticker: string, price: Price, news: NewsItem[], lang: Lang) {
+  if (lang === "en") {
+    const priceText = `Close: ${price.close ?? "no data"}, Change: ${price.changeRate ?? "no data"}%, Market cap: ${price.marketCap ?? "no data"}`;
+    const newsText = news.length
+      ? news.map((item, index) => `${index}. ${item.title} (${item.pubDate})\n${item.description}`).join("\n")
+      : "No related news";
+
+    const system =
+      "You are a research analyst covering Korean equities. Base your analysis only on the data provided, and clearly separate " +
+      "confirmed facts from interpretation. Do not recommend buying or selling, and do not make definitive predictions.";
+    const prompt = `Below is recent price data and Naver News coverage for ${name} (${ticker}).
+
+[Price data]
+${priceText}
+
+[Related news]
+${newsText}
+
+Write a comprehensive analysis in English using the format below.
+1. Recent price trend
+2. Key news summary: 3-5 news items that could be moving the price
+3. Cause of the price move: evidence-based analysis connecting the news to the price action
+4. Positive and negative factors
+5. Remaining risks to watch and indicators to monitor next
+Write each section as a concise paragraph or bullet list, and note "insufficient evidence" wherever the basis is weak.`;
+    return { system, prompt };
+  }
+
   const priceText = `종가: ${price.close ?? "데이터 없음"}, 등락률: ${price.changeRate ?? "데이터 없음"}%, 시가총액: ${price.marketCap ?? "데이터 없음"}`;
   const newsText = news.length
     ? news.map((item, index) => `${index}. ${item.title} (${item.pubDate})\n${item.description}`).join("\n")
@@ -253,8 +285,8 @@ ${newsText}
   return { system, prompt };
 }
 
-async function analyzeRaw(name: string, ticker: string, price: Price, news: NewsItem[]): Promise<string> {
-  const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news);
+async function analyzeRaw(name: string, ticker: string, price: Price, news: NewsItem[], lang: Lang): Promise<string> {
+  const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news, lang);
   return withGeminiFallback(
     "1단계 원본 분석",
     () => callNvidia(system, prompt, 0.2),
@@ -263,30 +295,73 @@ async function analyzeRaw(name: string, ticker: string, price: Price, news: News
 }
 
 // ---------------------------------------------------------------------------
-// 2단계: xAI Grok (폴백 Gemini) — "쩐형" 캐릭터로 재작성 (1단계 사실은 그대로, 톤만 바꾼다)
+// 2단계: xAI Grok (폴백 Gemini) — 캐릭터로 재작성 (1단계 사실은 그대로, 톤만 바꾼다)
+// 한국어는 '쩐형', 영어는 그 캐릭터를 영어권 인터넷 밈 톤으로 옮긴 'Money Bro'.
 // ---------------------------------------------------------------------------
 type Tone = "mild" | "medium" | "spicy" | "nuclear";
 
-const TONE_RULES: Record<Tone, string> = {
-  mild: "말투 강도: 순한맛. 순화된 감탄사만 써라(헐, 미쳤다, 실화냐). 반말+장난기는 있지만 진짜 욕설은 절대 쓰지 마라.",
-  medium: "말투 강도: 중간맛. 인터넷 밈체 허용(개- 접두어, ㅋㅋㅋ). 여전히 진짜 욕설은 쓰지 마라.",
-  spicy: "말투 강도: 매운맛. '존나' 같은 순화된 강한 슬랭까지 써도 된다. 단 혐오·비하·특정 대상 조롱은 항상 금지.",
-  nuclear:
-    "말투 강도: 핵매운맛. 이 캐릭터의 최고 텐션 모드다. '존나', '개-', '미친', '씨발' 같은 표현을 감탄사로 마음껏 섞어 써도 좋다. " +
-    "느낌표 남발, 과장된 리액션, 초딩 개그 다 좋다 — 텐션을 최대로 끌어올려라. 단, 아래 공통 금지사항은 강도와 무관하게 항상 지켜야 한다.",
+const TONE_RULES: Record<Lang, Record<Tone, string>> = {
+  ko: {
+    mild: "말투 강도: 순한맛. 순화된 감탄사만 써라(헐, 미쳤다, 실화냐). 반말+장난기는 있지만 진짜 욕설은 절대 쓰지 마라.",
+    medium: "말투 강도: 중간맛. 인터넷 밈체 허용(개- 접두어, ㅋㅋㅋ). 여전히 진짜 욕설은 쓰지 마라.",
+    spicy: "말투 강도: 매운맛. '존나' 같은 순화된 강한 슬랭까지 써도 된다. 단 혐오·비하·특정 대상 조롱은 항상 금지.",
+    nuclear:
+      "말투 강도: 핵매운맛. 이 캐릭터의 최고 텐션 모드다. '존나', '개-', '미친', '씨발' 같은 표현을 감탄사로 마음껏 섞어 써도 좋다. " +
+      "느낌표 남발, 과장된 리액션, 초딩 개그 다 좋다 — 텐션을 최대로 끌어올려라. 단, 아래 공통 금지사항은 강도와 무관하게 항상 지켜야 한다.",
+  },
+  en: {
+    mild: "Tone intensity: mild. Only clean interjections (whoa, no way, wild). Casual and playful, but never real profanity.",
+    medium: "Tone intensity: medium. Internet meme-speak is welcome (lowkey/highkey, fr fr, lol). Still no real profanity.",
+    spicy:
+      "Tone intensity: spicy. Strong-but-clean slang is fine (damn, hell, screw it). Never mock or demean a specific real " +
+      "person, company, or group, no matter how spicy it gets.",
+    nuclear:
+      "Tone intensity: nuclear — max energy mode for this character. Sprinkle in words like 'damn', 'hell', 'freaking' as pure " +
+      "interjections, pile on exclamation points, exaggerated reactions, corny jokes — go all out. The shared rules below still " +
+      "always apply no matter the intensity.",
+  },
 };
 
 // 톤 강도 선택 UI가 아직 없어서 기본값으로 고정 — 사용자 요청에 따라 nuclear(핵매운맛).
 const DEFAULT_TONE: Tone = "nuclear";
 
 // 캐릭터 톤과 무관하게 코드에서 항상 붙이는 면책 문구 (모델이 빼먹어도 항상 붙게).
-const DISCLAIMER = "이 코멘트는 참고용 설명이며, 투자 판단과 책임은 본인에게 있습니다.";
+const DISCLAIMER: Record<Lang, string> = {
+  ko: "이 코멘트는 참고용 설명이며, 투자 판단과 책임은 본인에게 있습니다.",
+  en: "This commentary is for informational purposes only — investment decisions and responsibility are your own.",
+};
 
-function buildJeonhyungSystem(tone: Tone): string {
+function buildJeonhyungSystem(tone: Tone, lang: Lang): string {
+  if (lang === "en") {
+    return `You are "Money Bro" — a cocky-but-lovable older-sibling type who loves giving stock tips to beginners, with a wink.
+Personality: acts like a know-it-all, then plays it off smoothly. Drops the occasional corny joke. Never stiff or formal.
+
+${TONE_RULES.en[tone]}
+
+Reaction rules by direction:
+- Sharp rally: slightly hyped tone + over-the-top excitement
+- Sharp drop: pretend to be shocked, then calmly walk it back
+- Sideways: unbothered, "eh, nothing to see here" energy
+
+Rotate the analogy source each time — pick one of: dating, sports, video games, or school/exams.
+
+Rules that always apply, no matter the intensity:
+- Never mock or demean a specific real person or company
+- Never use language that demeans or expresses hatred toward a gender, region, generation, or other group
+- Never write a direct instruction like "you should buy/sell" — make it entertaining, but leave the call to the reader
+
+Base everything only on the facts in the [Stage 1 analysis] and [news list] below. Do not invent new facts.
+Separate fact from inference, and leave any value with insufficient evidence as an empty string or empty array.
+Write every text value in English. Output nothing but the JSON.
+
+Schema:
+${RESPONSE_SCHEMA}`;
+  }
+
   return `너는 '쩐형'이라는 캐릭터야. 주식 초보 앞에서 능글맞게 훈수 두는 친한 형/누나.
 성격: 잘난 척하다가 능청스럽게 넘어감, 가끔 유치한 드립도 침. 절대 고지식하게 안 씀.
 
-${TONE_RULES[tone]}
+${TONE_RULES.ko[tone]}
 
 방향별 리액션 규칙:
 - 급등: 살짝 들뜬 톤 + 호들갑
@@ -307,7 +382,17 @@ ${TONE_RULES[tone]}
 ${RESPONSE_SCHEMA}`;
 }
 
-function buildRewritePrompt(name: string, ticker: string, rawAnalysis: string, news: NewsItem[]) {
+function buildRewritePrompt(name: string, ticker: string, rawAnalysis: string, news: NewsItem[], lang: Lang) {
+  if (lang === "en") {
+    return `[Stage 1 analysis]
+Stock: ${name} (${ticker})
+
+${rawAnalysis}
+
+[News list (index: title (published))]
+${news.length ? news.map((item, index) => `${index}. ${item.title} (${item.pubDate})`).join("\n") : "None"}`;
+  }
+
   return `[1단계 분석]
 종목: ${name}(${ticker})
 
@@ -323,12 +408,13 @@ async function rewritePlain(
   rawAnalysis: string,
   news: NewsItem[],
   tone: Tone,
+  lang: Lang,
 ): Promise<Briefing> {
-  const system = buildJeonhyungSystem(tone);
-  const prompt = buildRewritePrompt(name, ticker, rawAnalysis, news);
+  const system = buildJeonhyungSystem(tone, lang);
+  const prompt = buildRewritePrompt(name, ticker, rawAnalysis, news, lang);
 
   const content = await withGeminiFallback(
-    "2단계 쩐형 재작성",
+    "2단계 캐릭터 재작성",
     () => callXai(system, prompt, 0.9, true),
     () => callGemini(system, prompt, { temperature: 0.9, json: true }),
   );
@@ -340,23 +426,25 @@ async function rewritePlain(
     throw new Error(`재작성 응답이 JSON이 아닙니다: ${(content ?? "").slice(0, 300)}`);
   }
 
-  const briefing = coerceBriefing(raw, news);
-  briefing.aiComment = briefing.aiComment ? `${briefing.aiComment}\n\n${DISCLAIMER}` : DISCLAIMER;
+  const briefing = coerceBriefing(raw, news, lang);
+  briefing.aiComment = briefing.aiComment ? `${briefing.aiComment}\n\n${DISCLAIMER[lang]}` : DISCLAIMER[lang];
   return briefing;
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, ticker } = body as { name?: unknown; ticker?: unknown };
+    const { name, ticker, lang: rawLang } = body as { name?: unknown; ticker?: unknown; lang?: unknown };
     if (typeof name !== "string" || !name.trim()) return NextResponse.json({ error: "종목명이 필요합니다." }, { status: 400 });
+
+    const lang: Lang = rawLang === "en" ? "en" : "ko";
 
     const requestedTone = (body as { tone?: unknown }).tone;
     const tone: Tone =
-      typeof requestedTone === "string" && requestedTone in TONE_RULES ? (requestedTone as Tone) : DEFAULT_TONE;
+      typeof requestedTone === "string" && requestedTone in TONE_RULES.ko ? (requestedTone as Tone) : DEFAULT_TONE;
 
     const tickerKey = typeof ticker === "string" ? ticker : "";
-    const cacheKey = `${tickerKey || name}::${tone}`;
+    const cacheKey = `${tickerKey || name}::${tone}::${lang}`;
     const cachedEntry = ANALYSIS_CACHE.get(cacheKey);
     if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
       return NextResponse.json(cachedEntry.data);
@@ -364,8 +452,8 @@ export async function POST(request: Request) {
 
     const [news, price] = await Promise.all([getNews(name), getPriceForTicker(tickerKey)]);
 
-    const raw = await analyzeRaw(name, tickerKey, price, news);
-    const briefing = await rewritePlain(name, tickerKey, raw, news, tone);
+    const raw = await analyzeRaw(name, tickerKey, price, news, lang);
+    const briefing = await rewritePlain(name, tickerKey, raw, news, tone, lang);
 
     const responseData = {
       stock: { name, ticker: ticker || "" },

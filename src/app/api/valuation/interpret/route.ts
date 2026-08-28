@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/server-env";
 import { MetricNote, ValuationInterpretation } from "@/lib/types";
 
+type Lang = "ko" | "en";
+
 /**
  * 재무지표(PER/PBR/배당수익률/시가총액)를 주식 초보자 눈높이로 한두 문장씩 풀어준다.
  * 종목 페이지의 "회사 숫자로 보기" 카드 밑에 붙는 해설이라 캐릭터(쩐형) 톤은 쓰지 않고,
- * 친구가 옆에서 설명해주는 정도의 편한 존댓말로만 쓴다.
+ * 친구가 옆에서 설명해주는 정도의 편한 존댓말로만 쓴다. (영어 모드도 같은 톤을 유지한다.)
  *
  * 원칙: 주어진 숫자만 해석한다. 이 회사의 실적·뉴스·목표주가 같은 새 사실은 절대 지어내지 않는다.
  * (예금 금리, 코스피 평균 PER 같은 '일반적인 비교 기준'은 대략적인 눈금으로만 허용)
@@ -22,6 +24,7 @@ type Body = {
   stock?: { name?: unknown; ticker?: unknown };
   metrics?: Partial<Record<keyof MetricsInput, unknown>>;
   currentPrice?: { close?: unknown; changeRate?: unknown };
+  lang?: unknown;
 };
 
 function num(value: unknown): number | null {
@@ -39,7 +42,8 @@ const RESPONSE_SCHEMA = `{
   "marketCap": { "meaning": string, "interpretation": string }
 }`;
 
-const SYSTEM = `너는 주식 투자 초보자를 위한 '지표 해석가'다.
+const SYSTEM: Record<Lang, string> = {
+  ko: `너는 주식 투자 초보자를 위한 '지표 해석가'다.
 PER, PBR, 배당수익률, 시가총액 네 가지 숫자를 받아서 "이게 뭐고 뭘 의미하는지"를 쉽게 풀어준다.
 
 톤:
@@ -60,9 +64,51 @@ PER, PBR, 배당수익률, 시가총액 네 가지 숫자를 받아서 "이게 �
 - 값이 null(데이터 없음)인 지표는 meaning에 "지금은 이 값이 제공되지 않아요"라고 쓰고 interpretation은 빈 문자열로 둔다
 
 JSON만 출력한다. 스키마:
-${RESPONSE_SCHEMA}`;
+${RESPONSE_SCHEMA}`,
+  en: `You are a "metrics interpreter" for stock market beginners.
+You're given four numbers — PER, PBR, dividend yield, and market cap — and you explain in plain terms what each one is and what it means.
 
-function buildPrompt(name: string, ticker: string, metrics: MetricsInput, close: number | null, changeRate: number | null) {
+Tone:
+- Not expert-jargon-heavy; write like a friend explaining it casually
+- Focus on "so what does this mean" more than the raw number itself
+- Offer a perspective that helps the reader judge for themselves, but never instruct them to buy or sell
+
+Two sentences per metric:
+- meaning: what this number means (e.g. "It means the stock is trading at about 12 times its earnings per share")
+- interpretation: one sentence on whether that's cheap/expensive/average, and what it's useful to compare it to
+  - PER/PBR: lower generally means relatively cheap, higher means relatively expensive (the KOSPI average PER is roughly 10-12x)
+  - dividend: compare against a bank savings rate (roughly 3% a year) or the stock market's average dividend yield (roughly 2%)
+  - marketCap: what it would cost to buy the entire company outright — gives a sense of how big or small it is
+
+Strict rules:
+- Never invent facts that weren't given — this company's earnings, business details, news, forecasts, fair-value price, etc.
+- Use only the four numbers given and the general comparison benchmarks listed above — nothing else
+- For any metric that is null (no data), write "This value isn't available right now" as the meaning and leave interpretation as an empty string
+
+Output JSON only. Schema:
+${RESPONSE_SCHEMA}`,
+};
+
+function buildPrompt(
+  name: string,
+  ticker: string,
+  metrics: MetricsInput,
+  close: number | null,
+  changeRate: number | null,
+  lang: Lang,
+) {
+  if (lang === "en") {
+    const lines = [
+      `Stock: ${name}${ticker ? ` (${ticker})` : ""}`,
+      close !== null ? `Current price: ${close.toLocaleString("en-US")} KRW (change ${changeRate ?? "?"}%)` : "Current price: no data",
+      `PER: ${metrics.per !== null ? `${metrics.per}x` : "null"}`,
+      `PBR: ${metrics.pbr !== null ? `${metrics.pbr}x` : "null"}`,
+      `Dividend yield: ${metrics.dividend !== null ? `${metrics.dividend}%` : "null"}`,
+      `Market cap: ${metrics.marketCap !== null ? `approx. ${eok(metrics.marketCap)} 100M KRW` : "null"}`,
+    ];
+    return lines.join("\n");
+  }
+
   const lines = [
     `종목: ${name}${ticker ? ` (${ticker})` : ""}`,
     close !== null ? `현재가: ${close.toLocaleString("ko-KR")}원 (등락률 ${changeRate ?? "?"}%)` : "현재가: 데이터 없음",
@@ -92,7 +138,10 @@ function coerce(raw: unknown): ValuationInterpretation {
   };
 }
 
-const EMPTY: MetricNote = { meaning: "지금은 이 값이 제공되지 않아요.", interpretation: "" };
+const EMPTY: Record<Lang, MetricNote> = {
+  ko: { meaning: "지금은 이 값이 제공되지 않아요.", interpretation: "" },
+  en: { meaning: "This value isn't available right now.", interpretation: "" },
+};
 
 // 같은 종목 페이지가 데스크톱/모바일 레이아웃을 둘 다 렌더링해서 요청이 두 번 온다.
 // 지표는 10분 캐시(fetchValuation)라 짧게 캐시 + 인플라이트 합치기로 xAI 중복 호출을 막는다.
@@ -100,8 +149,8 @@ type CacheEntry = { promise: Promise<ValuationInterpretation>; expiresAt: number
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 10 * 60_000;
 
-function cacheKey(ticker: string, m: MetricsInput) {
-  return [ticker, m.per, m.pbr, m.dividend, m.marketCap].join("|");
+function cacheKey(ticker: string, m: MetricsInput, lang: Lang) {
+  return [lang, ticker, m.per, m.pbr, m.dividend, m.marketCap].join("|");
 }
 
 async function generate(
@@ -110,6 +159,7 @@ async function generate(
   metrics: MetricsInput,
   close: number | null,
   changeRate: number | null,
+  lang: Lang,
 ): Promise<ValuationInterpretation> {
   const apiKey = serverEnv("XAI_API_KEY");
   if (!apiKey) throw new Error("XAI_API_KEY를 .env에 설정하세요.");
@@ -123,8 +173,8 @@ async function generate(
       temperature: 0.4,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: SYSTEM },
-        { role: "user", content: buildPrompt(name, ticker, metrics, close, changeRate) },
+        { role: "system", content: SYSTEM[lang] },
+        { role: "user", content: buildPrompt(name, ticker, metrics, close, changeRate, lang) },
       ],
     }),
     cache: "no-store",
@@ -148,6 +198,8 @@ export async function POST(request: Request) {
     const ticker = typeof body.stock?.ticker === "string" ? body.stock.ticker : "";
     if (!name) return NextResponse.json({ error: "종목명이 필요합니다." }, { status: 400 });
 
+    const lang: Lang = body.lang === "en" ? "en" : "ko";
+
     const metrics: MetricsInput = {
       per: num(body.metrics?.per),
       pbr: num(body.metrics?.pbr),
@@ -159,18 +211,19 @@ export async function POST(request: Request) {
 
     // 숫자가 하나도 없으면 모델 호출할 이유가 없다.
     if (metrics.per === null && metrics.pbr === null && metrics.dividend === null && metrics.marketCap === null) {
+      const empty = EMPTY[lang];
       return NextResponse.json({
-        interpretation: { per: EMPTY, pbr: EMPTY, dividend: EMPTY, marketCap: EMPTY } satisfies ValuationInterpretation,
+        interpretation: { per: empty, pbr: empty, dividend: empty, marketCap: empty } satisfies ValuationInterpretation,
       });
     }
 
-    const key = cacheKey(ticker || name, metrics);
+    const key = cacheKey(ticker || name, metrics, lang);
     const hit = cache.get(key);
     let promise: Promise<ValuationInterpretation>;
     if (hit && Date.now() < hit.expiresAt) {
       promise = hit.promise;
     } else {
-      promise = generate(name, ticker, metrics, close, changeRate);
+      promise = generate(name, ticker, metrics, close, changeRate, lang);
       cache.set(key, { promise, expiresAt: Date.now() + CACHE_TTL_MS });
       // 호출이 실패하면 다음 요청이 다시 시도할 수 있게 캐시에서 뺀다.
       promise.catch(() => cache.delete(key));
