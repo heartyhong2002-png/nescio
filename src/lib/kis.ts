@@ -16,13 +16,14 @@ import { Valuation } from "./types";
 
 const KIS_BASE_URL = serverEnv("KIS_BASE_URL") || "https://openapi.koreainvestment.com:9443";
 
-// 토큰은 24시간 유효하고 발급은 "1분당 1회"로 제한된다. 프로세스 메모리 + 파일에 캐시한다.
+// 토큰은 24시간 유효하고 발급은 "1분당 1회"로 제한된다. 프로세스 메모리 + 파일 + 추가 안전장치로 캐시한다.
 const TOKEN_CACHE_PATH = path.join(process.cwd(), ".kis_token_cache.json");
 
 type TokenCache = { appKey: string; accessToken: string; expiresAt: number };
 
 let memoryToken: TokenCache | null = null;
 let inFlight: Promise<string> | null = null;
+let lastIssuedAt = 0; // 토큰 발급 시각을 기록해 1분 이내 재발급 방지
 
 function readTokenFile(appKey: string): TokenCache | null {
   try {
