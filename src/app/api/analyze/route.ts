@@ -5,6 +5,13 @@ import { Briefing, Cause, NewsItem, Price } from "@/lib/types";
 
 const NAVER_URL = "https://openapi.naver.com/v1/search/news.json";
 
+// 같은 종목을 짧은 시간 안에 다시 요청하면(평가 데모 등) 2단계 LLM 파이프라인을 다시 태우지 않고
+// 캐시된 결과를 즉시 돌려준다. 서버리스 인스턴스가 살아있는 동안만 유지되는 best-effort 캐시라
+// 인스턴스가 새로 뜨면 다시 처음부터 호출하지만, 같은 웜 인스턴스가 재사용될 땐 즉시 응답한다.
+type CachedAnalysis = { data: Record<string, unknown>; expiresAt: number };
+const ANALYSIS_CACHE = new Map<string, CachedAnalysis>();
+const ANALYSIS_CACHE_TTL_MS = 10 * 60 * 1000; // 10분
+
 function clean(value: string) {
   return value.replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').replace(/&amp;/g, "&").trim();
 }
@@ -90,13 +97,136 @@ function coerceBriefing(raw: unknown, news: NewsItem[]): Briefing {
 }
 
 // ---------------------------------------------------------------------------
-// 1단계: NVIDIA — 사실 확인 목적의 원본 분석 (formal한 문체 허용, 캐릭터 없음)
+// LLM 제공자 호출부 — 기본 제공자 실패 시 Gemini로 폴백한다(GEMINI_API_KEY 있을 때만).
 // ---------------------------------------------------------------------------
-async function analyzeRaw(name: string, ticker: string, price: Price, news: NewsItem[]): Promise<string> {
+
+const errMsg = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** OpenAI 호환 chat/completions (NVIDIA · xAI 공용). */
+async function callOpenAiCompatible(opts: {
+  label: string;
+  url: string;
+  apiKey: string;
+  model: string;
+  system: string;
+  prompt: string;
+  temperature: number;
+  json?: boolean;
+}): Promise<string> {
+  const response = await fetch(opts.url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${opts.apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: opts.model,
+      temperature: opts.temperature,
+      ...(opts.json ? { response_format: { type: "json_object" } } : {}),
+      messages: [
+        { role: "system", content: opts.system },
+        { role: "user", content: opts.prompt },
+      ],
+    }),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`${opts.label} API 오류 (${response.status}): ${await response.text()}`);
+  const content = (await response.json()).choices?.[0]?.message?.content as string | undefined;
+  if (!content) throw new Error(`${opts.label} 응답이 비어 있습니다.`);
+  return content;
+}
+
+function callNvidia(system: string, prompt: string, temperature: number): Promise<string> {
   const apiKey = serverEnv("NVIDIA_API_KEY");
   if (!apiKey) throw new Error("NVIDIA_API_KEY를 .env에 설정하세요.");
-  const model = serverEnv("NVIDIA_MODEL") || "nvidia/nemotron-3-super-120b-a12b";
+  return callOpenAiCompatible({
+    label: "NVIDIA",
+    url: "https://integrate.api.nvidia.com/v1/chat/completions",
+    apiKey,
+    model: serverEnv("NVIDIA_MODEL") || "nvidia/nemotron-3-super-120b-a12b",
+    system,
+    prompt,
+    temperature,
+  });
+}
 
+function callXai(system: string, prompt: string, temperature: number, json: boolean): Promise<string> {
+  const apiKey = serverEnv("XAI_API_KEY");
+  if (!apiKey) throw new Error("XAI_API_KEY를 .env에 설정하세요.");
+  return callOpenAiCompatible({
+    label: "xAI",
+    url: "https://api.x.ai/v1/chat/completions",
+    apiKey,
+    model: serverEnv("XAI_MODEL") || "grok-4-1-fast-non-reasoning",
+    system,
+    prompt,
+    temperature,
+    json,
+  });
+}
+
+async function callGemini(
+  system: string,
+  prompt: string,
+  opts: { temperature: number; json?: boolean },
+): Promise<string> {
+  const apiKey = serverEnv("GEMINI_API_KEY");
+  if (!apiKey) throw new Error("GEMINI_API_KEY를 .env에 설정하세요. (발급: https://aistudio.google.com/apikey)");
+  const model = serverEnv("GEMINI_MODEL") || "gemini-3.6-flash";
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: "POST",
+    headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: opts.temperature,
+        // 재작성·요약 작업이라 깊은 추론이 필요 없다. thinking 토큰이 출력 한도를 잡아먹어
+        // 스키마 JSON이 잘리는 걸 막으려고 thinking을 최소화하고 출력 한도를 넉넉히 잡는다.
+        thinkingConfig: { thinkingLevel: "low" },
+        maxOutputTokens: 16384,
+        ...(opts.json ? { responseMimeType: "application/json" } : {}),
+      },
+    }),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Gemini API 오류 (${response.status}): ${await response.text()}`);
+  const payload = await response.json();
+  const finishReason = payload.candidates?.[0]?.finishReason;
+  const content = payload.candidates?.[0]?.content?.parts
+    ?.map((part: { text?: string }) => part.text ?? "")
+    .join("") as string | undefined;
+  if (!content) {
+    const blocked = payload.promptFeedback?.blockReason ?? finishReason;
+    throw new Error(`Gemini 응답이 비어 있습니다${blocked ? ` (${blocked})` : ""}.`);
+  }
+  if (finishReason && finishReason !== "STOP") {
+    throw new Error(`Gemini 응답이 온전하지 않습니다 (${finishReason}).`);
+  }
+  return content;
+}
+
+/** 기본 제공자를 먼저 시도하고, 실패하면 Gemini로 한 번 더 시도한다. */
+async function withGeminiFallback(
+  label: string,
+  primary: () => Promise<string>,
+  gemini: () => Promise<string>,
+): Promise<string> {
+  try {
+    return await primary();
+  } catch (primaryError) {
+    if (!serverEnv("GEMINI_API_KEY")) throw primaryError;
+    console.warn(`[analyze] ${label} 기본 제공자 실패 → Gemini 폴백:`, errMsg(primaryError));
+    try {
+      return await gemini();
+    } catch (fallbackError) {
+      throw new Error(`${label} 실패 — 기본: ${errMsg(primaryError)} / Gemini 폴백: ${errMsg(fallbackError)}`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1단계: NVIDIA (폴백 Gemini) — 사실 확인 목적의 원본 분석 (formal한 문체, 캐릭터 없음)
+// ---------------------------------------------------------------------------
+function buildRawAnalysisPrompt(name: string, ticker: string, price: Price, news: NewsItem[]) {
   const priceText = `종가: ${price.close ?? "데이터 없음"}, 등락률: ${price.changeRate ?? "데이터 없음"}%, 시가총액: ${price.marketCap ?? "데이터 없음"}`;
   const newsText = news.length
     ? news.map((item, index) => `${index}. ${item.title} (${item.pubDate})\n${item.description}`).join("\n")
@@ -120,28 +250,20 @@ ${newsText}
 4. 긍정 요인과 부정 요인
 5. 추가 확인할 리스크와 다음에 관찰할 지표
 각 항목은 간결한 문단 또는 bullet로 작성하고, 근거가 부족하면 '판단 유보'라고 표시해라.`;
+  return { system, prompt };
+}
 
-  const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: prompt },
-      ],
-    }),
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`NVIDIA API 오류 (${response.status}): ${await response.text()}`);
-  const content = (await response.json()).choices?.[0]?.message?.content as string;
-  if (!content) throw new Error("NVIDIA 응답이 비어 있습니다.");
-  return content;
+async function analyzeRaw(name: string, ticker: string, price: Price, news: NewsItem[]): Promise<string> {
+  const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news);
+  return withGeminiFallback(
+    "1단계 원본 분석",
+    () => callNvidia(system, prompt, 0.2),
+    () => callGemini(system, prompt, { temperature: 0.2 }),
+  );
 }
 
 // ---------------------------------------------------------------------------
-// 2단계: xAI Grok — "쩐형" 캐릭터로 재작성 (1단계 사실은 그대로, 톤만 바꾼다)
+// 2단계: xAI Grok (폴백 Gemini) — "쩐형" 캐릭터로 재작성 (1단계 사실은 그대로, 톤만 바꾼다)
 // ---------------------------------------------------------------------------
 type Tone = "mild" | "medium" | "spicy" | "nuclear";
 
@@ -185,6 +307,16 @@ ${TONE_RULES[tone]}
 ${RESPONSE_SCHEMA}`;
 }
 
+function buildRewritePrompt(name: string, ticker: string, rawAnalysis: string, news: NewsItem[]) {
+  return `[1단계 분석]
+종목: ${name}(${ticker})
+
+${rawAnalysis}
+
+[뉴스 목록 (인덱스: 제목 (게재일))]
+${news.length ? news.map((item, index) => `${index}. ${item.title} (${item.pubDate})`).join("\n") : "없음"}`;
+}
+
 async function rewritePlain(
   name: string,
   ticker: string,
@@ -192,41 +324,20 @@ async function rewritePlain(
   news: NewsItem[],
   tone: Tone,
 ): Promise<Briefing> {
-  const apiKey = serverEnv("XAI_API_KEY");
-  if (!apiKey) throw new Error("XAI_API_KEY를 .env에 설정하세요.");
-  const model = serverEnv("XAI_MODEL") || "grok-4-1-fast-non-reasoning";
-
   const system = buildJeonhyungSystem(tone);
-  const prompt = `[1단계 분석]
-종목: ${name}(${ticker})
+  const prompt = buildRewritePrompt(name, ticker, rawAnalysis, news);
 
-${rawAnalysis}
-
-[뉴스 목록 (인덱스: 제목 (게재일))]
-${news.length ? news.map((item, index) => `${index}. ${item.title} (${item.pubDate})`).join("\n") : "없음"}`;
-
-  const response = await fetch("https://api.x.ai/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      temperature: 0.9,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: prompt },
-      ],
-    }),
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`xAI API 오류 (${response.status}): ${await response.text()}`);
-  const content = (await response.json()).choices?.[0]?.message?.content as string;
+  const content = await withGeminiFallback(
+    "2단계 쩐형 재작성",
+    () => callXai(system, prompt, 0.9, true),
+    () => callGemini(system, prompt, { temperature: 0.9, json: true }),
+  );
 
   let raw: unknown;
   try {
     raw = JSON.parse(content);
   } catch {
-    throw new Error(`xAI 응답이 JSON이 아닙니다: ${(content ?? "").slice(0, 300)}`);
+    throw new Error(`재작성 응답이 JSON이 아닙니다: ${(content ?? "").slice(0, 300)}`);
   }
 
   const briefing = coerceBriefing(raw, news);
@@ -244,18 +355,28 @@ export async function POST(request: Request) {
     const tone: Tone =
       typeof requestedTone === "string" && requestedTone in TONE_RULES ? (requestedTone as Tone) : DEFAULT_TONE;
 
-    const [news, price] = await Promise.all([getNews(name), getPriceForTicker(typeof ticker === "string" ? ticker : "")]);
+    const tickerKey = typeof ticker === "string" ? ticker : "";
+    const cacheKey = `${tickerKey || name}::${tone}`;
+    const cachedEntry = ANALYSIS_CACHE.get(cacheKey);
+    if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+      return NextResponse.json(cachedEntry.data);
+    }
 
-    const raw = await analyzeRaw(name, typeof ticker === "string" ? ticker : "", price, news);
-    const briefing = await rewritePlain(name, typeof ticker === "string" ? ticker : "", raw, news, tone);
+    const [news, price] = await Promise.all([getNews(name), getPriceForTicker(tickerKey)]);
 
-    return NextResponse.json({
+    const raw = await analyzeRaw(name, tickerKey, price, news);
+    const briefing = await rewritePlain(name, tickerKey, raw, news, tone);
+
+    const responseData = {
       stock: { name, ticker: ticker || "" },
       price,
       news,
       briefing,
       generatedAt: new Date().toISOString(),
-    });
+    };
+    ANALYSIS_CACHE.set(cacheKey, { data: responseData, expiresAt: Date.now() + ANALYSIS_CACHE_TTL_MS });
+
+    return NextResponse.json(responseData);
   } catch (error) {
     const message = error instanceof Error ? error.message : "분석 중 오류가 발생했습니다.";
     return NextResponse.json({ error: message }, { status: 500 });
