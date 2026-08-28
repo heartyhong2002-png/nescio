@@ -23,7 +23,10 @@ type TokenCache = { appKey: string; accessToken: string; expiresAt: number };
 
 let memoryToken: TokenCache | null = null;
 let inFlight: Promise<string> | null = null;
-let lastIssuedAt = 0; // 토큰 발급 시각을 기록해 1분 이내 재발급 방지
+let lastIssuedAt = 0; // 마지막 토큰 발급 시각 — 1분 이내 재발급을 막는다
+const MIN_ISSUE_GAP_MS = 60_000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function readTokenFile(appKey: string): TokenCache | null {
   try {
@@ -50,6 +53,12 @@ async function issueToken(appKey: string, appSecret: string): Promise<string> {
     return cached.accessToken;
   }
 
+  // KIS는 토큰 발급을 "1분당 1회"로 제한한다. 직전 발급으로부터 1분이 안 지났으면 남은 시간만큼 기다린다.
+  const sinceLastIssue = Date.now() - lastIssuedAt;
+  if (lastIssuedAt > 0 && sinceLastIssue < MIN_ISSUE_GAP_MS) {
+    await sleep(MIN_ISSUE_GAP_MS - sinceLastIssue + Math.floor(Math.random() * 1000));
+  }
+
   const response = await fetch(`${KIS_BASE_URL}/oauth2/tokenP`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -68,6 +77,7 @@ async function issueToken(appKey: string, appSecret: string): Promise<string> {
     expiresAt: Date.now() + (data.expires_in ?? 86400) * 1000 - 5 * 60 * 1000,
   };
   memoryToken = cache;
+  lastIssuedAt = Date.now();
   writeTokenFile(cache);
   return cache.accessToken;
 }
@@ -102,8 +112,6 @@ function asRows(value: KisRow | KisRow[] | undefined): KisRow[] {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
 }
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // KIS는 appkey 단위로 "초당 거래건수"를 빡빡하게 제한한다(EGW00201). 모든 호출을 최소 간격으로 직렬화한다.
 // 서버리스(Vercel)에서는 인스턴스마다 이 큐가 따로 돌아서 합산 트래픽이 순간적으로 몰릴 수 있으니
