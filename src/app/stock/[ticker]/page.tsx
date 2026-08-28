@@ -51,7 +51,7 @@ function StockBriefingContent() {
               <div className="section-title">가격이 움직인 이유</div>
               <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
                 {causes.map((cause) => (
-                  <div key={cause.id} style={{ flex: 1 }}>
+                  <div key={cause.id} style={{ flex: 1, minWidth: 0 }}>
                     <CauseCardButton cause={cause} active={selectedCause?.id === cause.id} onClick={() => setSelectedCauseId(cause.id)} />
                   </div>
                 ))}

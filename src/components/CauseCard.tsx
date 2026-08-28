@@ -11,8 +11,8 @@ function CauseCardBody({ cause }: { cause: Cause }) {
   return (
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 600 }}>{cause.title}</div>
-        <div className="muted" style={{ fontSize: 11, whiteSpace: "nowrap" }}>
+        <div style={{ fontSize: 12, fontWeight: 600, minWidth: 0 }}>{cause.title}</div>
+        <div className="muted" style={{ fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}>
           {IMPACT_LABEL[cause.impact]} →
         </div>
       </div>
