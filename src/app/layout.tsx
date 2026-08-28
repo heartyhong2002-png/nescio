@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { LanguageProvider } from "@/lib/language";
+import LanguageToggle from "@/components/LanguageToggle";
 
 export const metadata: Metadata = {
   title: "nescio · 관심 종목 뉴스 맥락 브리핑",
@@ -7,5 +9,14 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="ko"><body>{children}</body></html>;
+  return (
+    <html lang="ko">
+      <body>
+        <LanguageProvider>
+          {children}
+          <LanguageToggle />
+        </LanguageProvider>
+      </body>
+    </html>
+  );
 }
