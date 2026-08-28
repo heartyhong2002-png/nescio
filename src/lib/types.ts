@@ -69,6 +69,19 @@ export type Valuation = {
   dividendYield: number | null; // % (최근 1년 주당 현금배당금 / 현재가)
 };
 
+// 재무지표(PER/PBR/배당/시총)를 초보자 눈높이로 풀어주는 한 줄 해설.
+export type MetricNote = {
+  meaning: string; // "이 숫자가 뭘 뜻하는지" 한 문장
+  interpretation: string; // "그래서 비싼지/싼지/평범한지" 관점 한 문장
+};
+
+export type ValuationInterpretation = {
+  per: MetricNote;
+  pbr: MetricNote;
+  dividend: MetricNote;
+  marketCap: MetricNote;
+};
+
 export type Analysis = {
   stock: Stock;
   price: Price;

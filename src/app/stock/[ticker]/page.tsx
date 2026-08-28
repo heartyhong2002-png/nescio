@@ -7,7 +7,7 @@ import { CauseCardButton, CauseCardLink } from "@/components/CauseCard";
 import CauseDetailView from "@/components/CauseDetailView";
 import PriceChart from "@/components/PriceChart";
 import { changeArrow, changeEmoji, changeDirection, formatMarketCap, formatMultiple, formatPercent, formatPrice } from "@/lib/format";
-import type { Valuation } from "@/lib/types";
+import type { Price, Stock, Valuation, ValuationInterpretation } from "@/lib/types";
 import { useStockBriefing } from "@/lib/use-briefing";
 import { useWatchlist } from "@/lib/storage";
 
@@ -56,7 +56,7 @@ function StockBriefingContent() {
                   </div>
                 ))}
               </div>
-              <MetricsRow ticker={analysis.stock.ticker} marketCap={analysis.price.marketCap} />
+              <MetricsRow stock={analysis.stock} price={analysis.price} />
             </div>
 
             <div className="desktop-col desktop-side">
@@ -100,7 +100,7 @@ function StockBriefingContent() {
               ))}
             </div>
 
-            <MetricsRow ticker={analysis.stock.ticker} marketCap={analysis.price.marketCap} />
+            <MetricsRow stock={analysis.stock} price={analysis.price} />
 
             {analysis.briefing.aiComment && (
               <div className="placeholder-box" style={{ textAlign: "left", padding: 14, marginTop: 4 }}>
@@ -215,18 +215,68 @@ function useValuation(ticker: string) {
   return valuation;
 }
 
-function MetricsRow({ ticker, marketCap }: { ticker: string; marketCap: number | null }) {
-  const valuation = useValuation(ticker);
+// 지표 숫자가 들어오면 초보자용 한 줄 해설을 한 번 받아온다. 실패해도 조용히 숨긴다.
+function useValuationInterpretation(stock: Stock, price: Price, valuation: Valuation | null) {
+  const [interpretation, setInterpretation] = useState<ValuationInterpretation | null>(null);
+  const [settled, setSettled] = useState(false);
+
+  const marketCap = valuation?.marketCap ?? price.marketCap;
+  const ready =
+    valuation !== null &&
+    (valuation.per !== null || valuation.pbr !== null || valuation.dividendYield !== null || marketCap !== null);
+
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    fetch("/api/valuation/interpret", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stock: { name: stock.name, ticker: stock.ticker },
+        metrics: {
+          per: valuation?.per ?? null,
+          pbr: valuation?.pbr ?? null,
+          dividend: valuation?.dividendYield ?? null,
+          marketCap,
+        },
+        currentPrice: { close: price.close, changeRate: price.changeRate },
+      }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!cancelled && response.ok) setInterpretation(data.interpretation);
+      })
+      .catch(() => {
+        /* 해설은 부가 정보라 실패해도 조용히 카드만 보여준다 */
+      })
+      .finally(() => {
+        if (!cancelled) setSettled(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // valuation 객체가 새로 만들어질 때마다(=지표 로드 완료) 한 번만 돌면 된다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, stock.ticker]);
+
+  return { interpretation, loading: ready && !settled };
+}
+
+function MetricsRow({ stock, price }: { stock: Stock; price: Price }) {
+  const valuation = useValuation(stock.ticker);
+  const { interpretation, loading } = useValuationInterpretation(stock, price, valuation);
+
   const metrics = [
-    { label: "PER", value: formatMultiple(valuation?.per ?? null) },
-    { label: "PBR", value: formatMultiple(valuation?.pbr ?? null) },
-    { label: "배당", value: formatPercent(valuation?.dividendYield ?? null) },
-    { label: "시가총액", value: formatMarketCap(valuation?.marketCap ?? marketCap) },
+    { key: "per" as const, label: "PER", value: formatMultiple(valuation?.per ?? null) },
+    { key: "pbr" as const, label: "PBR", value: formatMultiple(valuation?.pbr ?? null) },
+    { key: "dividend" as const, label: "배당", value: formatPercent(valuation?.dividendYield ?? null) },
+    { key: "marketCap" as const, label: "시가총액", value: formatMarketCap(valuation?.marketCap ?? price.marketCap) },
   ];
+
   return (
     <>
       <div className="section-title">회사 숫자로 보기</div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: interpretation ? 12 : 20 }}>
         {metrics.map(({ label, value }) => (
           <div key={label} className="card-outline" style={{ flex: 1, padding: 11 }}>
             <div className="muted" style={{ fontSize: 10 }}>
@@ -236,6 +286,38 @@ function MetricsRow({ ticker, marketCap }: { ticker: string; marketCap: number |
           </div>
         ))}
       </div>
+
+      {loading && !interpretation && (
+        <div className="muted" style={{ fontSize: 11, marginBottom: 20 }}>
+          이 숫자들 쉽게 풀어보는 중…
+        </div>
+      )}
+
+      {interpretation && (
+        <div className="placeholder-box" style={{ textAlign: "left", padding: 14, marginBottom: 20 }}>
+          <div className="eyebrow" style={{ marginBottom: 8 }}>
+            이 숫자, 쉽게 풀면
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {metrics.map(({ key, label }) => {
+              const note = interpretation[key];
+              if (!note?.meaning) return null;
+              return (
+                <div key={key}>
+                  <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                    <b>{label}</b> · {note.meaning}
+                  </div>
+                  {note.interpretation && (
+                    <div className="muted" style={{ fontSize: 11, lineHeight: 1.6, marginTop: 2 }}>
+                      {note.interpretation}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </>
   );
 }
