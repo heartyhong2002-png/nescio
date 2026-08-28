@@ -870,6 +870,66 @@ button.list-row:hover {
   }
 }
 
+.loading-briefing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  border: 1px dashed var(--line-strong);
+  background: var(--accent-soft);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.loading-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.loading-dots span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: loading-bounce 1s ease-in-out infinite;
+}
+
+.loading-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.loading-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes loading-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: translateY(-8px);
+    opacity: 1;
+  }
+}
+
+.loading-caption {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent-dark);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-dots span {
+    animation: none;
+    opacity: 0.85;
+  }
+}
+
 /* ============================================================
    Stock briefing — single responsive layout
    ============================================================ */

@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { CauseCardButton } from "@/components/CauseCard";
 import CauseDetailView from "@/components/CauseDetailView";
+import { LoadingBriefing } from "@/components/LoadingBriefing";
 import PriceChart from "@/components/PriceChart";
 import {
   changeArrow,
@@ -50,16 +51,7 @@ function StockBriefingContent() {
         </button>
       </div>
 
-      {loading && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div className="muted" style={{ fontSize: 13 }}>
-            {loadingMessage}
-          </div>
-          <div className="skeleton" style={{ height: 64, width: "50%" }} />
-          <div className="skeleton" style={{ height: 220, borderRadius: 14 }} />
-          <div className="skeleton" style={{ height: 260, borderRadius: 14 }} />
-        </div>
-      )}
+      {loading && <LoadingBriefing message={loadingMessage} height={480} />}
 
       {error && (
         <div className="error-box">

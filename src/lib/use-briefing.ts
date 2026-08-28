@@ -21,10 +21,11 @@ const snapshotCache = new Map<string, Analysis | null>();
 const listeners = new Map<string, Set<() => void>>();
 
 const LOADING_STAGES = [
-  "시세 확인하는 중…",
-  "관련 뉴스 긁어모으는 중…",
+  "기다려봐 성질 급한 한국인아…",
+  "시세부터 확인하는 중…",
+  "관련 뉴스 탈탈 털어보는 중…",
   "원인 하나하나 뜯어보는 중…",
-  "쩐형이 코멘트 쓰는 중…",
+  "쩐형이 코멘트 쓰는 중… 거의 다 왔다",
 ];
 
 function primeSnapshot(ticker: string) {
