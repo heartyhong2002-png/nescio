@@ -93,7 +93,7 @@ function StockBriefingContent() {
               </div>
             )}
 
-            <MetricsRow stock={analysis.stock} price={analysis.price} />
+            <MetricsRow ticker={ticker} stock={analysis.stock} price={analysis.price} />
 
             {analysis.briefing.aiComment && (
               <div className="note-box" style={{ marginTop: 8 }}>
@@ -173,26 +173,48 @@ function StockHeader({
   );
 }
 
+// 종목 페이지가 열리면 차트(/api/price-history)가 KIS 분봉을 4번 호출하고, 그 뒤로
+// /api/valuation이 붙는다. KIS는 appkey 단위 레이트리밋이 빡빡해서 이 순간 valuation이
+// EGW00201로 밀리면 예전엔 조용히 실패하고 PER/PBR/배당이 영영 "—"로 남았다.
+// PriceChart와 같은 방식으로 몇 번 더 시도하고, 그래도 안 되면 눈에 보이는 재시도 버튼을 준다.
+const VALUATION_RETRY_DELAYS_MS = [1500, 3000, 5000, 8000];
+
 function useValuation(ticker: string) {
   const [valuation, setValuation] = useState<Valuation | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!ticker) return;
     let cancelled = false;
-    fetch(`/api/valuation?ticker=${encodeURIComponent(ticker)}`)
-      .then(async (response) => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    const load = async (attempt: number) => {
+      if (attempt === 0) setFailed(false);
+      try {
+        const response = await fetch(`/api/valuation?ticker=${encodeURIComponent(ticker)}`);
         const data = await response.json();
-        if (!cancelled && response.ok) setValuation(data.valuation);
-      })
-      .catch(() => {
-        /* 지표는 부가 정보라 실패해도 조용히 대시(—) 유지 */
-      });
+        if (!response.ok) throw new Error(data.error || "재무 지표를 불러오지 못했습니다.");
+        if (cancelled) return;
+        setValuation(data.valuation);
+      } catch {
+        if (cancelled) return;
+        if (attempt < VALUATION_RETRY_DELAYS_MS.length) {
+          timers.push(setTimeout(() => load(attempt + 1), VALUATION_RETRY_DELAYS_MS[attempt]));
+          return;
+        }
+        setFailed(true);
+      }
+    };
+
+    load(0);
     return () => {
       cancelled = true;
+      timers.forEach(clearTimeout);
     };
-  }, [ticker]);
+  }, [ticker, reloadKey]);
 
-  return valuation;
+  return { valuation, failed, retry: () => setReloadKey((key) => key + 1) };
 }
 
 // 지표 숫자가 들어오면 초보자용 한 줄 해설을 한 번 받아온다. 실패해도 조용히 숨긴다.
@@ -242,8 +264,9 @@ function useValuationInterpretation(stock: Stock, price: Price, valuation: Valua
   return { interpretation, loading: ready && !settled };
 }
 
-function MetricsRow({ stock, price }: { stock: Stock; price: Price }) {
-  const valuation = useValuation(stock.ticker);
+function MetricsRow({ ticker, stock, price }: { ticker: string; stock: Stock; price: Price }) {
+  // URL의 ticker를 쓴다 — 세션에 캐시된 옛 분석 객체엔 stock.ticker가 없을 수도 있다.
+  const { valuation, failed, retry } = useValuation(stock.ticker || ticker);
   const { interpretation, loading } = useValuationInterpretation(stock, price, valuation);
 
   const metrics = [
@@ -264,6 +287,15 @@ function MetricsRow({ stock, price }: { stock: Stock; price: Price }) {
           </div>
         ))}
       </div>
+
+      {failed && !valuation && (
+        <div className="muted" style={{ fontSize: 12, marginBottom: 24 }}>
+          지표를 불러오지 못했어요.{" "}
+          <button className="btn-ghost" onClick={retry}>
+            다시 시도
+          </button>
+        </div>
+      )}
 
       {loading && !interpretation && (
         <div className="muted" style={{ fontSize: 12, marginBottom: 24 }}>
