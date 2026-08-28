@@ -20,6 +20,13 @@ function readSession(ticker: string): Analysis | null {
 const snapshotCache = new Map<string, Analysis | null>();
 const listeners = new Map<string, Set<() => void>>();
 
+const LOADING_STAGES = [
+  "시세 확인하는 중…",
+  "관련 뉴스 긁어모으는 중…",
+  "원인 하나하나 뜯어보는 중…",
+  "쩐형이 코멘트 쓰는 중…",
+];
+
 function primeSnapshot(ticker: string) {
   if (!snapshotCache.has(ticker)) snapshotCache.set(ticker, readSession(ticker));
   return snapshotCache.get(ticker) ?? null;
@@ -65,6 +72,20 @@ export function useStockBriefing(ticker: string, initialName?: string) {
     () => null,
   );
   const [fetchState, setFetchState] = useState<{ loading: boolean; error: string }>({ loading: true, error: "" });
+  const effectiveLoading = cached ? false : fetchState.loading;
+  // 로딩 문구는 tick 카운터에서 파생한다. setState를 effect 본문에서 동기로 부르지 않으려고
+  // (cascading render 경고) 인터벌 콜백에서만 tick을 올리고, 로딩이 끝나면 cleanup에서 0으로 되돌린다.
+  const [loadingTick, setLoadingTick] = useState(0);
+  const loadingMessage = LOADING_STAGES[loadingTick % LOADING_STAGES.length];
+
+  useEffect(() => {
+    if (!effectiveLoading) return;
+    const interval = setInterval(() => setLoadingTick((tick) => tick + 1), 2200);
+    return () => {
+      clearInterval(interval);
+      setLoadingTick(0);
+    };
+  }, [effectiveLoading]);
 
   const fetchBriefing = useCallback(
     async (name: string) => {
@@ -112,8 +133,9 @@ export function useStockBriefing(ticker: string, initialName?: string) {
 
   return {
     analysis: cached,
-    loading: cached ? false : fetchState.loading,
+    loading: effectiveLoading,
     error: cached ? "" : fetchState.error,
+    loadingMessage,
     refresh,
   };
 }

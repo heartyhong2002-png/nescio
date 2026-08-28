@@ -28,7 +28,7 @@ function StockBriefingContent() {
   const ticker = params.ticker;
   const name = searchParams.get("name") ?? undefined;
 
-  const { analysis, loading, error, refresh } = useStockBriefing(ticker, name);
+  const { analysis, loading, loadingMessage, error, refresh } = useStockBriefing(ticker, name);
   const { has, toggle } = useWatchlist();
   const [selectedCauseId, setSelectedCauseId] = useState<string | null>(null);
   const [range, setRange] = useState(0);
@@ -52,6 +52,9 @@ function StockBriefingContent() {
 
       {loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            {loadingMessage}
+          </div>
           <div className="skeleton" style={{ height: 64, width: "50%" }} />
           <div className="skeleton" style={{ height: 220, borderRadius: 14 }} />
           <div className="skeleton" style={{ height: 260, borderRadius: 14 }} />

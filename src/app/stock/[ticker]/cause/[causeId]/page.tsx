@@ -13,7 +13,7 @@ function CauseBriefingContent() {
   const ticker = params.ticker;
   const name = searchParams.get("name") ?? undefined;
 
-  const { analysis, loading, error, refresh } = useStockBriefing(ticker, name);
+  const { analysis, loading, loadingMessage, error, refresh } = useStockBriefing(ticker, name);
   const cause = analysis?.briefing.causes.find((item) => item.id === params.causeId);
   const displayName = analysis?.stock.name ?? name ?? ticker;
 
@@ -25,6 +25,9 @@ function CauseBriefingContent() {
 
       {loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            {loadingMessage}
+          </div>
           <div className="skeleton" style={{ height: 30, width: "60%" }} />
           <div className="skeleton" style={{ height: 90, borderRadius: 12 }} />
           <div className="skeleton" style={{ height: 220 }} />
