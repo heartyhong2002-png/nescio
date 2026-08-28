@@ -105,13 +105,16 @@ function asRows(value: KisRow | KisRow[] | undefined): KisRow[] {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // KIS는 appkey 단위로 "초당 거래건수"를 빡빡하게 제한한다(EGW00201). 모든 호출을 최소 간격으로 직렬화한다.
-const MIN_CALL_GAP_MS = 300;
+// 서버리스(Vercel)에서는 인스턴스마다 이 큐가 따로 돌아서 합산 트래픽이 순간적으로 몰릴 수 있으니
+// 간격을 넉넉히 잡고, 실제 초과가 나면 kisGet에서 지수 백오프로 재시도한다.
+const MIN_CALL_GAP_MS = 360;
 let lastCallAt = 0;
 let callQueue: Promise<unknown> = Promise.resolve();
 
 function throttle<T>(task: () => Promise<T>): Promise<T> {
   const run = callQueue.then(async () => {
-    const wait = lastCallAt + MIN_CALL_GAP_MS - Date.now();
+    // 약간의 지터를 섞어 여러 인스턴스가 같은 박자로 KIS를 때리는 상황을 흩뜨린다.
+    const wait = lastCallAt + MIN_CALL_GAP_MS - Date.now() + Math.floor(Math.random() * 60);
     if (wait > 0) await sleep(wait);
     lastCallAt = Date.now();
     return task();
@@ -139,24 +142,38 @@ async function kisGetOnce(apiPath: string, trId: string, params: Record<string, 
   });
   const data = (await response.json().catch(() => ({}))) as KisResponse & { msg_cd?: string };
   if (!response.ok || data.rt_cd !== "0") {
-    const error = new Error(`KIS API 오류 (${response.status}): ${data.msg1 ?? apiPath}`);
-    (error as Error & { code?: string }).code = data.msg_cd;
+    const error = new Error(`KIS API 오류 (${response.status}): ${data.msg1 ?? apiPath}`) as Error & {
+      code?: string;
+      status?: number;
+    };
+    error.code = data.msg_cd;
+    error.status = response.status;
     throw error;
   }
   return data;
 }
 
+// 일시적인 장애로 보고 재시도해야 하는 경우:
+//  - EGW00201: 초당 거래건수 초과   - EGW00133: 토큰 발급 제한
+//  - HTTP 429 / 5xx: KIS 게이트웨이 순간 오류
+function isRetryable(error: unknown): boolean {
+  const { code, status } = (error ?? {}) as { code?: string; status?: number };
+  if (code === "EGW00201" || code === "EGW00133") return true;
+  return status === 429 || (typeof status === "number" && status >= 500);
+}
+
 async function kisGet(apiPath: string, trId: string, params: Record<string, string>): Promise<KisResponse> {
+  const MAX_ATTEMPTS = 5;
   let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     try {
       return await throttle(() => kisGetOnce(apiPath, trId, params));
     } catch (error) {
       lastError = error;
-      const code = (error as { code?: string }).code;
-      // 초당 거래건수 초과(EGW00201) / 토큰 발급 제한(EGW00133)이면 잠시 쉬고 재시도
-      if (code !== "EGW00201" && code !== "EGW00133") break;
-      await sleep(600 * (attempt + 1));
+      if (!isRetryable(error) || attempt === MAX_ATTEMPTS - 1) break;
+      // 지수 백오프 + 지터: 0.6s, 1.2s, 2.4s, 4.8s (+최대 0.4s)
+      const backoff = 600 * 2 ** attempt + Math.floor(Math.random() * 400);
+      await sleep(backoff);
     }
   }
   throw lastError;
@@ -181,7 +198,9 @@ function yyyymmdd(date: Date): string {
 /** 하루치 1분봉을 09:00~15:30 구간에 대해 120분 단위 앵커 4번으로 모은다 (호출당 최대 120건). */
 async function fetchIntradayForDate(ticker: string, date: string): Promise<PricePoint[]> {
   const anchors = ["110000", "130000", "150000", "153000"];
-  const batches = await Promise.all(
+  // 한 앵커가 레이트리밋 등으로 끝내 실패해도 나머지 구간이라도 그리는 게 낫다.
+  // 전부 실패했을 때만 에러를 던져 상위(폴백/재시도)로 넘긴다.
+  const settled = await Promise.allSettled(
     anchors.map((hour) =>
       kisGet("/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice", "FHKST03010230", {
         FID_COND_MRKT_DIV_CODE: "J",
@@ -194,8 +213,13 @@ async function fetchIntradayForDate(ticker: string, date: string): Promise<Price
     ),
   );
 
+  const ok = settled.filter((r): r is PromiseFulfilledResult<KisRow[]> => r.status === "fulfilled");
+  if (ok.length === 0) {
+    throw settled.find((r): r is PromiseRejectedResult => r.status === "rejected")?.reason ?? new Error("분봉 조회 실패");
+  }
+
   const byTime = new Map<string, number>();
-  for (const row of batches.flat()) {
+  for (const row of ok.flatMap((r) => r.value)) {
     const hour = row.stck_cntg_hour; // HHMMSS
     const close = toNumber(row.stck_prpr);
     if (!hour || close === null) continue;
@@ -262,14 +286,39 @@ export async function fetchDailyHistory(ticker: string, range: string): Promise<
 }
 
 // 같은 종목을 여러 사용자가 조회할 때 KIS 호출을 아끼고 응답을 빠르게 하기 위한 짧은 인메모리 캐시.
-const responseCache = new Map<string, { value: unknown; expiresAt: number }>();
+//  - 진행 중인 요청(promise)을 공유해 동시 호출이 KIS를 중복으로 때리지 않게 한다
+//    (한 종목 페이지가 데스크톱/모바일 레이아웃을 둘 다 마운트하면 요청이 두 번 온다).
+//  - 마지막으로 성공한 값을 lastGood에 보관해, 갱신이 레이트리밋으로 실패하면
+//    잠깐(STALE_TTL) 그 값을 대신 돌려준다 — 차트가 통째로 비는 것보다 낫다.
+type CacheEntry<T = unknown> = { value?: T; promise?: Promise<T>; expiresAt: number; lastGood?: T };
+const responseCache = new Map<string, CacheEntry>();
+const STALE_TTL_MS = 20_000;
 
 async function cached<T>(key: string, ttlMs: number, produce: () => Promise<T>): Promise<T> {
-  const hit = responseCache.get(key);
-  if (hit && Date.now() < hit.expiresAt) return hit.value as T;
-  const value = await produce();
-  responseCache.set(key, { value, expiresAt: Date.now() + ttlMs });
-  return value;
+  const hit = responseCache.get(key) as CacheEntry<T> | undefined;
+  if (hit) {
+    if (hit.value !== undefined && Date.now() < hit.expiresAt) return hit.value;
+    if (hit.promise) return hit.promise; // 진행 중인 요청에 합류
+  }
+  const lastGood = hit?.lastGood ?? hit?.value;
+
+  const promise = produce()
+    .then((value) => {
+      responseCache.set(key, { value, expiresAt: Date.now() + ttlMs, lastGood: value });
+      return value;
+    })
+    .catch((error: unknown) => {
+      if (lastGood !== undefined) {
+        // 직전 성공값으로 잠깐 버틴다. STALE_TTL 동안은 재시도하지 않아 KIS 부담도 던다.
+        responseCache.set(key, { value: lastGood, expiresAt: Date.now() + STALE_TTL_MS, lastGood });
+        return lastGood;
+      }
+      responseCache.delete(key);
+      throw error;
+    });
+
+  responseCache.set(key, { promise, expiresAt: Date.now() + ttlMs, lastGood });
+  return promise;
 }
 
 export async function fetchKisPriceHistory(ticker: string, range: string): Promise<PricePoint[]> {

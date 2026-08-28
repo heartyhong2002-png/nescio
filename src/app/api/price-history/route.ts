@@ -26,8 +26,11 @@ export async function GET(request: Request) {
     if (points.length > 0 || range === "1일") return NextResponse.json({ points });
   } catch (error) {
     if (range === "1일") {
+      // 분봉은 KRX 폴백이 없다. 레이트리밋 같은 일시적 오류면 클라이언트가 잠시 뒤 다시 부르도록
+      // 200 + retryable 플래그로 알려준다(하드 500은 그대로 에러 화면에 박제된다).
       const message = error instanceof Error ? error.message : "분봉을 불러오지 못했습니다.";
-      return NextResponse.json({ error: message }, { status: 500 });
+      const retryable = /EGW00201|EGW00133|429|50\d|초당 거래건수/.test(message);
+      return NextResponse.json({ points: [], retryable, error: message }, { status: retryable ? 200 : 500 });
     }
     // 일/주/월봉은 아래 KRX 폴백을 시도한다.
   }

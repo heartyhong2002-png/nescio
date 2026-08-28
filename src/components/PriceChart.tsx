@@ -13,23 +13,47 @@ function formatPointLabel(raw: string) {
   return raw;
 }
 
+// KIS 레이트리밋은 대부분 몇 초 안에 풀린다. 바로 에러를 띄우지 말고 조용히 몇 번 더 시도한다.
+const MAX_RETRIES = 4;
+const RETRY_DELAYS_MS = [1200, 2500, 4500, 7000];
+
 export default function PriceChart({ ticker, range }: { ticker: string; range: string }) {
   const [points, setPoints] = useState<PricePoint[] | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/price-history?ticker=${encodeURIComponent(ticker)}&range=${encodeURIComponent(range)}`)
-      .then(async (response) => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    const load = async (attempt: number) => {
+      try {
+        const response = await fetch(
+          `/api/price-history?ticker=${encodeURIComponent(ticker)}&range=${encodeURIComponent(range)}`,
+        );
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "가격 이력을 불러오지 못했습니다.");
-        if (!cancelled) setPoints(data.points);
-      })
-      .catch((requestError) => {
-        if (!cancelled) setError(requestError instanceof Error ? requestError.message : "가격 이력을 불러오지 못했습니다.");
-      });
+        if (cancelled) return;
+
+        // 레이트리밋 등 일시적 실패(retryable) — 빈 결과면 잠시 뒤 다시.
+        if (data.retryable && (data.points?.length ?? 0) === 0 && attempt < MAX_RETRIES) {
+          timers.push(setTimeout(() => load(attempt + 1), RETRY_DELAYS_MS[attempt] ?? 7000));
+          return;
+        }
+        setPoints(data.points ?? []);
+      } catch (requestError) {
+        if (cancelled) return;
+        if (attempt < MAX_RETRIES) {
+          timers.push(setTimeout(() => load(attempt + 1), RETRY_DELAYS_MS[attempt] ?? 7000));
+          return;
+        }
+        setError(requestError instanceof Error ? requestError.message : "가격 이력을 불러오지 못했습니다.");
+      }
+    };
+
+    load(0);
     return () => {
       cancelled = true;
+      timers.forEach(clearTimeout);
     };
   }, [ticker, range]);
 
