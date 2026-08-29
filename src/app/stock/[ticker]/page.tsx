@@ -197,22 +197,39 @@ function StockHeader({
   );
 }
 
+// KIS 레이트리밋(특히 서버리스에서 라우트별로 토큰 캐시가 안 겹치는 문제)은 대부분 몇 초 안에
+// 풀린다. PriceChart와 동일한 패턴으로, retryable 신호를 받으면 바로 포기하지 않고 잠깐 뒤 다시 부른다.
+const VALUATION_MAX_RETRIES = 4;
+const VALUATION_RETRY_DELAYS_MS = [1200, 2500, 4500, 7000];
+
 function useValuation(ticker: string) {
   const [valuation, setValuation] = useState<Valuation | null>(null);
 
   useEffect(() => {
     if (!ticker) return;
     let cancelled = false;
-    fetch(`/api/valuation?ticker=${encodeURIComponent(ticker)}`)
-      .then(async (response) => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    const load = async (attempt: number) => {
+      try {
+        const response = await fetch(`/api/valuation?ticker=${encodeURIComponent(ticker)}`);
         const data = await response.json();
-        if (!cancelled && response.ok) setValuation(data.valuation);
-      })
-      .catch(() => {
+        if (cancelled) return;
+
+        if (data.retryable && !data.valuation && attempt < VALUATION_MAX_RETRIES) {
+          timers.push(setTimeout(() => load(attempt + 1), VALUATION_RETRY_DELAYS_MS[attempt] ?? 7000));
+          return;
+        }
+        if (response.ok) setValuation(data.valuation);
+      } catch {
         /* 지표는 부가 정보라 실패해도 조용히 대시(—) 유지 */
-      });
+      }
+    };
+
+    load(0);
     return () => {
       cancelled = true;
+      timers.forEach(clearTimeout);
     };
   }, [ticker]);
 

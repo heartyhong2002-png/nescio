@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchPriceHistory } from "@/lib/krx";
-import { fetchKisPriceHistory } from "@/lib/kis";
+import { fetchKisPriceHistory, isRetryableKisMessage } from "@/lib/kis";
 
 // Calendar-day lookback per range for the KRX fallback, generous enough to cover market holidays.
 const RANGE_CALENDAR_DAYS: Record<string, number> = {
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
       // 분봉은 KRX 폴백이 없다. 레이트리밋 같은 일시적 오류면 클라이언트가 잠시 뒤 다시 부르도록
       // 200 + retryable 플래그로 알려준다(하드 500은 그대로 에러 화면에 박제된다).
       const message = error instanceof Error ? error.message : "분봉을 불러오지 못했습니다.";
-      const retryable = /EGW00201|EGW00133|429|50\d|초당 거래건수/.test(message);
+      const retryable = isRetryableKisMessage(message);
       return NextResponse.json({ points: [], retryable, error: message }, { status: retryable ? 200 : 500 });
     }
     // 일/주/월봉은 아래 KRX 폴백을 시도한다.

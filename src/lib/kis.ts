@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { serverEnv } from "./server-env";
 import { PricePoint } from "./krx";
@@ -17,7 +18,9 @@ import { Valuation } from "./types";
 const KIS_BASE_URL = serverEnv("KIS_BASE_URL") || "https://openapi.koreainvestment.com:9443";
 
 // 토큰은 24시간 유효하고 발급은 "1분당 1회"로 제한된다. 프로세스 메모리 + 파일 + 추가 안전장치로 캐시한다.
-const TOKEN_CACHE_PATH = path.join(process.cwd(), ".kis_token_cache.json");
+// Vercel 등 서버리스에서는 배포 파일시스템이 읽기 전용이라 process.cwd()에는 절대 못 쓴다
+// (쓰기는 항상 조용히 실패해서 캐시가 없는 것처럼 동작했다) — 유일하게 쓰기 가능한 os.tmpdir()를 쓴다.
+const TOKEN_CACHE_PATH = path.join(os.tmpdir(), "nescio-kis-token-cache.json");
 
 type TokenCache = { appKey: string; accessToken: string; expiresAt: number };
 
@@ -67,7 +70,11 @@ async function issueToken(appKey: string, appSecret: string): Promise<string> {
   });
   const data = (await response.json()) as { access_token?: string; expires_in?: number; error_description?: string };
   if (!response.ok || !data.access_token) {
-    throw new Error(`KIS 토큰 발급 오류 (${response.status}): ${data.error_description ?? "알 수 없는 오류"}`);
+    const error = new Error(
+      `KIS 토큰 발급 오류 (${response.status}): ${data.error_description ?? "알 수 없는 오류"}`,
+    ) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
   }
 
   const cache: TokenCache = {
@@ -165,10 +172,20 @@ async function kisGetOnce(apiPath: string, trId: string, params: Record<string, 
 // 일시적인 장애로 보고 재시도해야 하는 경우:
 //  - EGW00201: 초당 거래건수 초과   - EGW00133: 토큰 발급 제한
 //  - HTTP 429 / 5xx: KIS 게이트웨이 순간 오류
+//  - HTTP 403(토큰 발급 "1분당 1회" 제한): 서버리스에서는 라우트마다 별도 인스턴스라 토큰 캐시가
+//    공유되지 않는다 — 같은 페이지가 동시에 여러 KIS 라우트를 부르면 서로 다른 인스턴스가 동시에
+//    토큰을 새로 발급받으려다 이 제한에 걸릴 수 있으니, 이 경우도 일시적 오류로 보고 재시도한다.
 function isRetryable(error: unknown): boolean {
   const { code, status } = (error ?? {}) as { code?: string; status?: number };
   if (code === "EGW00201" || code === "EGW00133") return true;
-  return status === 429 || (typeof status === "number" && status >= 500);
+  return status === 429 || status === 403 || (typeof status === "number" && status >= 500);
+}
+
+// API 라우트가 클라이언트에게 "지금은 실패했지만 잠시 후 다시 부르면 될 수도 있다"고 알려줄 때 쓰는
+// 메시지 기반 판정. kisGet의 isRetryable과 같은 패턴이지만, Error 객체가 아니라 이미 문자열로
+// 직렬화된 메시지(예: 캐시 레이어를 통과한 뒤)에도 쓸 수 있게 별도로 둔다.
+export function isRetryableKisMessage(message: string): boolean {
+  return /EGW00201|EGW00133|429|50\d|초당 거래건수|토큰 발급|1분당/.test(message);
 }
 
 async function kisGet(apiPath: string, trId: string, params: Record<string, string>): Promise<KisResponse> {
