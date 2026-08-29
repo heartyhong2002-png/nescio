@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { Analysis, Stock } from "./types";
+import { Analysis } from "./types";
+import { resolveStockName } from "./stock-name";
 
 function cacheKey(ticker: string) {
   return `nescio.briefing.${ticker}`;
@@ -46,23 +47,6 @@ function subscribe(ticker: string, callback: () => void) {
   }
   set.add(callback);
   return () => set!.delete(callback);
-}
-
-async function resolveStockName(ticker: string): Promise<string | null> {
-  try {
-    const cached = window.sessionStorage.getItem("nescio.stocks-cache");
-    const stocks: Stock[] = cached
-      ? JSON.parse(cached)
-      : await fetch("/api/stocks").then(async (res) => {
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error);
-          window.sessionStorage.setItem("nescio.stocks-cache", JSON.stringify(data.stocks));
-          return data.stocks as Stock[];
-        });
-    return stocks.find((stock) => stock.ticker === ticker)?.name ?? null;
-  } catch {
-    return null;
-  }
 }
 
 export function useStockBriefing(ticker: string, initialName?: string) {

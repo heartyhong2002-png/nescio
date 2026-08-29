@@ -18,6 +18,7 @@ import {
 } from "@/lib/format";
 import type { Price, Stock, Valuation, ValuationInterpretation } from "@/lib/types";
 import { useStockBriefing } from "@/lib/use-briefing";
+import { useStockSummary } from "@/lib/use-summary";
 import { useWatchlist } from "@/lib/storage";
 
 const RANGES = ["1일", "1주", "1개월", "1년"];
@@ -28,12 +29,18 @@ function StockBriefingContent() {
   const ticker = params.ticker;
   const name = searchParams.get("name") ?? undefined;
 
-  const { analysis, loading, loadingMessage, error, refresh } = useStockBriefing(ticker, name);
+  // 시세/차트/재무지표는 빠른 경로(summary)로 먼저 그리고,
+  // AI 브리핑(원인 분석·쩐형 코멘트)은 느린 경로(briefing)로 따로 불러와 해당 영역만 갱신한다.
+  const { summary, loading: summaryLoading, error: summaryError } = useStockSummary(ticker, name);
+  const { analysis, loading: briefingLoading, loadingMessage, error: briefingError, refresh } = useStockBriefing(
+    ticker,
+    name,
+  );
   const { has, toggle } = useWatchlist();
   const [selectedCauseId, setSelectedCauseId] = useState<string | null>(null);
   const [range, setRange] = useState(0);
 
-  const displayName = analysis?.stock.name ?? name ?? ticker;
+  const displayName = summary?.stock.name ?? analysis?.stock.name ?? name ?? ticker;
   const causes = analysis?.briefing.causes ?? [];
   const selectedCause = causes.find((cause) => cause.id === selectedCauseId) ?? causes[0] ?? null;
   const inWatchlist = has(ticker);
@@ -50,33 +57,39 @@ function StockBriefingContent() {
         </button>
       </div>
 
-      {loading && (
+      {summaryLoading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div className="muted" style={{ fontSize: 13 }}>
-            {loadingMessage}
-          </div>
           <div className="skeleton" style={{ height: 64, width: "50%" }} />
           <div className="skeleton" style={{ height: 220, borderRadius: 14 }} />
           <div className="skeleton" style={{ height: 260, borderRadius: 14 }} />
         </div>
       )}
 
-      {error && (
-        <div className="error-box">
-          {error}{" "}
-          <button className="btn-ghost" onClick={refresh}>
-            다시 시도
-          </button>
-        </div>
+      {summaryError && (
+        <div className="error-box">{summaryError}</div>
       )}
 
-      {analysis && !loading && (
+      {summary && !summaryLoading && (
         <div className="stock-layout">
           <div>
-            <StockHeader analysis={analysis} range={range} setRange={setRange} />
+            <StockHeader stock={summary.stock} price={summary.price} oneLiner={analysis?.briefing.oneLiner} range={range} setRange={setRange} />
 
             <div className="section-title">가격이 움직인 이유</div>
-            {causes.length === 0 ? (
+            {briefingLoading ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 26 }}>
+                <div className="muted" style={{ fontSize: 13 }}>
+                  {loadingMessage}
+                </div>
+                <div className="skeleton" style={{ height: 96, borderRadius: 14 }} />
+              </div>
+            ) : briefingError ? (
+              <div className="error-box" style={{ marginBottom: 24 }}>
+                {briefingError}{" "}
+                <button className="btn-ghost" onClick={refresh}>
+                  다시 시도
+                </button>
+              </div>
+            ) : causes.length === 0 ? (
               <div className="note-box" style={{ marginBottom: 24 }}>
                 뚜렷한 원인을 찾지 못했어요.
               </div>
@@ -93,9 +106,18 @@ function StockBriefingContent() {
               </div>
             )}
 
-            <MetricsRow stock={analysis.stock} price={analysis.price} />
+            <MetricsRow stock={summary.stock} price={summary.price} />
 
-            {analysis.briefing.aiComment && (
+            {briefingLoading && (
+              <div className="note-box" style={{ marginTop: 8 }}>
+                <div className="eyebrow" style={{ marginBottom: 6 }}>
+                  AI가 정리하는 중
+                </div>
+                <div className="skeleton" style={{ height: 48, borderRadius: 10 }} />
+              </div>
+            )}
+
+            {analysis?.briefing.aiComment && (
               <div className="note-box" style={{ marginTop: 8 }}>
                 <div className="eyebrow" style={{ marginBottom: 6 }}>
                   AI가 정리해줬어요
@@ -108,11 +130,11 @@ function StockBriefingContent() {
           </div>
 
           <aside className="stock-aside">
-            {selectedCause ? (
+            {selectedCause && analysis ? (
               <CauseDetailView analysis={analysis} cause={selectedCause} />
             ) : (
               <div className="muted" style={{ fontSize: 13 }}>
-                원인 데이터가 없어요.
+                {briefingLoading ? "원인 분석하는 중…" : "원인 데이터가 없어요."}
               </div>
             )}
           </aside>
@@ -123,35 +145,37 @@ function StockBriefingContent() {
 }
 
 function StockHeader({
-  analysis,
+  stock,
+  price,
+  oneLiner,
   range,
   setRange,
 }: {
-  analysis: NonNullable<ReturnType<typeof useStockBriefing>["analysis"]>;
+  stock: Stock;
+  price: Price;
+  oneLiner?: string;
   range: number;
   setRange: (index: number) => void;
 }) {
-  const direction = changeDirection(analysis.price.changeRate);
+  const direction = changeDirection(price.changeRate);
   return (
     <>
       <div style={{ marginBottom: 16 }}>
-        <div className="page-title">{analysis.stock.name}</div>
+        <div className="page-title">{stock.name}</div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 8 }}>
           <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em" }}>
-            {formatPrice(analysis.price.close)}
+            {formatPrice(price.close)}
           </div>
           <div className={`price-${direction}`} style={{ fontSize: 14, fontWeight: 600 }}>
-            {changeArrow(analysis.price.changeRate)}
-            {analysis.price.changeRate !== null
-              ? ` ${Math.abs(analysis.price.changeRate).toFixed(2)}%`
-              : " 데이터 없음"}
-            {changeEmoji(analysis.price.changeRate)}
+            {changeArrow(price.changeRate)}
+            {price.changeRate !== null ? ` ${Math.abs(price.changeRate).toFixed(2)}%` : " 데이터 없음"}
+            {changeEmoji(price.changeRate)}
           </div>
         </div>
       </div>
 
       <div className="card" style={{ padding: 16, marginBottom: 14 }}>
-        <PriceChart key={`${analysis.stock.ticker}-${RANGES[range]}`} ticker={analysis.stock.ticker} range={RANGES[range]} />
+        <PriceChart key={`${stock.ticker}-${RANGES[range]}`} ticker={stock.ticker} range={RANGES[range]} />
         <div className="range-tabs" style={{ marginTop: 4 }}>
           {RANGES.map((label, index) => (
             <button key={label} className={index === range ? "active" : undefined} onClick={() => setRange(index)}>
@@ -161,12 +185,12 @@ function StockHeader({
         </div>
       </div>
 
-      {analysis.briefing.oneLiner && (
+      {oneLiner && (
         <div style={{ borderLeft: "3px solid var(--accent)", padding: "4px 0 4px 14px", margin: "18px 0 24px" }}>
           <div className="eyebrow" style={{ marginBottom: 6 }}>
             오늘 한 줄
           </div>
-          <div style={{ fontSize: 15, fontWeight: 500, lineHeight: 1.6 }}>{analysis.briefing.oneLiner}</div>
+          <div style={{ fontSize: 15, fontWeight: 500, lineHeight: 1.6 }}>{oneLiner}</div>
         </div>
       )}
     </>
