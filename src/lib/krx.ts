@@ -9,8 +9,13 @@ type KrxRow = {
   MKTCAP?: string;
 };
 
-const KRX_BASE_URL = "https://data-dbg.krx.co.kr/svc/apis/sto";
-const MARKET_CODE: Record<Market, "stk" | "ksq"> = { KOSPI: "stk", KOSDAQ: "ksq" };
+const KRX_BASE_URL = "https://data-dbg.krx.co.kr/svc/apis";
+// 일반 주식(KOSPI/KOSDAQ)은 "sto"(증권상품) 서비스, ETF는 "etp"(상장지수상품) 서비스로 API가 나뉜다.
+const MARKET_SVC_PATH: Record<Market, string> = {
+  KOSPI: "sto/stk_bydd_trd",
+  KOSDAQ: "sto/ksq_bydd_trd",
+  ETF: "etp/etf_bydd_trd",
+};
 
 function dateString(offset: number) {
   const date = new Date();
@@ -20,7 +25,7 @@ function dateString(offset: number) {
 
 async function fetchRows(market: Market, basDd: string, key: string): Promise<KrxRow[]> {
   const response = await fetch(
-    `${KRX_BASE_URL}/${MARKET_CODE[market]}_bydd_trd?AUTH_KEY=${encodeURIComponent(key)}&basDd=${basDd}`,
+    `${KRX_BASE_URL}/${MARKET_SVC_PATH[market]}?AUTH_KEY=${encodeURIComponent(key)}&basDd=${basDd}`,
     { cache: "no-store" },
   );
   if (!response.ok) throw new Error(`KRX ${market} 종목 API 오류 (${response.status})`);
@@ -47,16 +52,20 @@ function rowToPrice(row: KrxRow | undefined) {
   if (!row) return { close: null, changeRate: null, marketCap: null };
   return {
     close: Number(String(row.TDD_CLSPRC).replaceAll(",", "")),
-    changeRate: Number(String(row.FLUC_RT).replaceAll(",", "")),
+    // ETF 응답에는 FLUC_RT/MKTCAP 필드가 없을 수 있어 방어적으로 처리한다.
+    changeRate: row.FLUC_RT ? Number(String(row.FLUC_RT).replaceAll(",", "")) : null,
     marketCap: row.MKTCAP ? Number(String(row.MKTCAP).replaceAll(",", "")) : null,
   };
 }
 
-/** Looks up the latest close/changeRate for a single ticker, trying both markets. */
+// 일반 종목이 대다수라 KOSPI/KOSDAQ을 먼저 찾고, 못 찾았을 때만 ETF를 조회해 불필요한 지연을 줄인다.
+const MARKETS_BY_LOOKUP_PRIORITY: Market[] = ["KOSPI", "KOSDAQ", "ETF"];
+
+/** Looks up the latest close/changeRate for a single ticker, trying every market. */
 export async function getPriceForTicker(ticker: string) {
   const key = serverEnv("KRX_AUTH_KEY");
   if (!key || !ticker) return { close: null, changeRate: null, marketCap: null };
-  for (const market of ["KOSPI", "KOSDAQ"] as Market[]) {
+  for (const market of MARKETS_BY_LOOKUP_PRIORITY) {
     const rows = await fetchLatestMarketRows(market, key);
     const row = rows.find((item) => item.ISU_CD === ticker);
     if (row) return rowToPrice(row);
@@ -71,11 +80,10 @@ export async function getPricesForTickers(tickers: string[]) {
   if (!key || tickers.length === 0) return result;
 
   const wanted = new Set(tickers);
-  const [kospiRows, kosdaqRows] = await Promise.all([
-    fetchLatestMarketRows("KOSPI", key),
-    fetchLatestMarketRows("KOSDAQ", key),
-  ]);
-  for (const row of [...kospiRows, ...kosdaqRows]) {
+  const rowsByMarket = await Promise.all(
+    MARKETS_BY_LOOKUP_PRIORITY.map((market) => fetchLatestMarketRows(market, key)),
+  );
+  for (const row of rowsByMarket.flat()) {
     if (row.ISU_CD && wanted.has(row.ISU_CD)) result.set(row.ISU_CD, rowToPrice(row));
   }
   return result;
@@ -84,7 +92,7 @@ export async function getPricesForTickers(tickers: string[]) {
 export type PricePoint = { date: string; close: number };
 
 async function resolveMarket(ticker: string, key: string): Promise<Market | null> {
-  for (const market of ["KOSPI", "KOSDAQ"] as Market[]) {
+  for (const market of MARKETS_BY_LOOKUP_PRIORITY) {
     const rows = await fetchLatestMarketRows(market, key);
     if (rows.some((row) => row.ISU_CD === ticker)) return market;
   }
