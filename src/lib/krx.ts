@@ -41,6 +41,17 @@ export async function fetchLatestMarketRows(market: Market, key: string): Promis
   return [];
 }
 
+// KRX Open API는 서비스(주식/ETF 등)별로 별도 승인이 필요하다. 아직 승인 안 된 시장의 호출은
+// 401로 실패하는데, 그 한 시장 실패 때문에 다른 시장 조회까지 통째로 죽으면 안 되니 조용히 건너뛴다.
+async function fetchLatestMarketRowsSafe(market: Market, key: string): Promise<KrxRow[]> {
+  try {
+    return await fetchLatestMarketRows(market, key);
+  } catch (error) {
+    console.warn(`[krx] ${market} 조회 실패, 건너뜀:`, error instanceof Error ? error.message : error);
+    return [];
+  }
+}
+
 export async function listMarketStocks(market: Market, key: string): Promise<Stock[]> {
   const rows = await fetchLatestMarketRows(market, key);
   return rows
@@ -66,7 +77,7 @@ export async function getPriceForTicker(ticker: string) {
   const key = serverEnv("KRX_AUTH_KEY");
   if (!key || !ticker) return { close: null, changeRate: null, marketCap: null };
   for (const market of MARKETS_BY_LOOKUP_PRIORITY) {
-    const rows = await fetchLatestMarketRows(market, key);
+    const rows = await fetchLatestMarketRowsSafe(market, key);
     const row = rows.find((item) => item.ISU_CD === ticker);
     if (row) return rowToPrice(row);
   }
@@ -81,7 +92,7 @@ export async function getPricesForTickers(tickers: string[]) {
 
   const wanted = new Set(tickers);
   const rowsByMarket = await Promise.all(
-    MARKETS_BY_LOOKUP_PRIORITY.map((market) => fetchLatestMarketRows(market, key)),
+    MARKETS_BY_LOOKUP_PRIORITY.map((market) => fetchLatestMarketRowsSafe(market, key)),
   );
   for (const row of rowsByMarket.flat()) {
     if (row.ISU_CD && wanted.has(row.ISU_CD)) result.set(row.ISU_CD, rowToPrice(row));
@@ -93,7 +104,7 @@ export type PricePoint = { date: string; close: number };
 
 async function resolveMarket(ticker: string, key: string): Promise<Market | null> {
   for (const market of MARKETS_BY_LOOKUP_PRIORITY) {
-    const rows = await fetchLatestMarketRows(market, key);
+    const rows = await fetchLatestMarketRowsSafe(market, key);
     if (rows.some((row) => row.ISU_CD === ticker)) return market;
   }
   return null;
