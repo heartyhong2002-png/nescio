@@ -13,7 +13,7 @@ type SummaryItem = Stock & { close: number | null; changeRate: number | null; ne
 export default function HomePage() {
   const router = useRouter();
   const { onboarded, hydrated } = useOnboarded();
-  const { watchlist } = useWatchlist();
+  const { watchlist, remove } = useWatchlist();
   const [items, setItems] = useState<SummaryItem[] | null>(null);
   const [error, setError] = useState("");
 
@@ -104,36 +104,43 @@ export default function HomePage() {
               {rows.map((stock) => {
                 const direction = changeDirection(stock.changeRate);
                 return (
-                  <Link
-                    key={stock.ticker}
-                    href={`/stock/${stock.ticker}?name=${encodeURIComponent(stock.name)}`}
-                    className="list-row"
-                    style={{ color: "inherit" }}
-                  >
-                    <div className="stock-icon">{stock.name.slice(0, 1)}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600 }}>{stock.name}</div>
-                      <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
-                        {loading
-                          ? "불러오는 중…"
-                          : stock.newsCount !== null
-                            ? `오늘 뉴스 ${stock.newsCount}건`
-                            : "뉴스 정보 없음"}
-                      </div>
-                    </div>
-                    {loading ? (
-                      <div className="skeleton" style={{ width: 64, height: 32 }} />
-                    ) : (
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 14, fontWeight: 600 }}>{formatPrice(stock.close)}</div>
-                        <div className={`price-${direction}`} style={{ fontSize: 12, marginTop: 3 }}>
-                          {changeArrow(stock.changeRate)}{" "}
-                          {stock.changeRate !== null ? `${Math.abs(stock.changeRate).toFixed(2)}%` : "—"}
-                          {changeEmoji(stock.changeRate)}
+                  <div key={stock.ticker} className="list-row">
+                    <Link
+                      href={`/stock/${stock.ticker}?name=${encodeURIComponent(stock.name)}`}
+                      style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0, color: "inherit" }}
+                    >
+                      <div className="stock-icon">{stock.name.slice(0, 1)}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600 }}>{stock.name}</div>
+                        <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
+                          {loading
+                            ? "불러오는 중…"
+                            : stock.newsCount !== null
+                              ? `오늘 뉴스 ${stock.newsCount}건`
+                              : "뉴스 정보 없음"}
                         </div>
                       </div>
-                    )}
-                  </Link>
+                      {loading ? (
+                        <div className="skeleton" style={{ width: 64, height: 32 }} />
+                      ) : (
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 14, fontWeight: 600 }}>{formatPrice(stock.close)}</div>
+                          <div className={`price-${direction}`} style={{ fontSize: 12, marginTop: 3 }}>
+                            {changeArrow(stock.changeRate)}{" "}
+                            {stock.changeRate !== null ? `${Math.abs(stock.changeRate).toFixed(2)}%` : "—"}
+                            {changeEmoji(stock.changeRate)}
+                          </div>
+                        </div>
+                      )}
+                    </Link>
+                    <button
+                      className="watchlist-remove-btn"
+                      aria-label={`${stock.name} 관심종목에서 삭제`}
+                      onClick={() => remove(stock.ticker)}
+                    >
+                      ×
+                    </button>
+                  </div>
                 );
               })}
             </div>
