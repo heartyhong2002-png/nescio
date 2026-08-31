@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/server-env";
 import { getPriceForTicker } from "@/lib/krx";
 import { fetchMajorRatesSummary, fetchInternationalRatesSummary } from "@/lib/exim";
+import { getNewsMultiSource } from "@/lib/news-sources";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { Briefing, Cause, NewsItem, Price } from "@/lib/types";
 
@@ -14,33 +15,12 @@ const RATE_LIMIT = { limit: 5, windowMs: 60_000 };
 // 설정으로 처리한다 — 이 프로젝트 전체가 그 설정 하나를 공유하므로 여기서 별도로
 // preferredRegion을 지정할 필요는 없다.
 
-const NAVER_URL = "https://openapi.naver.com/v1/search/news.json";
-
 // 같은 종목을 짧은 시간 안에 다시 요청하면(평가 데모 등) 2단계 LLM 파이프라인을 다시 태우지 않고
 // 캐시된 결과를 즉시 돌려준다. 서버리스 인스턴스가 살아있는 동안만 유지되는 best-effort 캐시라
 // 인스턴스가 새로 뜨면 다시 처음부터 호출하지만, 같은 웜 인스턴스가 재사용될 땐 즉시 응답한다.
 type CachedAnalysis = { data: Record<string, unknown>; expiresAt: number };
 const ANALYSIS_CACHE = new Map<string, CachedAnalysis>();
 const ANALYSIS_CACHE_TTL_MS = 10 * 60 * 1000; // 10분
-
-function clean(value: string) {
-  return value.replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').replace(/&amp;/g, "&").trim();
-}
-
-async function getNews(query: string): Promise<NewsItem[]> {
-  const clientId = serverEnv("NAVER_CLIENT_ID");
-  const clientSecret = serverEnv("NAVER_CLIENT_SECRET");
-  if (!clientId || !clientSecret) throw new Error("NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET을 .env에 설정하세요.");
-  const response = await fetch(`${NAVER_URL}?query=${encodeURIComponent(query)}&display=10&sort=date`, {
-    headers: { "X-Naver-Client-Id": clientId, "X-Naver-Client-Secret": clientSecret },
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`네이버 뉴스 API 오류 (${response.status})`);
-  const items = (await response.json()).items ?? [];
-  return items.map((item: { title: string; description: string; link: string; pubDate: string }) => ({
-    title: clean(item.title), description: clean(item.description), link: item.link, pubDate: item.pubDate,
-  }));
-}
 
 // 프론트(CauseCard/CauseDetailView 등)가 이미 이 스키마로 렌더링하고 있어서 그대로 유지한다.
 // 2단계(쩐형) 응답도 이 스키마에 맞춰 나오도록 강제한다.
@@ -408,7 +388,7 @@ export async function POST(request: Request) {
     }
 
     const [news, price, fxSummary, intlRateSummary] = await Promise.all([
-      getNews(name),
+      getNewsMultiSource(name),
       getPriceForTicker(tickerKey),
       // 환율·국제금리는 참고용 보조 데이터라 실패해도 브리핑 전체를 막지 않는다 — 조용히 빈
       // 문자열로. 다만 원인 추적을 위해 로그는 남긴다(클라이언트 응답에는 영향 없음).
