@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/server-env";
 import { getPriceForTicker } from "@/lib/krx";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { Briefing, Cause, NewsItem, Price } from "@/lib/types";
+
+// 2단계 LLM 호출(NVIDIA + xAI)이라 요청 1건 비용이 크다. IP당 분당 5회로 제한해
+// 스크립트로 캐시를 우회하며 계속 새 종목명을 찔러 API 비용을 태우는 걸 막는다.
+const RATE_LIMIT = { limit: 5, windowMs: 60_000 };
 
 const NAVER_URL = "https://openapi.naver.com/v1/search/news.json";
 
@@ -347,6 +352,14 @@ async function rewritePlain(
 
 export async function POST(request: Request) {
   try {
+    const { ok, retryAfterMs } = rateLimit(`analyze:${clientIp(request)}`, RATE_LIMIT.limit, RATE_LIMIT.windowMs);
+    if (!ok) {
+      return NextResponse.json(
+        { error: "요청이 너무 잦아요. 잠시 후 다시 시도해 주세요." },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } },
+      );
+    }
+
     const body = await request.json();
     const { name, ticker } = body as { name?: unknown; ticker?: unknown };
     if (typeof name !== "string" || !name.trim()) return NextResponse.json({ error: "종목명이 필요합니다." }, { status: 400 });

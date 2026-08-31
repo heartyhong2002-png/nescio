@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/server-env";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { MetricNote, ValuationInterpretation } from "@/lib/types";
+
+// xAI 호출 1건이라 analyze보다는 가볍지만, 종목당 캐시(10분)를 우회해 다른 숫자 조합으로
+// 계속 찔러 비용을 태우는 걸 막기 위해 IP당 분당 10회로 제한한다.
+const RATE_LIMIT = { limit: 10, windowMs: 60_000 };
 
 /**
  * 재무지표(PER/PBR/배당수익률/시가총액)를 주식 초보자 눈높이로 한두 문장씩 풀어준다.
@@ -143,6 +148,14 @@ async function generate(
 
 export async function POST(request: Request) {
   try {
+    const { ok, retryAfterMs } = rateLimit(`interpret:${clientIp(request)}`, RATE_LIMIT.limit, RATE_LIMIT.windowMs);
+    if (!ok) {
+      return NextResponse.json(
+        { error: "요청이 너무 잦아요. 잠시 후 다시 시도해 주세요." },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } },
+      );
+    }
+
     const body = (await request.json()) as Body;
     const name = typeof body.stock?.name === "string" ? body.stock.name.trim() : "";
     const ticker = typeof body.stock?.ticker === "string" ? body.stock.ticker : "";
