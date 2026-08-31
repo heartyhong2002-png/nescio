@@ -10,7 +10,18 @@ type KrxRow = {
 };
 
 const KRX_BASE_URL = "https://data-dbg.krx.co.kr/svc/apis";
-const MARKET_CODE: Record<Market, "stk" | "ksq"> = { KOSPI: "stk", KOSDAQ: "ksq" };
+// 시장/상품 유형별로 서비스 카테고리가 나뉜다: 일반 주식(KOSPI/KOSDAQ/KONEX)·신주인수권증권은
+// "sto"(증권상품), ETF/ETN은 "etp"(상장지수상품). KONEX·신주인수권증권 경로는 KRX 공식 문서가
+// 로그인 뒤에만 보여서 기존 sto/{코드}_bydd_trd 명명 규칙으로 추정했다 — 실제로 다르면 아래
+// safe 래퍼가 그 시장만 조용히 건너뛰므로 나머지 시장은 영향 없다.
+const MARKET_SVC_PATH: Record<Market, string> = {
+  KOSPI: "sto/stk_bydd_trd",
+  KOSDAQ: "sto/ksq_bydd_trd",
+  KONEX: "sto/knx_bydd_trd",
+  ETF: "etp/etf_bydd_trd",
+  ETN: "etp/etn_bydd_trd",
+  WARRANT: "sto/sw_bydd_trd",
+};
 
 function dateString(offset: number) {
   const date = new Date();
@@ -20,7 +31,7 @@ function dateString(offset: number) {
 
 async function fetchRows(market: Market, basDd: string, key: string): Promise<KrxRow[]> {
   const response = await fetch(
-    `${KRX_BASE_URL}/sto/${MARKET_CODE[market]}_bydd_trd?AUTH_KEY=${encodeURIComponent(key)}&basDd=${basDd}`,
+    `${KRX_BASE_URL}/${MARKET_SVC_PATH[market]}?AUTH_KEY=${encodeURIComponent(key)}&basDd=${basDd}`,
     { cache: "no-store" },
   );
   if (!response.ok) throw new Error(`KRX ${market} 종목 API 오류 (${response.status})`);
@@ -36,6 +47,18 @@ export async function fetchLatestMarketRows(market: Market, key: string): Promis
   return [];
 }
 
+// KRX Open API는 서비스(시장/상품 유형)별로 별도 승인이 필요하다. 아직 승인 안 됐거나 경로 추정이
+// 틀린 시장의 호출은 401/404로 실패하는데, 그 한 시장 실패 때문에 다른 시장 조회까지 통째로
+// 죽으면 안 되니 조용히 건너뛴다.
+async function fetchLatestMarketRowsSafe(market: Market, key: string): Promise<KrxRow[]> {
+  try {
+    return await fetchLatestMarketRows(market, key);
+  } catch (error) {
+    console.warn(`[krx] ${market} 조회 실패, 건너뜀:`, error instanceof Error ? error.message : error);
+    return [];
+  }
+}
+
 export async function listMarketStocks(market: Market, key: string): Promise<Stock[]> {
   const rows = await fetchLatestMarketRows(market, key);
   return rows
@@ -47,20 +70,22 @@ function rowToPrice(row: KrxRow | undefined) {
   if (!row) return { close: null, changeRate: null, marketCap: null };
   return {
     close: Number(String(row.TDD_CLSPRC).replaceAll(",", "")),
-    changeRate: Number(String(row.FLUC_RT).replaceAll(",", "")),
+    // ETF/ETN/신주인수권증권 응답에는 FLUC_RT/MKTCAP 필드가 없을 수 있어 방어적으로 처리한다.
+    changeRate: row.FLUC_RT ? Number(String(row.FLUC_RT).replaceAll(",", "")) : null,
     marketCap: row.MKTCAP ? Number(String(row.MKTCAP).replaceAll(",", "")) : null,
   };
 }
 
-// 일반 종목이 대다수라 KOSPI/KOSDAQ을 먼저 찾고, 못 찾았을 때만 ETF를 조회해 불필요한 지연을 줄인다.
-const MARKETS_BY_LOOKUP_PRIORITY: Market[] = ["KOSPI", "KOSDAQ"];
+// 일반 종목(KOSPI/KOSDAQ)이 대다수라 먼저 찾고, 못 찾았을 때만 나머지 시장을 순서대로 조회해
+// 불필요한 지연을 줄인다.
+const MARKETS_BY_LOOKUP_PRIORITY: Market[] = ["KOSPI", "KOSDAQ", "KONEX", "ETF", "ETN", "WARRANT"];
 
 /** Looks up the latest close/changeRate for a single ticker, trying every market. */
 export async function getPriceForTicker(ticker: string) {
   const key = serverEnv("KRX_AUTH_KEY");
   if (!key || !ticker) return { close: null, changeRate: null, marketCap: null };
   for (const market of MARKETS_BY_LOOKUP_PRIORITY) {
-    const rows = await fetchLatestMarketRows(market, key);
+    const rows = await fetchLatestMarketRowsSafe(market, key);
     const row = rows.find((item) => item.ISU_CD === ticker);
     if (row) return rowToPrice(row);
   }
@@ -75,7 +100,7 @@ export async function getPricesForTickers(tickers: string[]) {
 
   const wanted = new Set(tickers);
   const rowsByMarket = await Promise.all(
-    MARKETS_BY_LOOKUP_PRIORITY.map((market) => fetchLatestMarketRows(market, key)),
+    MARKETS_BY_LOOKUP_PRIORITY.map((market) => fetchLatestMarketRowsSafe(market, key)),
   );
   for (const row of rowsByMarket.flat()) {
     if (row.ISU_CD && wanted.has(row.ISU_CD)) result.set(row.ISU_CD, rowToPrice(row));
@@ -87,7 +112,7 @@ export type PricePoint = { date: string; close: number };
 
 async function resolveMarket(ticker: string, key: string): Promise<Market | null> {
   for (const market of MARKETS_BY_LOOKUP_PRIORITY) {
-    const rows = await fetchLatestMarketRows(market, key);
+    const rows = await fetchLatestMarketRowsSafe(market, key);
     if (rows.some((row) => row.ISU_CD === ticker)) return market;
   }
   return null;

@@ -1,4 +1,4 @@
-export type Market = "KOSPI" | "KOSDAQ";
+export type Market = "KOSPI" | "KOSDAQ" | "KONEX" | "ETF" | "ETN" | "WARRANT";
 
 export type Stock = {
   name: string;

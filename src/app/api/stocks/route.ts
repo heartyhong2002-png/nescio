@@ -3,7 +3,7 @@ import { serverEnv } from "@/lib/server-env";
 import { listMarketStocks } from "@/lib/krx";
 import { Market } from "@/lib/types";
 
-const MARKETS: Market[] = ["KOSPI", "KOSDAQ"];
+const MARKETS: Market[] = ["KOSPI", "KOSDAQ", "KONEX", "ETF", "ETN", "WARRANT"];
 
 export async function GET() {
   const key = serverEnv("KRX_AUTH_KEY");
