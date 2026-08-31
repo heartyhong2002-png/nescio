@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/server-env";
 import { getPriceForTicker } from "@/lib/krx";
+import { fetchMajorRatesSummary } from "@/lib/exim";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { Briefing, Cause, NewsItem, Price } from "@/lib/types";
 
@@ -231,19 +232,23 @@ async function withGeminiFallback(
 // ---------------------------------------------------------------------------
 // 1단계: NVIDIA (폴백 Gemini) — 사실 확인 목적의 원본 분석 (formal한 문체, 캐릭터 없음)
 // ---------------------------------------------------------------------------
-function buildRawAnalysisPrompt(name: string, ticker: string, price: Price, news: NewsItem[]) {
+function buildRawAnalysisPrompt(name: string, ticker: string, price: Price, news: NewsItem[], fxSummary: string) {
   const priceText = `종가: ${price.close ?? "데이터 없음"}, 등락률: ${price.changeRate ?? "데이터 없음"}%, 시가총액: ${price.marketCap ?? "데이터 없음"}`;
   const newsText = news.length
     ? news.map((item, index) => `${index}. ${item.title} (${item.pubDate})\n${item.description}`).join("\n")
     : "관련 뉴스 없음";
+  const fxText = fxSummary || "데이터 없음";
 
   const system =
     "너는 한국 주식 리서치 애널리스트다. 제공된 데이터만 근거로 분석하고, 확인된 사실과 해석을 구분하라. " +
     "투자 매수·매도 권유나 확정적인 미래 예측은 하지 말라.";
-  const prompt = `다음은 ${name}(${ticker})의 최근 시세와 네이버 뉴스다.
+  const prompt = `다음은 ${name}(${ticker})의 최근 시세와 네이버 뉴스, 오늘의 주요 환율이다.
 
 [시세 데이터]
 ${priceText}
+
+[오늘의 환율(매매기준율, 참고용)]
+${fxText}
 
 [관련 뉴스]
 ${newsText}
@@ -251,15 +256,23 @@ ${newsText}
 아래 형식으로 한국어 종합 분석을 작성해라.
 1. 최근 주가 흐름
 2. 핵심 뉴스 요약: 주가에 영향을 줄 수 있는 뉴스 3~5개
-3. 주가 변동 원인: 뉴스와 시세의 흐름을 연결한 근거 중심 분석
+3. 주가 변동 원인: 뉴스와 시세의 흐름을 연결한 근거 중심 분석. 이 종목이 수출입 비중이 크거나
+   외화 표시 원자재/부품을 다루는 등 환율 변동에 실제로 노출된 업종이고, 뉴스에서도 그 근거가
+   확인될 때만 위 환율 데이터를 원인 중 하나로 연결해라 — 관련 없으면 환율은 언급하지 마라.
 4. 긍정 요인과 부정 요인
 5. 추가 확인할 리스크와 다음에 관찰할 지표
 각 항목은 간결한 문단 또는 bullet로 작성하고, 근거가 부족하면 '판단 유보'라고 표시해라.`;
   return { system, prompt };
 }
 
-async function analyzeRaw(name: string, ticker: string, price: Price, news: NewsItem[]): Promise<string> {
-  const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news);
+async function analyzeRaw(
+  name: string,
+  ticker: string,
+  price: Price,
+  news: NewsItem[],
+  fxSummary: string,
+): Promise<string> {
+  const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news, fxSummary);
   return withGeminiFallback(
     "1단계 원본 분석",
     () => callNvidia(system, prompt, 0.2),
@@ -375,9 +388,14 @@ export async function POST(request: Request) {
       return NextResponse.json(cachedEntry.data);
     }
 
-    const [news, price] = await Promise.all([getNews(name), getPriceForTicker(tickerKey)]);
+    const [news, price, fxSummary] = await Promise.all([
+      getNews(name),
+      getPriceForTicker(tickerKey),
+      // 환율은 참고용 보조 데이터라 실패해도 브리핑 전체를 막지 않는다 — 조용히 빈 문자열로.
+      fetchMajorRatesSummary().catch(() => ""),
+    ]);
 
-    const raw = await analyzeRaw(name, tickerKey, price, news);
+    const raw = await analyzeRaw(name, tickerKey, price, news, fxSummary);
     const briefing = await rewritePlain(name, tickerKey, raw, news, tone);
 
     const responseData = {

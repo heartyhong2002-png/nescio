@@ -37,6 +37,16 @@ export type Price = {
   marketCap: number | null;
 };
 
+// 한국수출입은행 환율 API — 매매기준율 기준. unit은 "100엔당" 같은 표시 단위(기본 1).
+export type ExchangeRate = {
+  code: string; // ISO 통화코드 (USD, JPY, EUR ...)
+  name: string; // 한글 통화명 (미국 달러, 일본 엔 ...)
+  unit: number; // 1 또는 100 (JPY(100) 등 소액 통화)
+  rate: number; // 매매기준율 (원)
+  ttb: number | null; // 전신환 매입율
+  tts: number | null; // 전신환 매도율
+};
+
 export type CauseImpact = "high" | "medium" | "low";
 
 export type Cause = {
