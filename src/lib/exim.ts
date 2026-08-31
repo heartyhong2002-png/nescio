@@ -47,7 +47,16 @@ function dateString(offset: number) {
 
 async function fetchRatesForDate(basDd: string, key: string): Promise<ExchangeRate[]> {
   const url = `${EXIM_BASE_URL}?authkey=${encodeURIComponent(key)}&searchdate=${basDd}&data=AP01`;
-  const response = await fetch(url, { cache: "no-store" });
+  // 일부 공공기관 서버는 User-Agent가 없는 요청(자동화 도구로 의심)을 방화벽 단에서
+  // 끊어버리는 경우가 있어(ECONNRESET), 브라우저처럼 보이는 User-Agent를 명시적으로 보낸다.
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+      Accept: "application/json, text/plain, */*",
+    },
+  });
   if (!response.ok) throw new Error(`수출입은행 환율 API 오류 (${response.status})`);
   const rows = ((await response.json()) ?? []) as EximRow[];
 
