@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/server-env";
 import { getPriceForTicker } from "@/lib/krx";
-import { fetchMajorRatesSummary } from "@/lib/exim";
+import { fetchMajorRatesSummary, fetchInternationalRatesSummary } from "@/lib/exim";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { Briefing, Cause, NewsItem, Price } from "@/lib/types";
 
@@ -237,23 +237,34 @@ async function withGeminiFallback(
 // ---------------------------------------------------------------------------
 // 1단계: NVIDIA (폴백 Gemini) — 사실 확인 목적의 원본 분석 (formal한 문체, 캐릭터 없음)
 // ---------------------------------------------------------------------------
-function buildRawAnalysisPrompt(name: string, ticker: string, price: Price, news: NewsItem[], fxSummary: string) {
+function buildRawAnalysisPrompt(
+  name: string,
+  ticker: string,
+  price: Price,
+  news: NewsItem[],
+  fxSummary: string,
+  intlRateSummary: string,
+) {
   const priceText = `종가: ${price.close ?? "데이터 없음"}, 등락률: ${price.changeRate ?? "데이터 없음"}%, 시가총액: ${price.marketCap ?? "데이터 없음"}`;
   const newsText = news.length
     ? news.map((item, index) => `${index}. ${item.title} (${item.pubDate})\n${item.description}`).join("\n")
     : "관련 뉴스 없음";
   const fxText = fxSummary || "데이터 없음";
+  const intlRateText = intlRateSummary || "데이터 없음";
 
   const system =
     "너는 한국 주식 리서치 애널리스트다. 제공된 데이터만 근거로 분석하고, 확인된 사실과 해석을 구분하라. " +
     "투자 매수·매도 권유나 확정적인 미래 예측은 하지 말라.";
-  const prompt = `다음은 ${name}(${ticker})의 최근 시세와 네이버 뉴스, 오늘의 주요 환율이다.
+  const prompt = `다음은 ${name}(${ticker})의 최근 시세와 네이버 뉴스, 오늘의 주요 환율·국제금리다.
 
 [시세 데이터]
 ${priceText}
 
 [오늘의 환율(매매기준율, 참고용)]
 ${fxText}
+
+[오늘의 국제금리(참고용)]
+${intlRateText}
 
 [관련 뉴스]
 ${newsText}
@@ -264,6 +275,8 @@ ${newsText}
 3. 주가 변동 원인: 뉴스와 시세의 흐름을 연결한 근거 중심 분석. 이 종목이 수출입 비중이 크거나
    외화 표시 원자재/부품을 다루는 등 환율 변동에 실제로 노출된 업종이고, 뉴스에서도 그 근거가
    확인될 때만 위 환율 데이터를 원인 중 하나로 연결해라 — 관련 없으면 환율은 언급하지 마라.
+   국제금리도 마찬가지로, 이 종목이 금리에 민감한 업종(금융·성장주·부동산 등)이거나 뉴스에서
+   금리 관련 이슈를 직접 다룰 때만 언급하고, 그렇지 않으면 억지로 끌어다 쓰지 마라.
 4. 긍정 요인과 부정 요인
 5. 추가 확인할 리스크와 다음에 관찰할 지표
 각 항목은 간결한 문단 또는 bullet로 작성하고, 근거가 부족하면 '판단 유보'라고 표시해라.`;
@@ -276,8 +289,9 @@ async function analyzeRaw(
   price: Price,
   news: NewsItem[],
   fxSummary: string,
+  intlRateSummary: string,
 ): Promise<string> {
-  const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news, fxSummary);
+  const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news, fxSummary, intlRateSummary);
   return withGeminiFallback(
     "1단계 원본 분석",
     () => callNvidia(system, prompt, 0.2),
@@ -393,18 +407,22 @@ export async function POST(request: Request) {
       return NextResponse.json(cachedEntry.data);
     }
 
-    const [news, price, fxSummary] = await Promise.all([
+    const [news, price, fxSummary, intlRateSummary] = await Promise.all([
       getNews(name),
       getPriceForTicker(tickerKey),
-      // 환율은 참고용 보조 데이터라 실패해도 브리핑 전체를 막지 않는다 — 조용히 빈 문자열로.
-      // 다만 원인 추적을 위해 로그는 남긴다(클라이언트 응답에는 영향 없음).
+      // 환율·국제금리는 참고용 보조 데이터라 실패해도 브리핑 전체를 막지 않는다 — 조용히 빈
+      // 문자열로. 다만 원인 추적을 위해 로그는 남긴다(클라이언트 응답에는 영향 없음).
       fetchMajorRatesSummary().catch((error) => {
         console.warn("[analyze] 환율 조회 실패(브리핑은 계속 진행):", error);
         return "";
       }),
+      fetchInternationalRatesSummary().catch((error) => {
+        console.warn("[analyze] 국제금리 조회 실패(브리핑은 계속 진행):", error);
+        return "";
+      }),
     ]);
 
-    const raw = await analyzeRaw(name, tickerKey, price, news, fxSummary);
+    const raw = await analyzeRaw(name, tickerKey, price, news, fxSummary, intlRateSummary);
     const briefing = await rewritePlain(name, tickerKey, raw, news, tone);
 
     const responseData = {

@@ -29,7 +29,8 @@ type EximRow = {
 };
 
 // result 코드(공지사항 기준): 1=성공, 2=데이터코드 오류, 3=인증키 오류(개인정보 보유기간 만료로
-// 파기된 키일 가능성 높음 — 재발급 필요), 4=일일 호출 한도(1000회) 초과.
+// 파기된 키일 가능성 높음 — 재발급 필요), 4=일일 호출 한도(1000회) 초과. 환율(exchangeJSON)·
+// 국제금리(internationalJSON) 두 엔드포인트가 동일한 코드 체계를 쓴다(공지사항 확인).
 const RESULT_MESSAGES: Record<number, string> = {
   2: "EXIM_AUTH_KEY 요청이 올바르지 않아요. 발급받은 키를 다시 확인해주세요.",
   3: "EXIM_AUTH_KEY가 유효하지 않아요. 개인정보 보유기간(2년) 만료로 키가 파기됐을 수 있어요 — koreaexim.go.kr에서 재발급받아 EXIM_AUTH_KEY를 갱신해주세요.",
@@ -37,6 +38,10 @@ const RESULT_MESSAGES: Record<number, string> = {
 };
 
 const EXIM_BASE_URL = "https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON";
+// 국제금리 — 환율과는 다른 전용 엔드포인트(internationalJSON)를 쓴다. data=AP03이 국제금리
+// (AP01=환율, AP02=대출금리는 이 앱에서 안 씀). 응답 스키마: RESULT/CUR_FUND(통화)/
+// SFLN_INTRC_NM(기간)/INT_R(금리) — 사용자가 API 공식 명세서를 직접 확인해서 알려준 필드명.
+const EXIM_INTERNATIONAL_URL = "https://oapi.koreaexim.go.kr/site/program/financial/internationalJSON";
 
 function toNumber(value: string | undefined): number | null {
   if (!value) return null;
@@ -44,6 +49,18 @@ function toNumber(value: string | undefined): number | null {
   if (!cleaned) return null;
   const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * 공식 명세서는 응답 필드명을 대문자(RESULT, CUR_FUND ...)로 문서화하지만, 이 API 계열의
+ * 실제 JSON 응답은 소문자(result, cur_unit ...)로 오는 경우가 흔하다고 알려져 있다 — 문서와
+ * 실제 응답 표기가 다를 수 있어서, 대소문자를 가리지 않고 필드를 찾는 헬퍼로 이 불확실성을
+ * 흡수한다(국제금리처럼 아직 실제 응답을 눈으로 확인 못 한 새 엔드포인트에 특히 중요).
+ */
+function pickField(row: Record<string, unknown>, key: string): string {
+  const found = Object.keys(row).find((k) => k.toLowerCase() === key.toLowerCase());
+  const value = found ? row[found] : undefined;
+  return value === undefined || value === null ? "" : String(value);
 }
 
 /** "JPY(100)" -> { code: "JPY", unit: 100 }, "USD" -> { code: "USD", unit: 1 } */
@@ -135,5 +152,74 @@ export async function fetchMajorRatesSummary(): Promise<string> {
   if (majors.length === 0) return "";
   return majors
     .map((rate) => `${rate.code}${rate.unit > 1 ? `(${rate.unit})` : ""} ${rate.rate.toLocaleString("ko-KR")}원`)
+    .join(", ");
+}
+
+// ---------------------------------------------------------------------------
+// 국제금리 (data=AP03) — 종목 브리핑 프롬프트 참고용으로만 쓴다. 환율과 달리 별도 화면은
+// 없음(사용자가 "국제금리는 브리핑에만 참고하도록" 명시적으로 범위를 좁혀 요청함).
+// ---------------------------------------------------------------------------
+
+type InternationalRate = { currency: string; term: string; rate: number };
+
+async function fetchInternationalRatesForDate(basDd: string, key: string): Promise<InternationalRate[]> {
+  const url = `${EXIM_INTERNATIONAL_URL}?authkey=${encodeURIComponent(key)}&searchdate=${basDd}&data=AP03`;
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+      Accept: "application/json, text/plain, */*",
+    },
+  });
+  if (!response.ok) throw new Error(`수출입은행 국제금리 API 오류 (${response.status})`);
+  const rows = ((await response.json()) ?? []) as Record<string, unknown>[];
+
+  if (rows.length > 0) {
+    const resultCode = Number(pickField(rows[0], "result"));
+    if (resultCode && resultCode !== 1 && RESULT_MESSAGES[resultCode]) {
+      throw new Error(RESULT_MESSAGES[resultCode]);
+    }
+  }
+
+  return rows
+    .map((row) => ({
+      currency: pickField(row, "cur_fund"),
+      term: pickField(row, "sfln_intrc_nm"),
+      rate: toNumber(pickField(row, "int_r")) ?? NaN,
+    }))
+    .filter((rate) => rate.currency && rate.term && Number.isFinite(rate.rate));
+}
+
+let internationalCache: { date: string; rates: InternationalRate[]; expiresAt: number } | null = null;
+
+/** 최근 영업일(최대 8일 전까지)의 국제금리 스냅샷을 반환한다. */
+async function fetchLatestInternationalRates(): Promise<{ date: string; rates: InternationalRate[] }> {
+  if (internationalCache && Date.now() < internationalCache.expiresAt) {
+    return { date: internationalCache.date, rates: internationalCache.rates };
+  }
+
+  const key = serverEnv("EXIM_AUTH_KEY");
+  if (!key) throw new Error("EXIM_AUTH_KEY를 .env에 설정하세요.");
+
+  for (let offset = 0; offset < 8; offset += 1) {
+    const basDd = dateString(offset);
+    const rates = await fetchInternationalRatesForDate(basDd, key);
+    if (rates.length > 0) {
+      internationalCache = { date: basDd, rates, expiresAt: Date.now() + CACHE_TTL_MS };
+      return { date: basDd, rates };
+    }
+  }
+  return { date: "", rates: [] };
+}
+
+/** AI 브리핑 프롬프트에 넣을 짧은 텍스트 한 줄. 실패해도 브리핑 자체는 죽지 않도록 호출부에서 try/catch로 감싸 쓴다. */
+export async function fetchInternationalRatesSummary(): Promise<string> {
+  const { rates } = await fetchLatestInternationalRates();
+  if (rates.length === 0) return "";
+  // 몇 개 항목이 올지 실제로 확인 전이라 프롬프트가 지나치게 길어지지 않도록 상위 12개까지만.
+  return rates
+    .slice(0, 12)
+    .map((rate) => `${rate.currency} ${rate.term} ${rate.rate}%`)
     .join(", ");
 }
