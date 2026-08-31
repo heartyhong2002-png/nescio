@@ -392,7 +392,11 @@ export async function POST(request: Request) {
       getNews(name),
       getPriceForTicker(tickerKey),
       // 환율은 참고용 보조 데이터라 실패해도 브리핑 전체를 막지 않는다 — 조용히 빈 문자열로.
-      fetchMajorRatesSummary().catch(() => ""),
+      // 다만 원인 추적을 위해 로그는 남긴다(클라이언트 응답에는 영향 없음).
+      fetchMajorRatesSummary().catch((error) => {
+        console.warn("[analyze] 환율 조회 실패(브리핑은 계속 진행):", error);
+        return "";
+      }),
     ]);
 
     const raw = await analyzeRaw(name, tickerKey, price, news, fxSummary);
