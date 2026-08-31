@@ -4,13 +4,19 @@ import { MAJOR_CURRENCY_CODES_CLIENT } from "./exchange-rate-constants";
 
 /**
  * 한국수출입은행 Open API — 환율정보 (매매기준율 등).
- * https://www.koreaexim.go.kr — 무료, authkey 발급 필요, 일일 1000회 제한.
+ * https://oapi.koreaexim.go.kr — 무료, authkey 발급 필요, 일일 1000회 제한.
  * KRX/KIS처럼 영업일에만 데이터가 나온다(주말·공휴일은 빈 배열) — 그래서 최근 영업일까지
  * 며칠 거슬러 올라가며 값이 있는 날을 찾는 패턴을 그대로 재사용한다.
  *
  * 이 API가 제공하는 통화는 약 40개(주요국 + 아시아·중동·아프리카 일부 지역통화)로, 이게 "공식
  * 무료 API로 받을 수 있는 사실상 전체 범위"다 — 전 세계 모든 나라(약 190개) 통화를 다 주는
  * 무료 공식 소스는 없다시피 해서, 이 API가 커버하는 목록이 최대치라고 보면 된다.
+ *
+ * 주의: 요청 도메인이 www.koreaexim.go.kr에서 oapi.koreaexim.go.kr로 바뀌었다(구 도메인
+ * 병행 가동은 2026.4.30 종료 — 한국수출입은행 홈페이지 공지사항 확인). 배포 환경에서 구 도메인으로
+ * 호출했을 때 ECONNRESET/인증서 체인 오류가 오락가락했던 게 바로 이 때문이었다 — 퇴역 중인
+ * 구 도메인이라 TLS/방화벽이 API 트래픽을 제대로 처리하지 못하고 있었던 것으로 보인다.
+ * 신규 도메인으로 바꾸면서 별도의 인증서 검증 우회 없이 표준 fetch를 그대로 쓴다.
  */
 
 type EximRow = {
@@ -22,7 +28,15 @@ type EximRow = {
   deal_bas_r?: string; // 매매기준율
 };
 
-const EXIM_BASE_URL = "https://www.koreaexim.go.kr/site/program/financial/exchangeJSON";
+// result 코드(공지사항 기준): 1=성공, 2=데이터코드 오류, 3=인증키 오류(개인정보 보유기간 만료로
+// 파기된 키일 가능성 높음 — 재발급 필요), 4=일일 호출 한도(1000회) 초과.
+const RESULT_MESSAGES: Record<number, string> = {
+  2: "EXIM_AUTH_KEY 요청이 올바르지 않아요. 발급받은 키를 다시 확인해주세요.",
+  3: "EXIM_AUTH_KEY가 유효하지 않아요. 개인정보 보유기간(2년) 만료로 키가 파기됐을 수 있어요 — koreaexim.go.kr에서 재발급받아 EXIM_AUTH_KEY를 갱신해주세요.",
+  4: "한국수출입은행 환율 API 일일 호출 한도(1,000회)를 초과했어요. 내일 다시 시도해주세요.",
+};
+
+const EXIM_BASE_URL = "https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON";
 
 function toNumber(value: string | undefined): number | null {
   if (!value) return null;
@@ -48,7 +62,7 @@ function dateString(offset: number) {
 async function fetchRatesForDate(basDd: string, key: string): Promise<ExchangeRate[]> {
   const url = `${EXIM_BASE_URL}?authkey=${encodeURIComponent(key)}&searchdate=${basDd}&data=AP01`;
   // 일부 공공기관 서버는 User-Agent가 없는 요청(자동화 도구로 의심)을 방화벽 단에서
-  // 끊어버리는 경우가 있어(ECONNRESET), 브라우저처럼 보이는 User-Agent를 명시적으로 보낸다.
+  // 끊어버리는 경우가 있어, 브라우저처럼 보이는 User-Agent를 명시적으로 보낸다.
   const response = await fetch(url, {
     cache: "no-store",
     headers: {
@@ -59,6 +73,13 @@ async function fetchRatesForDate(basDd: string, key: string): Promise<ExchangeRa
   });
   if (!response.ok) throw new Error(`수출입은행 환율 API 오류 (${response.status})`);
   const rows = ((await response.json()) ?? []) as EximRow[];
+
+  // 키 오류(2/3)나 호출 한도 초과(4)는 그날 영업일 여부와 무관하게 모든 row가 동일한
+  // result 코드로 오므로, 첫 row에서 바로 판별해 구체적인 원인을 알려준다. 이걸 안 하면
+  // "그날은 데이터 없음"으로 오인해 8일치를 다 헛돌고 나서야 빈 결과를 반환하게 된다.
+  if (rows.length > 0 && rows[0].result !== 1 && RESULT_MESSAGES[rows[0].result]) {
+    throw new Error(RESULT_MESSAGES[rows[0].result]);
+  }
 
   return rows
     .filter((row) => row.result === 1 && row.cur_unit && row.cur_nm && row.deal_bas_r)

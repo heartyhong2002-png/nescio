@@ -9,9 +9,10 @@ import { Briefing, Cause, NewsItem, Price } from "@/lib/types";
 // 스크립트로 캐시를 우회하며 계속 새 종목명을 찔러 API 비용을 태우는 걸 막는다.
 const RATE_LIMIT = { limit: 5, windowMs: 60_000 };
 
-// 이 라우트도 내부에서 exim.ts(한국수출입은행 API)를 호출한다 — 해외 IP를 막는 것으로
-// 보이는 그 API 때문에 /api/exchange-rates와 동일하게 서울 리전을 지정해둔다.
-export const preferredRegion = "icn1";
+// 이 라우트도 내부에서 exim.ts(한국수출입은행 API)를 호출한다. 리전 지정은
+// (/api/exchange-rates 상단 주석 참고) 코드가 아니라 Vercel 대시보드 Function Region
+// 설정으로 처리한다 — 이 프로젝트 전체가 그 설정 하나를 공유하므로 여기서 별도로
+// preferredRegion을 지정할 필요는 없다.
 
 const NAVER_URL = "https://openapi.naver.com/v1/search/news.json";
 

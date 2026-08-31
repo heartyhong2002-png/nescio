@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { fetchLatestExchangeRates } from "@/lib/exim";
 
-// 한국수출입은행 API가 해외(비한국) IP로 보이는 요청을 방화벽 단에서 끊는 것으로 보여
-// (ECONNRESET), 이 함수는 서울 리전에서 실행되도록 지정한다. Vercel Hobby 플랜에서는
-// 프로젝트 Settings → Functions → Function Region 설정이 우선 적용되니, 거기서도
-// "Seoul, South Korea (icn1)"로 맞춰줘야 한다.
-export const preferredRegion = "icn1";
-
+// 한국수출입은행 API가 해외(비한국) IP로 보이는 요청을 방화벽 단에서 끊는 문제(ECONNRESET)가
+// 있었는데, 이 Next.js 버전에서는 `preferredRegion`에 구체적인 리전 코드('icn1' 등)를 더 이상
+// 못 쓴다(deprecated — Vercel에서 'auto'/'global'/'home'만 허용). 그래서 리전 지정은 코드가 아니라
+// Vercel 대시보드 Settings → Functions → Function Region을 "Seoul, South Korea (icn1)"로
+// 맞추는 것으로 처리한다(실제로 이걸로 ECONNRESET은 해결됨).
 export async function GET() {
   try {
     const { date, rates } = await fetchLatestExchangeRates();
