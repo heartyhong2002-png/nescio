@@ -25,8 +25,8 @@ import { useWatchlistContext } from "./watchlist-context";
  */
 
 export function useAuth() {
-  const { user, loading, signIn, signUp, signOut } = useAuthContext();
-  return { user: user ? { email: user.email ?? "" } : null, loading, signIn, signUp, signOut };
+  const { user, loading, signIn, signUp, signInWithOAuth, signOut } = useAuthContext();
+  return { user: user ? { email: user.email ?? "" } : null, loading, signIn, signUp, signInWithOAuth, signOut };
 }
 
 export function useOnboarded() {

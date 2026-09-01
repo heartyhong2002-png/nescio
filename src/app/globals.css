@@ -354,6 +354,27 @@ a:hover {
   border-color: #e5949c;
 }
 
+.btn-oauth-google {
+  background: #fff;
+  border-color: var(--line-strong);
+  color: #191919;
+}
+
+.btn-oauth-google:hover:not(:disabled) {
+  background: #f7f7fa;
+}
+
+.btn-oauth-kakao {
+  background: #fee500;
+  border-color: #fee500;
+  color: #191919;
+}
+
+.btn-oauth-kakao:hover:not(:disabled) {
+  background: #f5dc00;
+  border-color: #f5dc00;
+}
+
 .btn-sm {
   padding: 9px 14px;
   font-size: 13px;

@@ -17,6 +17,10 @@ type AuthContextValue = {
   // (링크를 눌러야 로그인됨). 이 경우를 호출부가 구분 못 하면, 세션 없는(=user null) 상태로
   // 그대로 온보딩 페이지에 들어가서 프로필/관심종목 저장이 전부 조용히 실패하는 버그가 생긴다.
   signUp: (email: string, password: string) => Promise<{ error: string | null; needsEmailConfirm: boolean }>;
+  // 구글/카카오 로그인. 성공하면 브라우저가 즉시 provider 인증 화면으로 리다이렉트되므로(현재
+  // 페이지는 그대로 떠난다), 반환값의 error는 "리다이렉트 자체가 시작되지 못한" 경우에만 의미가
+  // 있다 — 실제 로그인 성공/실패 판정은 콜백 라우트(src/app/auth/callback/route.ts)가 담당한다.
+  signInWithOAuth: (provider: "google" | "kakao") => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 };
 
@@ -72,6 +76,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) return { error: translateAuthError(error.message), needsEmailConfirm: false };
         // signUp은 성공했는데 세션이 없으면 "Confirm email"이 켜져 있어서 이메일 인증 전이라는 뜻.
         return { error: null, needsEmailConfirm: !data.session };
+      },
+      async signInWithOAuth(provider) {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: { redirectTo: `${window.location.origin}/auth/callback` },
+        });
+        return { error: error ? translateAuthError(error.message) : null };
       },
       async signOut() {
         await supabase.auth.signOut();
