@@ -2,17 +2,17 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { completeOnboardingProfile, useOnboardingProfile } from "@/lib/storage";
+import { useOnboardingProfile } from "@/lib/storage";
 import { SECTORS } from "@/lib/sectors";
 
 export default function SectorsPage() {
   const router = useRouter();
-  const { profile, toggleSector } = useOnboardingProfile();
+  const { profile, toggleSector, completeOnboarding, loading } = useOnboardingProfile();
   const canContinue = profile.sectors.length > 0;
 
   function finish() {
     if (!canContinue) return;
-    completeOnboardingProfile();
+    completeOnboarding();
     router.push("/watchlist/add?from=onboarding");
   }
 
@@ -32,14 +32,18 @@ export default function SectorsPage() {
         </div>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 24 }}>
-          {SECTORS.map((sector) => {
-            const selected = profile.sectors.includes(sector.id);
-            return (
-              <button key={sector.id} className={`chip ${selected ? "selected" : ""}`} onClick={() => toggleSector(sector.id)}>
-                {sector.label}
-              </button>
-            );
-          })}
+          {loading
+            ? Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="skeleton" style={{ width: 84, height: 32, borderRadius: 999 }} />
+              ))
+            : SECTORS.map((sector) => {
+                const selected = profile.sectors.includes(sector.id);
+                return (
+                  <button key={sector.id} className={`chip ${selected ? "selected" : ""}`} onClick={() => toggleSector(sector.id)}>
+                    {sector.label}
+                  </button>
+                );
+              })}
         </div>
 
         <p className="muted" style={{ fontSize: 12, marginBottom: 20 }}>
@@ -48,7 +52,7 @@ export default function SectorsPage() {
 
         <div style={{ flex: 1 }} />
 
-        <button className="btn btn-primary btn-block" disabled={!canContinue} onClick={finish}>
+        <button className="btn btn-primary btn-block" disabled={!canContinue || loading} onClick={finish}>
           관심종목 담으러 가기
         </button>
       </div>

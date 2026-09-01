@@ -8,12 +8,12 @@ import { useAuth, useWatchlist } from "@/lib/storage";
 
 export default function MyPage() {
   const router = useRouter();
-  const { user, logout } = useAuth();
-  const { watchlist } = useWatchlist();
+  const { user, loading: authLoading, signOut } = useAuth();
+  const { watchlist, loading: watchlistLoading } = useWatchlist();
   const [notifyOn, setNotifyOn] = useState(true);
 
-  function handleLogout() {
-    logout();
+  async function handleLogout() {
+    await signOut();
     router.push("/onboarding");
   }
 
@@ -27,7 +27,11 @@ export default function MyPage() {
         <div className="eyebrow" style={{ marginBottom: 8 }}>
           계정
         </div>
-        <div style={{ fontSize: 16, fontWeight: 600 }}>{user?.email ?? "로그인이 필요해요"}</div>
+        {authLoading ? (
+          <div className="skeleton" style={{ height: 22, width: 160, borderRadius: 6 }} />
+        ) : (
+          <div style={{ fontSize: 16, fontWeight: 600 }}>{user?.email ?? "로그인이 필요해요"}</div>
+        )}
       </div>
 
       <div className="section-title">알림 설정</div>
@@ -47,7 +51,7 @@ export default function MyPage() {
       <Link href="/watchlist/add" className="option-row" style={{ marginBottom: 26 }}>
         <div>
           <div className="option-title">관심종목 관리</div>
-          <div className="option-desc">현재 {watchlist.length}개 담김</div>
+          <div className="option-desc">현재 {watchlistLoading ? "…" : `${watchlist.length}개`} 담김</div>
         </div>
         <span className="muted">→</span>
       </Link>

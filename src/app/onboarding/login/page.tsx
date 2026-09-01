@@ -4,23 +4,59 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { useAuth } from "@/lib/storage";
+import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     if (!email.trim() || !password.trim()) {
       setError("이메일과 비밀번호를 입력해 주세요.");
       return;
     }
-    login(email.trim());
-    router.push("/onboarding/persona");
+    setError("");
+    setSubmitting(true);
+
+    if (mode === "signup") {
+      const { error: signUpError } = await signUp(email.trim(), password);
+      setSubmitting(false);
+      if (signUpError) {
+        setError(signUpError);
+        return;
+      }
+      // 신규 가입은 항상 온보딩부터 시작.
+      router.push("/onboarding/persona");
+      return;
+    }
+
+    const { error: signInError } = await signIn(email.trim(), password);
+    if (signInError) {
+      setSubmitting(false);
+      setError(signInError);
+      return;
+    }
+
+    // 이미 온보딩을 마친 재방문 유저는 온보딩을 다시 태우지 않고 홈으로 보낸다. AuthProvider/
+    // ProfileProvider의 상태 전파를 기다리지 않고(레이스 방지) 여기서 직접 한 번 더 조회해서
+    // 라우팅을 결정한다.
+    const supabase = createClient();
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    if (!userId) {
+      setSubmitting(false);
+      router.push("/onboarding/persona");
+      return;
+    }
+    const { data: profile } = await supabase.from("profiles").select("onboarded").eq("id", userId).single();
+    setSubmitting(false);
+    router.push(profile?.onboarded ? "/" : "/onboarding/persona");
   }
 
   return (
@@ -55,8 +91,8 @@ export default function LoginPage() {
             autoComplete={mode === "login" ? "current-password" : "new-password"}
           />
           {error && <div className="error-box">{error}</div>}
-          <button type="submit" className="btn btn-primary btn-block">
-            {mode === "login" ? "로그인" : "가입하고 시작하기"}
+          <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
+            {submitting ? "처리 중..." : mode === "login" ? "로그인" : "가입하고 시작하기"}
           </button>
         </form>
 
@@ -77,10 +113,6 @@ export default function LoginPage() {
             </>
           )}
         </p>
-
-        <div className="note-box" style={{ marginTop: 24, textAlign: "left" }}>
-          이메일 · 비밀번호만 사용하는 데모 로그인입니다. 소셜 로그인 연동은 범위에서 제외했습니다.
-        </div>
       </div>
     </main>
   );

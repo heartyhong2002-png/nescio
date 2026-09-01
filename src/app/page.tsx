@@ -12,14 +12,14 @@ type SummaryItem = Stock & { close: number | null; changeRate: number | null; ne
 
 export default function HomePage() {
   const router = useRouter();
-  const { onboarded, hydrated } = useOnboarded();
-  const { watchlist, remove } = useWatchlist();
+  const { onboarded, loading } = useOnboarded();
+  const { watchlist, remove, loading: watchlistLoading } = useWatchlist();
   const [items, setItems] = useState<SummaryItem[] | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (hydrated && !onboarded) router.replace("/onboarding");
-  }, [hydrated, onboarded, router]);
+    if (!loading && !onboarded) router.replace("/onboarding");
+  }, [loading, onboarded, router]);
 
   useEffect(() => {
     if (watchlist.length === 0) return;
@@ -46,7 +46,7 @@ export default function HomePage() {
     };
   }, [watchlist]);
 
-  if (!hydrated || !onboarded) return null;
+  if (loading || !onboarded) return null;
 
   const mover =
     items && items.length > 0
@@ -55,7 +55,7 @@ export default function HomePage() {
   const newsAlerts = items?.filter((item) => (item.newsCount ?? 0) > 0).length ?? 0;
   const rows: SummaryItem[] =
     items ?? watchlist.map((stock) => ({ ...stock, close: null, changeRate: null, newsCount: null }));
-  const loading = items === null && watchlist.length > 0;
+  const summaryLoading = items === null && watchlist.length > 0;
 
   return (
     <AppShell>
@@ -68,7 +68,9 @@ export default function HomePage() {
 
       {error && <div className="error-box" style={{ marginBottom: 16 }}>{error}</div>}
 
-      {watchlist.length === 0 ? (
+      {watchlistLoading ? (
+        <div className="skeleton" style={{ height: 96, borderRadius: 18 }} />
+      ) : watchlist.length === 0 ? (
         <Link href="/watchlist/add" className="placeholder-box" style={{ padding: 36, fontSize: 14 }}>
           아직 담은 종목이 없어요. 눌러서 관심종목을 담아보세요.
         </Link>
@@ -93,7 +95,7 @@ export default function HomePage() {
                 </div>
                 <div style={{ fontSize: 13, marginTop: 14, fontWeight: 600 }}>브리핑 보기 →</div>
               </Link>
-            ) : loading ? (
+            ) : summaryLoading ? (
               <div className="skeleton" style={{ height: 150, borderRadius: 18, marginBottom: 22 }} />
             ) : null}
 
@@ -113,14 +115,14 @@ export default function HomePage() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 14, fontWeight: 600 }}>{stock.name}</div>
                         <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
-                          {loading
+                          {summaryLoading
                             ? "불러오는 중…"
                             : stock.newsCount !== null
                               ? `오늘 뉴스 ${stock.newsCount}건`
                               : "뉴스 정보 없음"}
                         </div>
                       </div>
-                      {loading ? (
+                      {summaryLoading ? (
                         <div className="skeleton" style={{ width: 64, height: 32 }} />
                       ) : (
                         <div style={{ textAlign: "right" }}>
@@ -152,11 +154,11 @@ export default function HomePage() {
                 오늘 요약
               </div>
               <SummaryStat label="담은 종목" value={`${watchlist.length}개`} />
-              <SummaryStat label="뉴스 있는 종목" value={loading ? "…" : `${newsAlerts}개`} />
+              <SummaryStat label="뉴스 있는 종목" value={summaryLoading ? "…" : `${newsAlerts}개`} />
               <SummaryStat
                 label="상승 / 하락"
                 value={
-                  loading || !items
+                  summaryLoading || !items
                     ? "…"
                     : `${items.filter((i) => (i.changeRate ?? 0) > 0).length} / ${
                         items.filter((i) => (i.changeRate ?? 0) < 0).length

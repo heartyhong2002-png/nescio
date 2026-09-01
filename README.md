@@ -50,8 +50,19 @@ npm run dev
 | `KRX_AUTH_KEY` | 종목 목록·일별 시세 (KRX Open API) | 필수 |
 | `KIS_APP_KEY` / `KIS_APP_SECRET` | 분봉·기간별 차트, PER/PBR/배당/시가총액 (한국투자증권 Open API) | 필수 |
 | `EXIM_AUTH_KEY` | 환율 화면 · 브리핑 참고용 환율 (한국수출입은행 Open API, [신청](https://www.koreaexim.go.kr) 무료) | 필수 (환율 기능용) |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase 프로젝트 URL (계정/관심종목 DB) | 필수 |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase 퍼블리셔블(anon) 키 | 필수 |
 | `NVIDIA_MODEL` / `XAI_MODEL` | 각 단계에서 쓸 모델명 오버라이드 | 선택 (기본값 있음) |
 | `KIS_BASE_URL` | KIS API 베이스 URL 오버라이드 (기본: 실전 `openapi.koreainvestment.com:9443`) | 선택 |
+
+## 계정 · 관심종목 DB (Supabase)
+
+로그인/회원가입과 관심종목 저장은 [Supabase](https://supabase.com)(무료 티어)를 쓴다. 처음 설정할 때:
+
+1. supabase.com에서 새 프로젝트 생성
+2. Settings → API에서 **Project URL**과 **publishable(anon) key** 확인 → 위 환경변수 두 개에 반영
+3. SQL Editor에서 `docs/supabase-schema.sql`(이 저장소에 포함)을 그대로 실행 — `profiles`/`watchlist_items` 테이블과 RLS 정책, 신규가입 시 프로필 자동 생성 트리거가 만들어진다
+4. Authentication → Providers → Email에서 "Confirm email"을 꺼두는 걸 추천 — 켜두면 회원가입 직후 바로 온보딩으로 넘어가는 지금 흐름이 이메일 인증 전까지 막힌다(대신 이메일 진위 확인은 포기하는 트레이드오프)
 
 ## 배포
 

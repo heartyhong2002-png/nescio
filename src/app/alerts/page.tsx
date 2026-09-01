@@ -9,11 +9,13 @@ import { Stock } from "@/lib/types";
 type SummaryItem = Stock & { close: number | null; changeRate: number | null; newsCount: number | null };
 
 export default function AlertsPage() {
-  const { watchlist } = useWatchlist();
+  const { watchlist, loading: watchlistLoading } = useWatchlist();
   const [items, setItems] = useState<SummaryItem[] | null>(null);
 
   useEffect(() => {
-    if (watchlist.length === 0) return;
+    // 관심종목이 아직 서버에서 로딩 중이면 기다린다 — 안 그러면 빈 배열로 먼저 요약을 요청했다가
+    // 실제 데이터가 도착한 뒤 다시 요청하는 낭비가 생긴다.
+    if (watchlistLoading || watchlist.length === 0) return;
     fetch("/api/watchlist-summary", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -21,9 +23,9 @@ export default function AlertsPage() {
     })
       .then(async (res) => (res.ok ? setItems((await res.json()).items) : setItems([])))
       .catch(() => setItems([]));
-  }, [watchlist]);
+  }, [watchlist, watchlistLoading]);
 
-  const loading = watchlist.length > 0 && items === null;
+  const loading = watchlistLoading || (watchlist.length > 0 && items === null);
   const withNews = (items ?? []).filter((item) => (item.newsCount ?? 0) > 0);
 
   return (

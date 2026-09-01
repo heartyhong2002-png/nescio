@@ -13,8 +13,8 @@ function WatchlistAddContent() {
   const searchParams = useSearchParams();
   const fromOnboarding = searchParams.get("from") === "onboarding";
 
-  const { profile } = useOnboardingProfile();
-  const { watchlist, toggle, addMany, has } = useWatchlist();
+  const { profile, loading: profileLoading } = useOnboardingProfile();
+  const { watchlist, toggle, addMany, has, loading: watchlistLoading } = useWatchlist();
   const { recentSearches, push, remove } = useRecentSearches();
 
   const [tab, setTab] = useState<"recommend" | "sector">("recommend");
@@ -110,6 +110,7 @@ function WatchlistAddContent() {
                   key={stock.ticker}
                   stock={stock}
                   added={has(stock.ticker)}
+                  disabled={watchlistLoading}
                   onToggle={() => {
                     toggle(stock);
                     push(query.trim());
@@ -147,11 +148,25 @@ function WatchlistAddContent() {
 
           {tab === "recommend" ? (
             <>
-              <div className="list-panel">
-                {recommended.map((stock) => (
-                  <StockRow key={stock.ticker} stock={stock} added={has(stock.ticker)} onToggle={() => toggle(stock)} />
-                ))}
-              </div>
+              {profileLoading ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div className="skeleton" style={{ height: 56, borderRadius: 12 }} />
+                  <div className="skeleton" style={{ height: 56, borderRadius: 12 }} />
+                  <div className="skeleton" style={{ height: 56, borderRadius: 12 }} />
+                </div>
+              ) : (
+                <div className="list-panel">
+                  {recommended.map((stock) => (
+                    <StockRow
+                      key={stock.ticker}
+                      stock={stock}
+                      added={has(stock.ticker)}
+                      disabled={watchlistLoading}
+                      onToggle={() => toggle(stock)}
+                    />
+                  ))}
+                </div>
+              )}
               {stocksError && <div className="error-box" style={{ marginTop: 12 }}>{stocksError}</div>}
             </>
           ) : (
@@ -166,6 +181,7 @@ function WatchlistAddContent() {
                     <button
                       key={sector.id}
                       className={`option-row ${allAdded ? "selected" : ""}`}
+                      disabled={watchlistLoading}
                       onClick={() => toggleSectorBundle(sector.id)}
                     >
                       <div>
@@ -188,7 +204,7 @@ function WatchlistAddContent() {
         <button
           className="btn btn-primary"
           style={{ minWidth: 180 }}
-          disabled={watchlist.length === 0}
+          disabled={watchlistLoading || watchlist.length === 0}
           onClick={finish}
         >
           {fromOnboarding ? `${watchlist.length}개 담고 시작하기` : "완료"}
@@ -199,7 +215,17 @@ function WatchlistAddContent() {
   );
 }
 
-function StockRow({ stock, added, onToggle }: { stock: Stock; added: boolean; onToggle: () => void }) {
+function StockRow({
+  stock,
+  added,
+  disabled,
+  onToggle,
+}: {
+  stock: Stock;
+  added: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
   return (
     <div className="list-row">
       <div className="stock-icon">{stock.name.slice(0, 1)}</div>
@@ -209,7 +235,7 @@ function StockRow({ stock, added, onToggle }: { stock: Stock; added: boolean; on
           {stock.ticker} · {stock.market}
         </div>
       </div>
-      <button className={`pill ${added ? "filled" : ""}`} onClick={onToggle}>
+      <button className={`pill ${added ? "filled" : ""}`} disabled={disabled} onClick={onToggle}>
         {added ? "담김" : "+ 담기"}
       </button>
     </div>

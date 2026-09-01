@@ -13,7 +13,7 @@ const PERSONAS: { id: Persona; title: string; desc: string }[] = [
 
 export default function PersonaPage() {
   const router = useRouter();
-  const { profile, setPersona } = useOnboardingProfile();
+  const { profile, setPersona, loading } = useOnboardingProfile();
 
   function choose(persona: Persona) {
     setPersona(persona);
@@ -38,20 +38,28 @@ export default function PersonaPage() {
           브리핑 깊이와 말투를 맞추는 데 써요.
         </p>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {PERSONAS.map((persona) => {
-            const selected = profile.persona === persona.id;
-            return (
-              <button key={persona.id} className={`option-row ${selected ? "selected" : ""}`} onClick={() => choose(persona.id)}>
-                <div>
-                  <div className="option-title">{persona.title}</div>
-                  <div className="option-desc">{persona.desc}</div>
-                </div>
-                <div className={`radio-dot ${selected ? "checked" : ""}`} />
-              </button>
-            );
-          })}
-        </div>
+        {loading ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="skeleton" style={{ height: 62, borderRadius: 14 }} />
+            <div className="skeleton" style={{ height: 62, borderRadius: 14 }} />
+            <div className="skeleton" style={{ height: 62, borderRadius: 14 }} />
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {PERSONAS.map((persona) => {
+              const selected = profile.persona === persona.id;
+              return (
+                <button key={persona.id} className={`option-row ${selected ? "selected" : ""}`} onClick={() => choose(persona.id)}>
+                  <div>
+                    <div className="option-title">{persona.title}</div>
+                    <div className="option-desc">{persona.desc}</div>
+                  </div>
+                  <div className={`radio-dot ${selected ? "checked" : ""}`} />
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </main>
   );
