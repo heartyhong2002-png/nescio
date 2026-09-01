@@ -343,6 +343,17 @@ a:hover {
   color: var(--ink);
 }
 
+.btn-danger {
+  background: #fff5f6;
+  border-color: #f6c2c7;
+  color: #b3313f;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #ffe9eb;
+  border-color: #e5949c;
+}
+
 .btn-sm {
   padding: 9px 14px;
   font-size: 13px;

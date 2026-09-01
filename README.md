@@ -63,6 +63,7 @@ npm run dev
 | `EXIM_AUTH_KEY` | 환율 화면 · 브리핑 참고용 환율 (한국수출입은행 Open API, [신청](https://www.koreaexim.go.kr) 무료) | 필수 (환율 기능용) |
 | `NVIDIA_MODEL` / `XAI_MODEL` | 각 단계에서 쓸 모델명 오버라이드 | 선택 (기본값 있음) |
 | `KIS_BASE_URL` | KIS API 베이스 URL 오버라이드 (기본: 실전 `openapi.koreainvestment.com:9443`) | 선택 |
+| `SUPABASE_SERVICE_ROLE_KEY` | 계정 탈퇴(관리자 권한으로 auth 사용자 삭제) 전용 — Settings → API의 "service_role secret" 키. **RLS를 완전히 우회하는 비밀 키라 절대 `.env.local`(클라이언트 번들)에 넣지 말고 반드시 여기(`notebooks/.env`, 서버 전용)에만 둘 것** | 필수 (계정 탈퇴 기능용) |
 
 `.env.local`:
 
@@ -79,6 +80,7 @@ npm run dev
 2. Settings → API에서 **Project URL**과 **publishable(anon) key** 확인 → 위 환경변수 두 개에 반영
 3. SQL Editor에서 `docs/supabase-schema.sql`(이 저장소에 포함)을 그대로 실행 — `profiles`/`watchlist_items` 테이블과 RLS 정책, 신규가입 시 프로필 자동 생성 트리거가 만들어진다
 4. Authentication → Providers → Email에서 "Confirm email"을 꺼두는 걸 추천 — 켜두면 회원가입 직후 바로 온보딩으로 넘어가는 지금 흐름이 이메일 인증 전까지 막힌다(대신 이메일 진위 확인은 포기하는 트레이드오프)
+5. Settings → API에서 **service_role secret** 키 확인 → `notebooks/.env`의 `SUPABASE_SERVICE_ROLE_KEY`에 반영 (계정 탈퇴 기능에 필요 — 절대 `.env.local`에 넣지 말 것)
 
 ## 배포
 

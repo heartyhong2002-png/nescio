@@ -11,10 +11,35 @@ export default function MyPage() {
   const { user, loading: authLoading, signOut } = useAuth();
   const { watchlist, loading: watchlistLoading } = useWatchlist();
   const [notifyOn, setNotifyOn] = useState(true);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   async function handleLogout() {
     await signOut();
     router.push("/onboarding");
+  }
+
+  async function handleDeleteAccount() {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const res = await fetch("/api/account/delete", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setDeleteError(data.error ?? "탈퇴 처리 중 오류가 발생했어요.");
+        setDeleting(false);
+        return;
+      }
+      // 계정은 서버에서 이미 삭제됐다 — 남은 로컬 세션(쿠키/토큰)도 정리한다. 실패해도
+      // 무해하다(삭제된 계정의 토큰은 다음 요청부터 어차피 서버에서 거부되어 로그아웃
+      // 상태로 취급됨).
+      await signOut();
+      router.push("/onboarding");
+    } catch {
+      setDeleteError("네트워크 오류로 탈퇴하지 못했어요. 다시 시도해주세요.");
+      setDeleting(false);
+    }
   }
 
   return (
@@ -65,9 +90,35 @@ export default function MyPage() {
         <span className="muted">→</span>
       </Link>
 
-      <button className="btn btn-secondary" style={{ maxWidth: 200 }} onClick={handleLogout}>
+      <button className="btn btn-secondary" style={{ maxWidth: 200, marginBottom: 14 }} onClick={handleLogout}>
         로그아웃
       </button>
+
+      {confirmingDelete ? (
+        <div className="card">
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>정말 탈퇴하시겠어요?</div>
+          <p className="muted" style={{ fontSize: 12, marginBottom: 14 }}>
+            계정과 관심종목, 투자 성향 등 모든 데이터가 즉시 삭제되고 되돌릴 수 없어요.
+          </p>
+          {deleteError && (
+            <div className="error-box" style={{ marginBottom: 12 }}>
+              {deleteError}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-secondary" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
+              취소
+            </button>
+            <button className="btn btn-danger" onClick={handleDeleteAccount} disabled={deleting}>
+              {deleting ? "탈퇴 처리 중..." : "탈퇴하기"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button className="btn-ghost" style={{ fontSize: 12, color: "#b3313f" }} onClick={() => setConfirmingDelete(true)}>
+          계정 탈퇴
+        </button>
+      )}
     </AppShell>
   );
 }

@@ -54,6 +54,12 @@ create policy "watchlist: select own" on public.watchlist_items
   for select using (auth.uid() = user_id);
 create policy "watchlist: insert own" on public.watchlist_items
   for insert with check (auth.uid() = user_id);
+-- update 정책도 필요하다 — 앱 코드(add/addMany)가 upsert(insert ... on conflict do update)를
+-- 쓰는데, RLS가 걸린 테이블에서 upsert는 insert 정책만으로는 통과하지 않고 update 정책도
+-- 같이 확인한다. 이게 빠지면 이미 담은 종목을 다시 담으려 할 때(on conflict 경로) permission
+-- denied로 조용히 실패하고 롤백된다.
+create policy "watchlist: update own" on public.watchlist_items
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "watchlist: delete own" on public.watchlist_items
   for delete using (auth.uid() = user_id);
 
