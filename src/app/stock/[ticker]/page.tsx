@@ -287,10 +287,18 @@ function MetricsRow({ stock, price }: { stock: Stock; price: Price }) {
   const valuation = useValuation(stock.ticker);
   const { interpretation, loading } = useValuationInterpretation(stock, price, valuation);
 
+  // valuation 객체가 왔다는 건 KIS 조회 자체는 성공했다는 뜻이다. 그 안에서 개별 지표만
+  // null이면 API가 실패한 게 아니라 "적자라 PER 계산이 안 됨" / "배당을 안 줌" 같은 정상적인
+  // 경우일 확률이 높다 — 그냥 대시(—)만 보여주면 고장난 걸로 오해하기 쉬워서 이유를 짧게 붙인다.
+  // (valuation 자체가 아직 없으면 = 로딩 중이거나 진짜 조회 실패라서 평소처럼 대시로 둔다.)
+  const perText = valuation && valuation.per === null ? "적자" : formatMultiple(valuation?.per ?? null);
+  const dividendText =
+    valuation && valuation.dividendYield === null ? "배당없음" : formatPercent(valuation?.dividendYield ?? null);
+
   const metrics = [
-    { key: "per" as const, label: "PER", value: formatMultiple(valuation?.per ?? null) },
+    { key: "per" as const, label: "PER", value: perText },
     { key: "pbr" as const, label: "PBR", value: formatMultiple(valuation?.pbr ?? null) },
-    { key: "dividend" as const, label: "배당수익률", value: formatPercent(valuation?.dividendYield ?? null) },
+    { key: "dividend" as const, label: "배당수익률", value: dividendText },
     { key: "marketCap" as const, label: "시가총액", value: formatMarketCap(valuation?.marketCap ?? price.marketCap) },
   ];
 
