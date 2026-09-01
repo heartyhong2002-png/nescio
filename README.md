@@ -21,7 +21,8 @@ src/                     실제 서비스되는 Next.js 앱 (여기가 진짜)
   app/                   화면(온보딩/관심종목/종목상세/알림/마이페이지)과 API 라우트
   lib/                   KRX 시세, 저장소(localStorage), 포맷 등 공통 로직
 public/                  정적 파일
-notebooks/.env           로컬 개발용 API 키 (커밋되지 않음, 아래 환경변수 참고)
+notebooks/.env           로컬 개발용 서버 API 키 (커밋되지 않음, 아래 환경변수 참고)
+.env.local               NEXT_PUBLIC_* 값 (Supabase 등, 커밋되지 않음, 아래 환경변수 참고)
 data-pipeline/           초기 데이터 파이프라인 실험 (Python, pykrx+네이버+LLM 분석 노트북/스크립트)
                          — 지금 서비스가 쓰는 코드는 아니고, 프롬프트/파이프라인 설계 실험용
 legacy-ui-mockup/        8/23에 만든 정적 HTML UI 목업 (지금 화면의 이전 버전, 참고용)
@@ -39,8 +40,18 @@ npm run dev
 
 ## 환경변수
 
-`notebooks/.env`에 아래 값을 채우면 실제 시세/뉴스/AI 분석이 동작합니다. (Vercel에 배포할
-때는 이 파일 대신 프로젝트 Settings → Environment Variables에 똑같이 넣어주면 됩니다.)
+두 군데로 나뉜다 — 섞어서 넣으면 (특히 `NEXT_PUBLIC_*`는) 조용히 안 먹으니 주의:
+
+- **`notebooks/.env`**: 서버 전용 API 키. `src/lib/server-env.ts`의 `serverEnv()`가 런타임에 이
+  파일을 읽어서 폴백으로 쓴다 — 파일이 없어도 앱은 죽지 않고 해당 기능만 비활성화된다.
+- **`.env.local`(프로젝트 루트, 신규 생성 필요)**: `NEXT_PUBLIC_*`로 시작하는 값 전용. Next.js가
+  빌드 시 클라이언트 번들에 정적으로 인라인해야 하는 값이라 `serverEnv()` 폴백(런타임에 파일을
+  읽는 방식)이 통하지 않는다 — 반드시 Next.js가 직접 로드하는 `.env.local`에 있어야 한다.
+
+둘 다 `.gitignore`의 `.env*` 규칙에 걸려서 커밋되지 않는다. Vercel에 배포할 때는 두 파일 대신
+프로젝트 Settings → Environment Variables에 아래 값을 전부 똑같이 넣어주면 됩니다.
+
+`notebooks/.env`:
 
 | 변수 | 용도 | 필수 |
 |---|---|---|
@@ -50,10 +61,15 @@ npm run dev
 | `KRX_AUTH_KEY` | 종목 목록·일별 시세 (KRX Open API) | 필수 |
 | `KIS_APP_KEY` / `KIS_APP_SECRET` | 분봉·기간별 차트, PER/PBR/배당/시가총액 (한국투자증권 Open API) | 필수 |
 | `EXIM_AUTH_KEY` | 환율 화면 · 브리핑 참고용 환율 (한국수출입은행 Open API, [신청](https://www.koreaexim.go.kr) 무료) | 필수 (환율 기능용) |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase 프로젝트 URL (계정/관심종목 DB) | 필수 |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase 퍼블리셔블(anon) 키 | 필수 |
 | `NVIDIA_MODEL` / `XAI_MODEL` | 각 단계에서 쓸 모델명 오버라이드 | 선택 (기본값 있음) |
 | `KIS_BASE_URL` | KIS API 베이스 URL 오버라이드 (기본: 실전 `openapi.koreainvestment.com:9443`) | 선택 |
+
+`.env.local`:
+
+| 변수 | 용도 | 필수 |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase 프로젝트 URL (계정/관심종목 DB) — Settings → API의 "Project URL" (`https://xxxxx.supabase.co`, `/rest/v1/` 같은 경로 없이) | 필수 |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase 퍼블리셔블(anon) 키 | 필수 |
 
 ## 계정 · 관심종목 DB (Supabase)
 
