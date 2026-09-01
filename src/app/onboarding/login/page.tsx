@@ -25,10 +25,18 @@ export default function LoginPage() {
     setSubmitting(true);
 
     if (mode === "signup") {
-      const { error: signUpError } = await signUp(email.trim(), password);
+      const { error: signUpError, needsEmailConfirm } = await signUp(email.trim(), password);
       setSubmitting(false);
       if (signUpError) {
         setError(signUpError);
+        return;
+      }
+      if (needsEmailConfirm) {
+        // 세션이 아직 없는 상태 — 이대로 온보딩에 들여보내면 로그인 안 된 채로 클릭해도 아무
+        // 것도 저장 안 되는 버그가 생긴다(useAuthContext().user가 null이라 profile/watchlist
+        // 업데이트가 전부 조용히 no-op됨). 메일 인증부터 하게 안내한다.
+        setError("가입 확인 메일을 보냈어요. 메일함에서 인증 링크를 누른 뒤 다시 로그인해주세요.");
+        setMode("login");
         return;
       }
       // 신규 가입은 항상 온보딩부터 시작.

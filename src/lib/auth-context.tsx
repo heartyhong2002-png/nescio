@@ -13,7 +13,10 @@ type AuthContextValue = {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: string | null }>;
+  // needsEmailConfirm: Supabase "Confirm email"이 켜져 있으면 signUp이 성공해도 세션이 안 생긴다
+  // (링크를 눌러야 로그인됨). 이 경우를 호출부가 구분 못 하면, 세션 없는(=user null) 상태로
+  // 그대로 온보딩 페이지에 들어가서 프로필/관심종목 저장이 전부 조용히 실패하는 버그가 생긴다.
+  signUp: (email: string, password: string) => Promise<{ error: string | null; needsEmailConfirm: boolean }>;
   signOut: () => Promise<void>;
 };
 
@@ -65,8 +68,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error ? translateAuthError(error.message) : null };
       },
       async signUp(email, password) {
-        const { error } = await supabase.auth.signUp({ email, password });
-        return { error: error ? translateAuthError(error.message) : null };
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) return { error: translateAuthError(error.message), needsEmailConfirm: false };
+        // signUp은 성공했는데 세션이 없으면 "Confirm email"이 켜져 있어서 이메일 인증 전이라는 뜻.
+        return { error: null, needsEmailConfirm: !data.session };
       },
       async signOut() {
         await supabase.auth.signOut();
