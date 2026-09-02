@@ -55,12 +55,7 @@ export default function MyPage() {
         {authLoading ? (
           <div className="skeleton" style={{ height: 22, width: 160, borderRadius: 6 }} />
         ) : (
-          <div style={{ fontSize: 16, fontWeight: 600 }}>
-            {/* user.email이 빈 문자열일 수 있다(카카오 로그인은 email 동의항목 없이도 가입 가능
-                — useAuth()가 그 경우 email을 ""로 채워서 내려줌). ?? 는 null/undefined만 잡고
-                빈 문자열은 안 잡아서, 여기서 따로 처리 안 하면 계정 카드가 빈 줄로 보인다. */}
-            {user ? user.email || "카카오 계정으로 로그인됨" : "로그인이 필요해요"}
-          </div>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>{user?.email ?? "로그인이 필요해요"}</div>
         )}
       </div>
 
