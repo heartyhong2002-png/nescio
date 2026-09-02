@@ -1,0 +1,53 @@
+name: DB Backup
+
+# 매일 public 스키마(profiles, watchlist_items — 실제 서비스 데이터)를 SQL로 덤프해서
+# db-backups 브랜치에 커밋해두는 무료 백업. auth 스키마(계정 자체)는 Supabase가 내부적으로
+# 관리하는 영역이라 pg_dump로 통째로 복원하려 하면 오히려 깨질 수 있어서 일부러 뺐다 —
+# 목적은 "유저가 실수로 지워져도 그 유저가 담아뒀던 관심종목/성향 데이터를 참고해서 복구"이지,
+# auth.users 자체를 SQL로 되살리는 게 아니다.
+#
+# 필요한 사전 준비:
+# 1. GitHub 저장소 Settings → Secrets and variables → Actions에 SUPABASE_DB_URL 등록
+#    (Supabase 대시보드 → Settings → Database → Connection string → "Session pooler" 모드,
+#    5432 포트짜리 URI. 반드시 Session pooler여야 함 — GitHub Actions는 IPv4만 되는데
+#    Direct connection은 무료 플랜에서 IPv6만 지원하고, Transaction pooler(6543)는 pg_dump가
+#    쓰는 prepared statement를 지원 안 해서 실패한다.)
+# 2. db-backups 브랜치가 미리 존재해야 함(최초 1회 orphan 브랜치로 만들어둠).
+
+on:
+  schedule:
+    # UTC 18:00 = KST 03:00(다음날) — 트래픽 적은 새벽 시간대
+    - cron: "0 18 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout db-backups branch
+        uses: actions/checkout@v4
+        with:
+          ref: db-backups
+          fetch-depth: 0
+
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Dump public schema
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p backups
+          pg_dump "$DATABASE_URL" --schema=public --no-owner --no-acl -f "backups/$(date -u +%F).sql"
+
+      - name: Prune backups older than 30 days
+        run: find backups -name "*.sql" -mtime +30 -delete
+
+      - name: Commit and push backup
+        run: |
+          git config user.name "db-backup-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add backups
+          git diff --staged --quiet || git commit -m "chore: DB backup $(date -u +%F)"
+          git push origin db-backups
