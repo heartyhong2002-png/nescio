@@ -92,6 +92,13 @@ export type ValuationInterpretation = {
   marketCap: MetricNote;
 };
 
+// 코스피/코스닥 대표지수 — 종목이 아니라 시장 전체 흐름을 보여주는 용도.
+export type MarketIndex = {
+  name: "코스피" | "코스닥";
+  close: number | null; // 지수 포인트
+  changeRate: number | null; // %
+};
+
 export type Analysis = {
   stock: Stock;
   price: Price;

@@ -6,9 +6,69 @@ import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { changeArrow, changeEmoji, changeDirection, formatPrice } from "@/lib/format";
 import { useOnboarded, useWatchlist } from "@/lib/storage";
-import { Stock } from "@/lib/types";
+import { MarketIndex, Stock } from "@/lib/types";
 
 type SummaryItem = Stock & { close: number | null; changeRate: number | null; newsCount: number | null };
+
+// 코스피/코스닥 대표지수 — 관심종목과 별개로 오늘 시장 전체 분위기를 한눈에 보여준다.
+// KRX 지수 API 필드명을 확신 못 해 얻지 못할 수도 있어서(krx.ts 주석 참고) 실패하면
+// 빈 배열로 조용히 접는다.
+function useMarketIndices() {
+  const [indices, setIndices] = useState<MarketIndex[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/market-indices")
+      .then(async (response) => {
+        const data = await response.json();
+        if (!cancelled) setIndices(response.ok ? (data.indices ?? []) : []);
+      })
+      .catch(() => {
+        if (!cancelled) setIndices([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return indices;
+}
+
+function MarketIndexStrip({ indices }: { indices: MarketIndex[] | null }) {
+  if (indices === null) {
+    return (
+      <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+        <div className="skeleton" style={{ height: 46, borderRadius: 12, flex: 1 }} />
+        <div className="skeleton" style={{ height: 46, borderRadius: 12, flex: 1 }} />
+      </div>
+    );
+  }
+  if (indices.length === 0) return null;
+
+  return (
+    <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+      {indices.map((index) => {
+        const direction = changeDirection(index.changeRate);
+        return (
+          <div
+            key={index.name}
+            className="card"
+            style={{ padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flex: 1 }}
+          >
+            <span style={{ fontSize: 12.5, fontWeight: 700 }}>{index.name}</span>
+            <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+              <span style={{ fontSize: 13.5, fontWeight: 600 }}>{formatPrice(index.close)}</span>
+              <span className={`price-${direction}`} style={{ fontSize: 12 }}>
+                {changeArrow(index.changeRate)}{" "}
+                {index.changeRate !== null ? `${Math.abs(index.changeRate).toFixed(2)}%` : "—"}
+              </span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function HomePage() {
   const router = useRouter();
@@ -16,6 +76,7 @@ export default function HomePage() {
   const { watchlist, remove, loading: watchlistLoading } = useWatchlist();
   const [items, setItems] = useState<SummaryItem[] | null>(null);
   const [error, setError] = useState("");
+  const indices = useMarketIndices();
 
   useEffect(() => {
     if (!loading && !onboarded) router.replace("/onboarding");
@@ -67,6 +128,8 @@ export default function HomePage() {
       </div>
 
       {error && <div className="error-box" style={{ marginBottom: 16 }}>{error}</div>}
+
+      <MarketIndexStrip indices={indices} />
 
       {watchlistLoading ? (
         <div className="skeleton" style={{ height: 96, borderRadius: 18 }} />

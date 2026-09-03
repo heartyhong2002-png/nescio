@@ -1,5 +1,5 @@
 import { serverEnv } from "./server-env";
-import { Market, Stock } from "./types";
+import { Market, MarketIndex, Stock } from "./types";
 
 type KrxRow = {
   ISU_CD?: string;
@@ -161,4 +161,67 @@ export async function fetchPriceHistory(ticker: string, calendarDays: number): P
 
   points.sort((a, b) => a.date.localeCompare(b.date));
   return points;
+}
+
+
+// ---------------------------------------------------------------------------
+// 코스피/코스닥 대표지수 — 개별 종목이 아니라 시장 전체 시세.
+// KRX Open API의 지수 시세 서비스(idx/kospi_dd_trd, idx/kosdaq_dd_trd)를 쓴다.
+// 응답 필드명은 개발 환경(이 세션)에서 직접 호출해 확인하지 못했고 KRX 공식 문서와
+// 기존 sto/*_bydd_trd 응답의 명명 규칙(TDD_CLSPRC/FLUC_RT 등)을 근거로 추정했다 —
+// 필드명이 실제와 다르면 아래에서 row는 찾아도 숫자가 안 나와 조용히 카드가 빈 채로
+// 넘어간다(에러로 화면이 깨지진 않는다). 한 번 실행해서 안 뜨면 이 함수의 필드명만 고치면 된다.
+type KrxIndexRow = {
+  IDX_NM?: string;
+  CLSPRC_IDX?: string;
+  FLUC_RT?: string;
+};
+
+const INDEX_SVC_PATH: Record<"KOSPI" | "KOSDAQ", string> = {
+  KOSPI: "idx/kospi_dd_trd",
+  KOSDAQ: "idx/kosdaq_dd_trd",
+};
+
+// KOSPI/KOSDAQ 시리즈 응답에는 "코스피 200"처럼 하위 지수도 같이 들어있어서
+// 대표지수(딱 "코스피"/"코스닥")만 골라내야 한다.
+const HEADLINE_INDEX_NAME: Record<"KOSPI" | "KOSDAQ", "코스피" | "코스닥"> = {
+  KOSPI: "코스피",
+  KOSDAQ: "코스닥",
+};
+
+async function fetchIndexRows(series: "KOSPI" | "KOSDAQ", basDd: string, key: string): Promise<KrxIndexRow[]> {
+  const response = await fetch(
+    `${KRX_BASE_URL}/${INDEX_SVC_PATH[series]}?AUTH_KEY=${encodeURIComponent(key)}&basDd=${basDd}`,
+    { cache: "no-store" },
+  );
+  if (!response.ok) throw new Error(`KRX ${series} 지수 API 오류 (${response.status})`);
+  return ((await response.json()).OutBlock_1 ?? []) as KrxIndexRow[];
+}
+
+/** 코스피 또는 코스닥 대표지수의 최근 종가·등락률. 못 찾으면 null(화면에서 조용히 숨김). */
+export async function getMarketIndex(series: "KOSPI" | "KOSDAQ"): Promise<MarketIndex | null> {
+  const key = serverEnv("KRX_AUTH_KEY");
+  if (!key) return null;
+  try {
+    for (let offset = 0; offset < 8; offset += 1) {
+      const rows = await fetchIndexRows(series, dateString(offset), key);
+      const row = rows.find((item) => item.IDX_NM === HEADLINE_INDEX_NAME[series]);
+      if (row?.CLSPRC_IDX) {
+        return {
+          name: HEADLINE_INDEX_NAME[series],
+          close: Number(String(row.CLSPRC_IDX).replaceAll(",", "")),
+          changeRate: row.FLUC_RT ? Number(String(row.FLUC_RT).replaceAll(",", "")) : null,
+        };
+      }
+      if (rows.length > 0) break; // 그날 데이터는 있는데 못 찾은 거면 필드명이 틀린 것 — 더 뒤져봐야 소용없다.
+    }
+  } catch (error) {
+    console.warn(`[krx] ${series} 지수 조회 실패:`, error instanceof Error ? error.message : error);
+  }
+  return null;
+}
+
+export async function getMarketIndices(): Promise<MarketIndex[]> {
+  const [kospi, kosdaq] = await Promise.all([getMarketIndex("KOSPI"), getMarketIndex("KOSDAQ")]);
+  return [kospi, kosdaq].filter((value): value is MarketIndex => value !== null);
 }
