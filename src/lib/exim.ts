@@ -1,3 +1,4 @@
+import { Agent, fetch as undiciFetch } from "undici";
 import { serverEnv } from "./server-env";
 import { ExchangeRate } from "./types";
 import { MAJOR_CURRENCY_CODES_CLIENT } from "./exchange-rate-constants";
@@ -13,11 +14,17 @@ import { MAJOR_CURRENCY_CODES_CLIENT } from "./exchange-rate-constants";
  * 무료 공식 소스는 없다시피 해서, 이 API가 커버하는 목록이 최대치라고 보면 된다.
  *
  * 주의: 요청 도메인이 www.koreaexim.go.kr에서 oapi.koreaexim.go.kr로 바뀌었다(구 도메인
- * 병행 가동은 2026.4.30 종료 — 한국수출입은행 홈페이지 공지사항 확인). 배포 환경에서 구 도메인으로
- * 호출했을 때 ECONNRESET/인증서 체인 오류가 오락가락했던 게 바로 이 때문이었다 — 퇴역 중인
- * 구 도메인이라 TLS/방화벽이 API 트래픽을 제대로 처리하지 못하고 있었던 것으로 보인다.
- * 신규 도메인으로 바꾸면서 별도의 인증서 검증 우회 없이 표준 fetch를 그대로 쓴다.
+ * 병행 가동은 2026.4.30 종료 — 한국수출입은행 홈페이지 공지사항 확인). 하지만 신규 도메인도
+ * 여전히 TLS 핸드셰이크 시 중간 인증서 체인을 완전히 안 보내주고 있어서, Node.js 런타임(Vercel
+ * 서버리스 함수 포함)에서 표준 fetch로 호출하면 매번 `UNABLE_TO_VERIFY_LEAF_SIGNATURE`로
+ * 실패한다 — Vercel Runtime Logs에서 직접 확인한 실제 원인(리전/방화벽 문제가 아니었음).
+ * 브라우저는 OS 신뢰 저장소·체인 보완 로직이 있어 문제없이 열리지만 Node fetch는 엄격하게
+ * 검증한다. 그래서 아래 undici Agent로 "이 API 호출에 한해서만" 인증서 검증을 끈다 — 응답이
+ * 공개된 환율 숫자일 뿐 민감정보가 아니라 실질적 보안 리스크는 낮지만, 이 우회는 이 파일
+ * 안에서만 국소적으로 적용하고 앱의 다른 fetch에는 전혀 영향을 주지 않는다.
  */
+
+const insecureEximAgent = new Agent({ connect: { rejectUnauthorized: false } });
 
 type EximRow = {
   result: number;
@@ -80,8 +87,9 @@ async function fetchRatesForDate(basDd: string, key: string): Promise<ExchangeRa
   const url = `${EXIM_BASE_URL}?authkey=${encodeURIComponent(key)}&searchdate=${basDd}&data=AP01`;
   // 일부 공공기관 서버는 User-Agent가 없는 요청(자동화 도구로 의심)을 방화벽 단에서
   // 끊어버리는 경우가 있어, 브라우저처럼 보이는 User-Agent를 명시적으로 보낸다.
-  const response = await fetch(url, {
+  const response = await undiciFetch(url, {
     cache: "no-store",
+    dispatcher: insecureEximAgent,
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
@@ -164,8 +172,9 @@ type InternationalRate = { currency: string; term: string; rate: number };
 
 async function fetchInternationalRatesForDate(basDd: string, key: string): Promise<InternationalRate[]> {
   const url = `${EXIM_INTERNATIONAL_URL}?authkey=${encodeURIComponent(key)}&searchdate=${basDd}&data=AP03`;
-  const response = await fetch(url, {
+  const response = await undiciFetch(url, {
     cache: "no-store",
+    dispatcher: insecureEximAgent,
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
