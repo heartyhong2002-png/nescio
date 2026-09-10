@@ -4,11 +4,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
+import { LiveSparkline } from "@/components/LiveSparkline";
 import { changeArrow, changeEmoji, changeDirection, formatPrice } from "@/lib/format";
 import { useOnboarded, useWatchlist } from "@/lib/storage";
 import { MarketIndex, Stock } from "@/lib/types";
+import { useLiveWatchlistPrices } from "@/lib/use-live-prices";
 
 type SummaryItem = Stock & { close: number | null; changeRate: number | null; newsCount: number | null };
+
+// LiveSparkline은 (현재가, 기준값) 쌍을 받는데 우리가 들고 있는 건 (현재가, 등락률%)이라
+// 기준값을 역산해서 넘긴다 — 등락률은 항상 전일 종가 대비라는 이 앱의 기존 규약과 맞춘다.
+function referenceFromChangeRate(price: number, changeRate: number) {
+  return price / (1 + changeRate / 100);
+}
 
 // 코스피/코스닥 대표지수 — 관심종목과 별개로 오늘 시장 전체 분위기를 한눈에 보여준다.
 // KRX 지수 API 필드명을 확신 못 해 얻지 못할 수도 있어서(krx.ts 주석 참고) 실패하면
@@ -77,6 +85,8 @@ export default function HomePage() {
   const [items, setItems] = useState<SummaryItem[] | null>(null);
   const [error, setError] = useState("");
   const indices = useMarketIndices();
+  const liveTickers = watchlist.map((stock) => stock.ticker);
+  const livePrices = useLiveWatchlistPrices(liveTickers);
 
   useEffect(() => {
     if (!loading && !onboarded) router.replace("/onboarding");
@@ -168,6 +178,13 @@ export default function HomePage() {
             <div className="list-panel">
               {rows.map((stock) => {
                 const direction = changeDirection(stock.changeRate);
+                // 폴링(live-prices)이 아직 안 왔으면 watchlist-summary의 정적 종가로 대체 —
+                // 카드가 빈 채로 있지 않고 처음부터 뭔가는 보이게 한다.
+                const live =
+                  livePrices[stock.ticker] ??
+                  (stock.close !== null && stock.changeRate !== null
+                    ? { price: stock.close, changeRate: stock.changeRate }
+                    : null);
                 return (
                   <div key={stock.ticker} className="list-row">
                     <Link
@@ -188,14 +205,22 @@ export default function HomePage() {
                       {summaryLoading ? (
                         <div className="skeleton" style={{ width: 64, height: 32 }} />
                       ) : (
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: 14, fontWeight: 600 }}>{formatPrice(stock.close)}</div>
-                          <div className={`price-${direction}`} style={{ fontSize: 12, marginTop: 3 }}>
-                            {changeArrow(stock.changeRate)}{" "}
-                            {stock.changeRate !== null ? `${Math.abs(stock.changeRate).toFixed(2)}%` : "—"}
-                            {changeEmoji(stock.changeRate)}
+                        <>
+                          {live && (
+                            <LiveSparkline
+                              value={live.price}
+                              referenceValue={referenceFromChangeRate(live.price, live.changeRate)}
+                            />
+                          )}
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: 14, fontWeight: 600 }}>{formatPrice(stock.close)}</div>
+                            <div className={`price-${direction}`} style={{ fontSize: 12, marginTop: 3 }}>
+                              {changeArrow(stock.changeRate)}{" "}
+                              {stock.changeRate !== null ? `${Math.abs(stock.changeRate).toFixed(2)}%` : "—"}
+                              {changeEmoji(stock.changeRate)}
+                            </div>
                           </div>
-                        </div>
+                        </>
                       )}
                     </Link>
                     <button

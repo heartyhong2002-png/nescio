@@ -274,6 +274,48 @@ export async function fetchIntradayHistory(ticker: string): Promise<PricePoint[]
 }
 
 // ---------------------------------------------------------------------------
+// 현재가 (홈 카드 LiveSparkline이 몇 초 간격으로 폴링하는 용도)
+// ---------------------------------------------------------------------------
+
+export type CurrentPrice = {
+  price: number;
+  /** 전일 대비율(%). prdy_ctrt — 이 파일의 다른 changeRate 필드들과 같은 부호 규약. */
+  changeRate: number;
+};
+
+// FHKST01010100(현재가 시세)은 이 파일 맨 위 주석에 경로만 적혀 있고 아직 아무 함수도
+// 쓰지 않던 엔드포인트다. 필드명(stck_prpr/prdy_ctrt)은 KIS 공식 문서 기준으로 적었고,
+// 이 코드를 만든 세션은 조직 네트워크 정책상 KIS API를 직접 호출해 검증하지 못했다 —
+// 다른 kis.ts 함수들과 달리 실행 로그로 확인된 필드가 아니다. 처음 켰을 때 값이 계속
+// null로 나오면 이 함수부터 의심해서, row 전체를 한 번 콘솔에 찍어 실제 키로 맞춰달라.
+export async function fetchCurrentPrice(ticker: string): Promise<CurrentPrice | null> {
+  const data = await kisGet("/uapi/domestic-stock/v1/quotations/inquire-price", "FHKST01010100", {
+    FID_COND_MRKT_DIV_CODE: "J",
+    FID_INPUT_ISCD: ticker,
+  });
+  const row = data.output;
+  const price = toNumber(row?.stck_prpr);
+  const changeRate = toNumber(row?.prdy_ctrt);
+  if (price === null || changeRate === null) return null;
+  return { price, changeRate };
+}
+
+/**
+ * 관심종목 카드 배치 조회. 종목 하나가 실패해도(레이트리밋 등) 나머지 카드는 계속
+ * 값을 받아야 하므로 allSettled로 모으고, 실패한 티커는 결과 맵에서 조용히 빠진다
+ * (그 카드는 LiveSparkline 없이 기존 정적 표시로 남는다).
+ */
+export async function fetchCurrentPrices(tickers: string[]): Promise<Map<string, CurrentPrice>> {
+  const result = new Map<string, CurrentPrice>();
+  const settled = await Promise.allSettled(tickers.map((ticker) => fetchCurrentPrice(ticker)));
+  tickers.forEach((ticker, i) => {
+    const outcome = settled[i];
+    if (outcome.status === "fulfilled" && outcome.value) result.set(ticker, outcome.value);
+  });
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // 기간별 시세 (일/주/월)
 // ---------------------------------------------------------------------------
 
