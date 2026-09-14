@@ -21,6 +21,11 @@ async function callOpenAiCompatible(opts: {
   system: string;
   prompt: string;
   temperature: number;
+  maxTokens?: number;
+  // OpenRouter 경유로 추론형 모델을 부를 때 reasoning 토큰이 출력 예산을 먼저 먹어버려서
+  // 눈에 보이는 답변이 문장 중간에 잘리는 걸 막는다 — 한 문장짜리 코멘트엔 추론이 필요
+  // 없으니 꺼둔다.
+  disableReasoning?: boolean;
 }): Promise<string> {
   const response = await fetch(opts.url, {
     method: "POST",
@@ -28,6 +33,8 @@ async function callOpenAiCompatible(opts: {
     body: JSON.stringify({
       model: opts.model,
       temperature: opts.temperature,
+      ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+      ...(opts.disableReasoning ? { reasoning: { effort: "none" } } : {}),
       messages: [
         { role: "system", content: opts.system },
         { role: "user", content: opts.prompt },
@@ -36,8 +43,15 @@ async function callOpenAiCompatible(opts: {
     cache: "no-store",
   });
   if (!response.ok) throw new Error(`${opts.label} API 오류 (${response.status}): ${await response.text()}`);
-  const content = (await response.json()).choices?.[0]?.message?.content as string | undefined;
+  const payload = await response.json();
+  const choice = payload.choices?.[0];
+  const content = choice?.message?.content as string | undefined;
   if (!content) throw new Error(`${opts.label} 응답이 비어 있습니다.`);
+  // finish_reason이 "length"면 토큰 한도 때문에 문장이 중간에 잘린 것 — 그대로 화면에 내보내지
+  // 않고 에러로 던져서 Gemini 폴백을 타게 한다.
+  if (choice?.finish_reason === "length") {
+    throw new Error(`${opts.label} 응답이 토큰 한도로 중간에 잘렸습니다(finish_reason=length).`);
+  }
   return content;
 }
 
@@ -59,6 +73,9 @@ function callSolar(system: string, prompt: string, temperature: number): Promise
     system,
     prompt,
     temperature,
+    // 한 문장짜리 코멘트라 이 정도면 넉넉하다 — reasoning은 꺼서 그 토큰을 답변에 다 쓰게 한다.
+    maxTokens: 300,
+    disableReasoning: true,
   });
 }
 
