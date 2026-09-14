@@ -30,6 +30,10 @@ jobs:
           ref: db-backups
           fetch-depth: 0
 
+      # ubuntu-latest 기본 저장소의 postgresql-client는 16.x인데, Supabase는 이미 Postgres 17을
+      # 쓰고 있다. pg_dump는 자기보다 최신인 서버는 버전 불일치로 덤프를 거부하므로(server version:
+      # 17.6 vs pg_dump 16.15 -> "aborting because of server version mismatch"), PostgreSQL 공식
+      # APT 저장소(apt.postgresql.org)를 추가해서 17번대 클라이언트를 설치한다.
       - name: Install postgresql-client 17
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -39,7 +43,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
 
-            - name: Dump public schema
+      - name: Dump public schema
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
@@ -50,12 +54,4 @@ jobs:
           /usr/lib/postgresql/17/bin/pg_dump "$DATABASE_URL" --schema=public --no-owner --no-acl -f "backups/$(date -u +%F).sql"
 
       - name: Prune backups older than 30 days
-        run: find backups -name "*.sql" -mtime +30 -delete
-
-      - name: Commit and push backup
-        run: |
-          git config user.name "db-backup-bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add backups
-          git diff --staged --quiet || git commit -m "chore: DB backup $(date -u +%F)"
-          git push origin db-backups
+        run: find
