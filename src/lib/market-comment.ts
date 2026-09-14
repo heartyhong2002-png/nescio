@@ -26,21 +26,31 @@ async function callOpenAiCompatible(opts: {
   // 없으니 꺼둔다.
   disableReasoning?: boolean;
 }): Promise<string> {
-  const response = await fetch(opts.url, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${opts.apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: opts.model,
-      temperature: opts.temperature,
-      ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-      ...(opts.disableReasoning ? { reasoning: { effort: "none" } } : {}),
-      messages: [
-        { role: "system", content: opts.system },
-        { role: "user", content: opts.prompt },
-      ],
-    }),
-    cache: "no-store",
-  });
+  const doFetch = () =>
+    fetch(opts.url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${opts.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: opts.model,
+        temperature: opts.temperature,
+        ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+        ...(opts.disableReasoning ? { reasoning: { effort: "none" } } : {}),
+        messages: [
+          { role: "system", content: opts.system },
+          { role: "user", content: opts.prompt },
+        ],
+      }),
+      cache: "no-store",
+    });
+
+  let response = await doFetch();
+  // 503(일시적 과부하)은 NVIDIA 무료 티어에서 종종 관찰되는, 몇 초 뒤 재시도하면 대부분
+  // 바로 성공하는 패턴이다 — 매번 Gemini 폴백(하루 20회 한도)까지 태우지 않도록 한 번만
+  // 짧게 재시도한다.
+  if (response.status === 503) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    response = await doFetch();
+  }
   if (!response.ok) throw new Error(`${opts.label} API 오류 (${response.status}): ${await response.text()}`);
   const payload = await response.json();
   const choice = payload.choices?.[0];
@@ -194,7 +204,9 @@ export async function getMarketComment(indices: MarketIndex[]): Promise<string |
     const prompt = buildPrompt(indices, headlines);
     const comment = await withGeminiFallback(
       "시장 분위기 코멘트",
-      () => callNvidia(system, prompt, 0.9, 300),
+      // nemotron이 답변 전에 내부적으로 길게 풀어쓰는 경향이 있어서(reasoning 계열 모델),
+      // 300 토큰으로는 실제 문장이 나오기 전에 잘려버렸다 — 넉넉하게 800으로 올린다.
+      () => callNvidia(system, prompt, 0.9, 800),
       () => callGemini(system, prompt, 0.9),
     );
     return comment.trim() || null;
