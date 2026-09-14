@@ -143,7 +143,20 @@ async function callOpenAiCompatible(opts: {
   return content;
 }
 
-function callNvidia(system: string, prompt: string, temperature: number): Promise<string> {
+/**
+ * NVIDIA(무료 티어, nemotron) — 1단계 사실 분석뿐 아니라 2단계 "쩐형" 재작성에도 재사용한다.
+ * 원래 2단계는 xAI Grok → Upstage Solar Pro 3(OpenRouter 무료)로 옮겨왔는데, Solar Pro 3의
+ * 무료 프로모션 기간 자체가 끝나버려서(OpenRouter가 404로 "paid slug로 이전하라"는 응답을
+ * 줌) 유료 전환 없이 계속 무료로 쓸 수 있는, 이미 이 프로젝트에 검증되어 있는 NVIDIA로
+ * 다시 옮긴다. opts는 2단계(JSON 응답 + 넉넉한 토큰 한도)에서만 쓰고, 1단계 기존 호출부는
+ * opts 없이 그대로 호출하면 됨.
+ */
+function callNvidia(
+  system: string,
+  prompt: string,
+  temperature: number,
+  opts?: { json?: boolean; maxTokens?: number },
+): Promise<string> {
   const apiKey = serverEnv("NVIDIA_API_KEY");
   if (!apiKey) throw new Error("NVIDIA_API_KEY를 .env에 설정하세요.");
   return callOpenAiCompatible({
@@ -154,36 +167,8 @@ function callNvidia(system: string, prompt: string, temperature: number): Promis
     system,
     prompt,
     temperature,
-  });
-}
-
-/**
- * Upstage Solar Pro 3(한국어 특화 MoE, OpenRouter 무료 티어) — OpenRouter 경유.
- * 원래 이 자리는 xAI Grok이었는데 계정 크레딧이 만료돼서, 한국어에 강하고 계속 무료로 쓸 수
- * 있는 Solar Pro 3로 교체했다. 과거 이력 요약(callOpenRouter, 기본 Qwen)과 API 키·엔드포인트는
- * 같지만 목적이 달라 함수를 분리해 둔다 — 모델을 바꾸고 싶으면 SOLAR_MODEL 환경변수만 다른
- * OpenRouter 모델 슬러그로 바꾸면 된다.
- *
- * 주의: OpenRouter 무료(:free) 모델은 계정당 분당 20회, 하루 50회(누적 $10 이상 충전 시 1000회)
- * 제한이 있다 — history 요약(callOpenRouter)과 이 호출이 같은 키를 공유하니, 트래픽이 늘면
- * OpenRouter에 소액 충전해서 한도를 올려야 할 수 있다.
- */
-function callSolar(system: string, prompt: string, temperature: number, json: boolean): Promise<string> {
-  const apiKey = serverEnv("OPENROUTER_API_KEY") || serverEnv("OpenRouter_API_KEY");
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY를 .env에 설정하세요. (발급: https://openrouter.ai/keys)");
-  return callOpenAiCompatible({
-    label: "Solar(OpenRouter)",
-    url: "https://openrouter.ai/api/v1/chat/completions",
-    apiKey,
-    model: serverEnv("SOLAR_MODEL") || "upstage/solar-pro-3:free",
-    system,
-    prompt,
-    temperature,
-    json,
-    // 재작성 결과(원인 여러 개 + 코멘트까지 들어간 JSON)가 넉넉히 나올 토큰 한도 —
-    // 너무 낮으면 문장이 중간에 잘리고, reasoning은 이 작업엔 불필요해서 꺼둔다.
-    maxTokens: 4096,
-    disableReasoning: true,
+    json: opts?.json,
+    maxTokens: opts?.maxTokens,
   });
 }
 
@@ -415,7 +400,7 @@ async function analyzeRaw(
 }
 
 // ---------------------------------------------------------------------------
-// 2단계: Upstage Solar(OpenRouter, 폴백 Gemini) — "쩐형" 캐릭터로 재작성 (1단계 사실은 그대로, 톤만 바꾼다)
+// 2단계: NVIDIA(무료, 폴백 Gemini) — "쩐형" 캐릭터로 재작성 (1단계 사실은 그대로, 톤만 바꾼다)
 // ---------------------------------------------------------------------------
 type Tone = "mild" | "medium" | "spicy" | "nuclear";
 
@@ -481,7 +466,7 @@ async function rewritePlain(
 
   const content = await withGeminiFallback(
     "2단계 쩐형 재작성",
-    () => callSolar(system, prompt, 0.9, true),
+    () => callNvidia(system, prompt, 0.9, { json: true, maxTokens: 4096 }),
     () => callGemini(system, prompt, { temperature: 0.9, json: true }),
   );
 

@@ -7,8 +7,7 @@ import { MarketIndex } from "./types";
  * '쩐형' 캐릭터와 같은 톤을 쓴다. analyze/route.ts의 2단계 재작성은 종목 하나짜리 JSON
  * 스키마(Briefing)를 채우는 용도라 여기(지수 전체를 보고 평문 한 문장만 뽑으면 되는 용도)엔
  * 안 맞고, analyze/route.ts는 이미 500줄 넘게 커져서 거길 손대면 엉뚱한 회귀가 날 위험이
- * 크다. 그래서 제공자 호출부(Solar via OpenRouter/Gemini)만 최소한으로 복제해 이 파일 안에서
- * 자체 처리한다.
+ * 크다. 그래서 제공자 호출부(NVIDIA/Gemini)만 최소한으로 복제해 이 파일 안에서 자체 처리한다.
  */
 
 const errMsg = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -56,26 +55,23 @@ async function callOpenAiCompatible(opts: {
 }
 
 /**
- * Upstage Solar Pro 3(한국어 특화 MoE, OpenRouter 무료 티어) — OpenRouter 경유.
- * analyze/route.ts 2단계(쩐형 재작성)와 같은 이유로 xAI 대신 이걸 쓴다 — 계정 크레딧 만료+
- * 한국어 특화 + 계속 무료로 쓸 수 있다는 게 이유. 같은 OPENROUTER_API_KEY를 공유하니
- * 트래픽이 늘면(무료 티어는 계정당 하루 50회, $10 이상 충전 시 1000회) OpenRouter에
- * 소액 충전이 필요할 수 있다.
+ * NVIDIA(무료 티어, nemotron) — analyze/route.ts 2단계와 같은 이유로 여기서도 이걸 쓴다.
+ * 원래는 Upstage Solar Pro 3(OpenRouter 무료)였는데, Solar Pro 3의 무료 프로모션 기간
+ * 자체가 끝나버려서(OpenRouter가 404로 "paid slug로 이전하라"는 응답을 줌) 유료 전환 없이
+ * 계속 무료로 쓸 수 있고 이미 이 프로젝트에서 검증된 NVIDIA로 옮긴다.
  */
-function callSolar(system: string, prompt: string, temperature: number): Promise<string> {
-  const apiKey = serverEnv("OPENROUTER_API_KEY") || serverEnv("OpenRouter_API_KEY");
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY를 .env에 설정하세요. (발급: https://openrouter.ai/keys)");
+function callNvidia(system: string, prompt: string, temperature: number, maxTokens?: number): Promise<string> {
+  const apiKey = serverEnv("NVIDIA_API_KEY");
+  if (!apiKey) throw new Error("NVIDIA_API_KEY를 .env에 설정하세요.");
   return callOpenAiCompatible({
-    label: "Solar(OpenRouter)",
-    url: "https://openrouter.ai/api/v1/chat/completions",
+    label: "NVIDIA",
+    url: "https://integrate.api.nvidia.com/v1/chat/completions",
     apiKey,
-    model: serverEnv("SOLAR_MODEL") || "upstage/solar-pro-3:free",
+    model: serverEnv("NVIDIA_MODEL") || "nvidia/nemotron-3-super-120b-a12b",
     system,
     prompt,
     temperature,
-    // 한 문장짜리 코멘트라 이 정도면 넉넉하다 — reasoning은 꺼서 그 토큰을 답변에 다 쓰게 한다.
-    maxTokens: 300,
-    disableReasoning: true,
+    maxTokens,
   });
 }
 
@@ -198,7 +194,7 @@ export async function getMarketComment(indices: MarketIndex[]): Promise<string |
     const prompt = buildPrompt(indices, headlines);
     const comment = await withGeminiFallback(
       "시장 분위기 코멘트",
-      () => callSolar(system, prompt, 0.9),
+      () => callNvidia(system, prompt, 0.9, 300),
       () => callGemini(system, prompt, 0.9),
     );
     return comment.trim() || null;
