@@ -135,12 +135,23 @@ function findField(rows: DartEstkRow[], ...keys: string[]) {
 
 const SUBSCRIPTION_TO_LISTING_BUSINESS_DAYS = 2;
 
+// 실측(2026-09-14) 결과 pblntf_detail_ty=C001을 넘겨도 채무증권/파생결합증권/투자설명서 등
+// 발행공시(C) 전체가 그대로 섞여 나오는 게 확인됐다 — 이 파라미터는 사실상 필터로 안 먹는다.
+// 그래서 report_nm 텍스트에 "증권신고서"와 "지분증권"이 둘 다 있는 것만 후보로 남기는 방식으로
+// 클라이언트 쪽에서 직접 거른다(초기 신고/[정정]/[발행조건확정] 전부 이 두 단어를 포함하는 걸
+// 실측으로 확인함). 필터가 서버에서 안 걸러주니 대상 집합이 커져서(하루 발행공시만 100건 넘게
+// 나올 때도 있음) 60일 치를 다 보려면 페이지 상한도 크게 잡아야 한다.
+const MAX_LIST_PAGES = 60; // page_count=100 기준 최대 6,000건 — 60일 치 발행공시(C) 전체를 커버
+
+function isEquityRegistrationTitle(reportNm: string | undefined) {
+  return !!reportNm && reportNm.includes("증권신고서") && reportNm.includes("지분증권");
+}
+
 /** 공시검색: 최근 접수된 "증권신고(지분증권)" 목록에서 아직 상장 안 된 회사(=IPO 후보)만 추린다. */
 export async function searchIpoCandidates(bgnDe: string, endDe: string): Promise<DartListItem[]> {
   const candidates: DartListItem[] = [];
   let page = 1;
-  // 과도한 호출을 막기 위해 최대 5페이지(최대 500건)까지만 본다 — 지분증권 공시량 특성상 충분.
-  for (; page <= 5; page += 1) {
+  for (; page <= MAX_LIST_PAGES; page += 1) {
     const data = await dartGet<DartListResponse>("list.json", {
       pblntf_ty: "C",
       pblntf_detail_ty: "C001",
@@ -151,7 +162,8 @@ export async function searchIpoCandidates(bgnDe: string, endDe: string): Promise
     });
     const list = data.list ?? [];
     for (const item of list) {
-      if (!item.stock_code || item.stock_code.trim() === "") candidates.push(item);
+      const isUnlisted = !item.stock_code || item.stock_code.trim() === "";
+      if (isUnlisted && isEquityRegistrationTitle(item.report_nm)) candidates.push(item);
     }
     if (!data.total_page || page >= data.total_page) break;
   }
