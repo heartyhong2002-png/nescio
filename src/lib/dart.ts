@@ -80,14 +80,15 @@ function toIsoDate(value: string | undefined): string | null {
 }
 
 /**
- * "청약기일" 필드(sbd)는 "2026.09.15 ~ 2026.09.16"처럼 시작~종료가 한 문자열에 같이 오는
- * 것으로 보인다(가이드 문서에 정확한 포맷이 없어 실 응답으로 검증 필요). 구분자(~, -, ~ 전각 등)
- * 여러 종류를 방어적으로 처리하고, 날짜 두 개를 못 찾으면 null을 반환해 화면에서 조용히
- * 숨기게 한다.
+ * "청약기일" 필드(sbd)는 시작~종료가 한 문자열에 같이 온다. 실측(2026-09-14, 빅웨이브로보틱스)
+ * 결과 실제 포맷은 "2026년 09월 15일 ~ 2026년 09월 16일"처럼 "YYYY년 MM월 DD일" 한글 표기였다
+ * — 기존엔 "2026.09.15" 같은 구분자 포맷만 매칭해서 날짜를 하나도 못 찾고 조용히 걸러지는
+ * 버그가 있었다. "년"/"월"도 구분자로 같이 인식하게 고치고, 혹시 모를 "."/"-"/"/" 포맷도 계속
+ * 방어적으로 처리한다. 날짜 두 개를 못 찾으면 null을 반환해 화면에서 조용히 숨기게 한다.
  */
 function parseSubscriptionRange(raw: string | undefined): { start: string | null; end: string | null } {
   if (!raw) return { start: null, end: null };
-  const dates = [...raw.matchAll(/(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/g)].map(
+  const dates = [...raw.matchAll(/(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})\s*일?/g)].map(
     ([, y, m, d]) => `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`,
   );
   if (dates.length === 0) return { start: null, end: null };
