@@ -119,7 +119,7 @@ export default function IpoPage() {
                   {isOpen && (
                     <div className="card" style={{ margin: "0 0 8px", borderRadius: 12 }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
-                        <Row label="대표 주관사" value={ipo.leadUnderwriter ?? "정보 없음"} />
+                        <Row label="주관사" value={ipo.leadUnderwriter ?? "정보 없음"} />
                         <Row
                           label="공모 규모"
                           value={ipo.offerAmount !== null ? `${formatPrice(ipo.offerAmount)}원` : "정보 없음"}
@@ -137,7 +137,12 @@ export default function IpoPage() {
                           }
                         />
                       </div>
-                      <p className="muted" style={{ fontSize: 11, marginTop: 12 }}>
+                      {ipo.lockupNote && (
+                        <p className="muted" style={{ fontSize: 11, marginTop: 12 }}>
+                          {ipo.lockupNote}
+                        </p>
+                      )}
+                      <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>
                         상장 예정일은 청약종료일 기준으로 추정한 값이라 실제와 다를 수 있어요. 확정 일정은
                         증권사 공지를 확인해주세요.
                       </p>

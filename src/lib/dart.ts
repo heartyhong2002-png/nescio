@@ -123,6 +123,17 @@ function flattenEstkRows(data: DartEstkResponse): DartEstkRow[] {
   return (data.group ?? []).flatMap((g) => g.list ?? []);
 }
 
+/**
+ * 그룹 제목(부분 일치)으로 그 그룹의 행만 뽑는다. estkRs.json은 "exprc"/"expd" 같은 필드명이
+ * "일반사항" 그룹(용도 불명, 실측상 공모가와 우연히 같은 값)과 "일반청약자환매청구권" 그룹(풋백
+ * 옵션 행사가/행사기간)에 이름만 같고 뜻이 다르게 중복돼서 나온다 — 전체를 한 번에 뒤지는
+ * findField로는 엉뚱한 그룹의 값을 집어올 수 있어서, 이런 충돌 필드는 반드시 그룹을 지정해서
+ * 읽어야 한다.
+ */
+function findGroupRows(data: DartEstkResponse, titleIncludes: string): DartEstkRow[] {
+  return (data.group ?? []).find((g) => g.title?.includes(titleIncludes))?.list ?? [];
+}
+
 /** 여러 행에 흩어져 있을 수 있는 필드를 처음 발견되는 값으로 찾는다. */
 function findField(rows: DartEstkRow[], ...keys: string[]) {
   for (const row of rows) {
@@ -132,6 +143,33 @@ function findField(rows: DartEstkRow[], ...keys: string[]) {
     }
   }
   return undefined;
+}
+
+/** "인수인정보" 그룹의 대표/공동 주관사를 전부 모아 "유진증권(대표) · 미래에셋증권(공동)" 형태로. */
+function collectUnderwriters(rows: DartEstkRow[]): string | null {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const row of rows) {
+    const name = row["actnmn"];
+    if (!name || !name.trim() || seen.has(name)) continue;
+    seen.add(name);
+    const role = row["actsen"];
+    parts.push(role ? `${name}(${role})` : name);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/** "일반청약자환매청구권"(풋백옵션) 그룹을 사람이 읽을 수 있는 한 줄 요약으로. 없으면 null. */
+function summarizePutback(rows: DartEstkRow[]): string | null {
+  const exprc = findField(rows, "exprc");
+  const expd = findField(rows, "expd");
+  const grtrs = findField(rows, "grtrs");
+  if (!exprc && !expd) return null;
+  const parts: string[] = [];
+  if (expd) parts.push(`행사기간 ${expd.replace(/\n/g, " ")}`);
+  if (exprc) parts.push(`행사가 ${exprc}원`);
+  if (grtrs) parts.push(`사유: ${grtrs}`);
+  return `일반청약자 환매청구권(풋백옵션) — ${parts.join(", ")}`;
 }
 
 const SUBSCRIPTION_TO_LISTING_BUSINESS_DAYS = 2;
@@ -187,7 +225,8 @@ export async function fetchIpoDetail(item: DartListItem, bgnDe: string, endDe: s
     const offerPrice = toNumber(findField(rows, "slprc"));
     const offerAmount = toNumber(findField(rows, "slta"));
     const totalShares = toNumber(findField(rows, "stkcnt"));
-    const leadUnderwriter = findField(rows, "actnmn") ?? null;
+    const leadUnderwriter = collectUnderwriters(findGroupRows(data, "인수인정보"));
+    const lockupNote = summarizePutback(findGroupRows(data, "환매청구권"));
     const receiptDate = toIsoDate(item.rcept_dt) ?? bgnDe;
 
     return {
@@ -203,7 +242,7 @@ export async function fetchIpoDetail(item: DartListItem, bgnDe: string, endDe: s
       leadUnderwriter,
       totalShares,
       offerAmount,
-      lockupNote: null, // 의무보유확약 관련 그룹(부여사유 등)은 필드 실측 후 채운다.
+      lockupNote,
       receiptDate,
     };
   } catch (error) {
@@ -228,13 +267,9 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     .filter((r): r is PromiseFulfilledResult<IpoInfo | null> => r.status === "fulfilled")
     .map((r) => r.value)
     .filter((ipo): ipo is IpoInfo => ipo !== null)
-    // 청약종료일 정보가 없는 건 화면에 정렬 기준을 못 잡으니 제외하고, 이미 청약이 끝난 지 7일
-    // 넘은 건도 걸러낸다(막 마감된 건 참고용으로 잠깐은 보이게).
-    .filter((ipo) => {
-      if (!ipo.subscriptionEnd) return false;
-      const daysSinceEnd = (Date.parse(today) - Date.parse(ipo.subscriptionEnd)) / 86_400_000;
-      return daysSinceEnd <= 7;
-    })
+    // 청약종료일 정보가 없는 건 화면에 정렬 기준을 못 잡으니 제외하고, 청약이 이미 끝난(오늘보다
+    // 전인) 건도 제외한다 — 진행 중이거나 앞으로 시작할 공모주만 보여달라는 요청 반영.
+    .filter((ipo) => ipo.subscriptionEnd !== null && Date.parse(ipo.subscriptionEnd) >= Date.parse(today))
     .sort((a, b) => (a.subscriptionEnd ?? "").localeCompare(b.subscriptionEnd ?? ""));
 
   return ipos;
