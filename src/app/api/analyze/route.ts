@@ -4,6 +4,7 @@ import { getPriceForTicker } from "@/lib/krx";
 import { fetchMajorRatesSummary, fetchInternationalRatesSummary } from "@/lib/exim";
 import { getNewsMultiSource } from "@/lib/news-sources";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 import { Briefing, Cause, NewsItem, Price } from "@/lib/types";
 
 // 2단계 LLM 호출(NVIDIA + xAI)이라 요청 1건 비용이 크다. IP당 분당 5회로 제한해
@@ -21,6 +22,10 @@ const RATE_LIMIT = { limit: 5, windowMs: 60_000 };
 type CachedAnalysis = { data: Record<string, unknown>; expiresAt: number };
 const ANALYSIS_CACHE = new Map<string, CachedAnalysis>();
 const ANALYSIS_CACHE_TTL_MS = 10 * 60 * 1000; // 10분
+
+// 새 브리핑을 만들 때 같은 종목의 과거 분석(stock_analyses)을 몇 건까지 참고할지.
+// 너무 많으면 이력 요약 프롬프트가 길어지고 비용도 늘어나니 최근 것 위주로 적당히만 본다.
+const HISTORY_LIMIT = 5;
 
 // 프론트(CauseCard/CauseDetailView 등)가 이미 이 스키마로 렌더링하고 있어서 그대로 유지한다.
 // 2단계(쩐형) 응답도 이 스키마에 맞춰 나오도록 강제한다.
@@ -138,18 +143,53 @@ function callNvidia(system: string, prompt: string, temperature: number): Promis
   });
 }
 
-function callXai(system: string, prompt: string, temperature: number, json: boolean): Promise<string> {
-  const apiKey = serverEnv("XAI_API_KEY");
-  if (!apiKey) throw new Error("XAI_API_KEY를 .env에 설정하세요.");
+/**
+ * Upstage Solar Pro 3(한국어 특화 MoE, OpenRouter 무료 티어) — OpenRouter 경유.
+ * 원래 이 자리는 xAI Grok이었는데 계정 크레딧이 만료돼서, 한국어에 강하고 계속 무료로 쓸 수
+ * 있는 Solar Pro 3로 교체했다. 과거 이력 요약(callOpenRouter, 기본 Qwen)과 API 키·엔드포인트는
+ * 같지만 목적이 달라 함수를 분리해 둔다 — 모델을 바꾸고 싶으면 SOLAR_MODEL 환경변수만 다른
+ * OpenRouter 모델 슬러그로 바꾸면 된다.
+ *
+ * 주의: OpenRouter 무료(:free) 모델은 계정당 분당 20회, 하루 50회(누적 $10 이상 충전 시 1000회)
+ * 제한이 있다 — history 요약(callOpenRouter)과 이 호출이 같은 키를 공유하니, 트래픽이 늘면
+ * OpenRouter에 소액 충전해서 한도를 올려야 할 수 있다.
+ */
+function callSolar(system: string, prompt: string, temperature: number, json: boolean): Promise<string> {
+  const apiKey = serverEnv("OPENROUTER_API_KEY") || serverEnv("OpenRouter_API_KEY");
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY를 .env에 설정하세요. (발급: https://openrouter.ai/keys)");
   return callOpenAiCompatible({
-    label: "xAI",
-    url: "https://api.x.ai/v1/chat/completions",
+    label: "Solar(OpenRouter)",
+    url: "https://openrouter.ai/api/v1/chat/completions",
     apiKey,
-    model: serverEnv("XAI_MODEL") || "grok-4-1-fast-non-reasoning",
+    model: serverEnv("SOLAR_MODEL") || "upstage/solar-pro-3:free",
     system,
     prompt,
     temperature,
     json,
+  });
+}
+
+/**
+ * OpenRouter — 과거 분석 이력 요약 전용. NVIDIA/xAI(사실 분석·캐릭터 재작성)와는 별도로,
+ * 오픈소스 가중치 모델(기본 Qwen)만 이 단계에 쓰기 위해 분리했다. OpenAI 호환 엔드포인트라
+ * callOpenAiCompatible을 그대로 재사용한다. 모델을 바꾸고 싶으면 OPENROUTER_MODEL 환경변수만
+ * 다른 OpenRouter 모델 슬러그로 바꾸면 된다(https://openrouter.ai/models 참고).
+ *
+ * notebooks/.env에 이미 `OpenRouter_API_KEY`(파스칼_스네이크 혼용) 표기로 들어있는 경우가 있어
+ * 표준 표기(OPENROUTER_API_KEY)를 못 찾으면 그 이름도 한 번 더 시도한다 — 다른 키들처럼
+ * .env 쪽을 강제로 통일하기보다, 이미 넣어둔 값을 그대로 쓸 수 있게 코드가 맞춰준다.
+ */
+function callOpenRouter(system: string, prompt: string, temperature: number): Promise<string> {
+  const apiKey = serverEnv("OPENROUTER_API_KEY") || serverEnv("OpenRouter_API_KEY");
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY를 .env에 설정하세요. (발급: https://openrouter.ai/keys)");
+  return callOpenAiCompatible({
+    label: "OpenRouter",
+    url: "https://openrouter.ai/api/v1/chat/completions",
+    apiKey,
+    model: serverEnv("OPENROUTER_MODEL") || "qwen/qwen-2.5-72b-instruct",
+    system,
+    prompt,
+    temperature,
   });
 }
 
@@ -215,6 +255,76 @@ async function withGeminiFallback(
 }
 
 // ---------------------------------------------------------------------------
+// 0단계: OpenRouter(오픈소스 모델, 기본 Qwen) — 같은 종목의 과거 분석 이력을 짧게 요약해
+// 1단계 프롬프트에 참고 컨텍스트로 얹는다. 로그인 사용자만 이력이 있으므로, 비로그인이거나
+// 처음 보는 종목이면 rows가 비어 있고 이 단계는 그냥 빈 문자열을 돌려준다(호출 자체를 스킵).
+// 이력 요약은 어디까지나 참고용 부가 컨텍스트라 실패해도 본 분석 파이프라인을 막지 않는다.
+// ---------------------------------------------------------------------------
+type HistoryRow = { stock_name: string; briefing: Briefing; generated_at: string };
+
+async function fetchAnalysisHistory(ticker: string): Promise<HistoryRow[]> {
+  if (!ticker) return [];
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return []; // 비로그인 요청은 히스토리 자체가 없다(저장도 안 하므로).
+
+  const { data, error } = await supabase
+    .from("stock_analyses")
+    .select("stock_name, briefing, generated_at")
+    .eq("user_id", user.id)
+    .eq("ticker", ticker)
+    .order("created_at", { ascending: false })
+    .limit(HISTORY_LIMIT);
+
+  if (error) {
+    console.warn("[analyze] 과거 이력 조회 실패(컨텍스트 없이 계속 진행):", error);
+    return [];
+  }
+  return (data ?? []) as HistoryRow[];
+}
+
+function buildHistorySummaryPrompt(name: string, ticker: string, rows: HistoryRow[]) {
+  // 오래된 것부터 최신 순으로 나열해야 "흐름이 어떻게 바뀌어왔는지"를 모델이 읽기 쉽다.
+  const entries = rows
+    .slice()
+    .reverse()
+    .map((row, index) => {
+      const date = new Date(row.generated_at).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
+      const causeTitles = row.briefing.causes.map((cause) => cause.title).join(", ") || "없음";
+      const commentGist = (row.briefing.aiComment || "").split("\n")[0];
+      return `${index + 1}. [${date}] 한줄요약: ${row.briefing.oneLiner}\n   원인: ${causeTitles}\n   코멘트 요지: ${commentGist}`;
+    })
+    .join("\n\n");
+
+  const system =
+    "너는 리서치 어시스턴트다. 한 종목에 대한 과거 여러 차례의 분석 기록을 받아서, 다음 분석가가 참고할 " +
+    "핵심만 짧게 정리한다. 새로운 사실을 지어내지 말고 주어진 기록만 근거로 요약해라. 한국어로 답하라.";
+  const prompt = `${name}(${ticker})에 대한 과거 분석 ${rows.length}건이다(오래된 순).
+
+${entries}
+
+위 기록을 보고 다음을 3~4문장으로 정리해라.
+1. 반복적으로 등장하는 원인·테마가 있다면 무엇인지
+2. 최근 분석 흐름이 어떤 방향으로 바뀌어왔는지(있다면)
+3. 오늘 새 분석을 쓸 때 참고하면 좋을 맥락 한 가지
+근거가 부족하면 "특별한 반복 패턴 없음"이라고 써라.`;
+  return { system, prompt };
+}
+
+async function summarizeHistory(name: string, ticker: string, rows: HistoryRow[]): Promise<string> {
+  if (rows.length === 0) return "";
+  try {
+    const { system, prompt } = buildHistorySummaryPrompt(name, ticker, rows);
+    return await callOpenRouter(system, prompt, 0.3);
+  } catch (error) {
+    console.warn("[analyze] 이력 요약 생성 실패(컨텍스트 없이 계속 진행):", errMsg(error));
+    return "";
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 1단계: NVIDIA (폴백 Gemini) — 사실 확인 목적의 원본 분석 (formal한 문체, 캐릭터 없음)
 // ---------------------------------------------------------------------------
 function buildRawAnalysisPrompt(
@@ -224,6 +334,7 @@ function buildRawAnalysisPrompt(
   news: NewsItem[],
   fxSummary: string,
   intlRateSummary: string,
+  historySummary: string,
 ) {
   const priceText = `종가: ${price.close ?? "데이터 없음"}, 등락률: ${price.changeRate ?? "데이터 없음"}%, 시가총액: ${price.marketCap ?? "데이터 없음"}`;
   const newsText = news.length
@@ -231,6 +342,9 @@ function buildRawAnalysisPrompt(
     : "관련 뉴스 없음";
   const fxText = fxSummary || "데이터 없음";
   const intlRateText = intlRateSummary || "데이터 없음";
+  const historyText = historySummary
+    ? `\n[이 사용자가 과거에 이 종목을 조회했을 때의 분석 이력 요약 — 참고용]\n${historySummary}\n`
+    : "";
 
   const system =
     "너는 한국 주식 리서치 애널리스트다. 제공된 데이터만 근거로 분석하고, 확인된 사실과 해석을 구분하라. " +
@@ -239,7 +353,7 @@ function buildRawAnalysisPrompt(
 
 [시세 데이터]
 ${priceText}
-
+${historyText}
 [오늘의 환율(매매기준율, 참고용)]
 ${fxText}
 
@@ -259,6 +373,8 @@ ${newsText}
    금리 관련 이슈를 직접 다룰 때만 언급하고, 그렇지 않으면 억지로 끌어다 쓰지 마라.
 4. 긍정 요인과 부정 요인
 5. 추가 확인할 리스크와 다음에 관찰할 지표
+과거 분석 이력이 주어졌다면, 이번 분석이 그 흐름과 어떻게 이어지는지(반복되는지, 달라졌는지)도
+간단히 짚어줘라 — 단, 이력 자체를 새로운 사실로 취급하지 말고 어디까지나 오늘 데이터가 우선이다.
 각 항목은 간결한 문단 또는 bullet로 작성하고, 근거가 부족하면 '판단 유보'라고 표시해라.`;
   return { system, prompt };
 }
@@ -270,8 +386,9 @@ async function analyzeRaw(
   news: NewsItem[],
   fxSummary: string,
   intlRateSummary: string,
+  historySummary: string,
 ): Promise<string> {
-  const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news, fxSummary, intlRateSummary);
+  const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news, fxSummary, intlRateSummary, historySummary);
   return withGeminiFallback(
     "1단계 원본 분석",
     () => callNvidia(system, prompt, 0.2),
@@ -280,7 +397,7 @@ async function analyzeRaw(
 }
 
 // ---------------------------------------------------------------------------
-// 2단계: xAI Grok (폴백 Gemini) — "쩐형" 캐릭터로 재작성 (1단계 사실은 그대로, 톤만 바꾼다)
+// 2단계: Upstage Solar(OpenRouter, 폴백 Gemini) — "쩐형" 캐릭터로 재작성 (1단계 사실은 그대로, 톤만 바꾼다)
 // ---------------------------------------------------------------------------
 type Tone = "mild" | "medium" | "spicy" | "nuclear";
 
@@ -346,7 +463,7 @@ async function rewritePlain(
 
   const content = await withGeminiFallback(
     "2단계 쩐형 재작성",
-    () => callXai(system, prompt, 0.9, true),
+    () => callSolar(system, prompt, 0.9, true),
     () => callGemini(system, prompt, { temperature: 0.9, json: true }),
   );
 
@@ -360,6 +477,35 @@ async function rewritePlain(
   const briefing = coerceBriefing(raw, news);
   briefing.aiComment = briefing.aiComment ? `${briefing.aiComment}\n\n${DISCLAIMER}` : DISCLAIMER;
   return briefing;
+}
+
+// ---------------------------------------------------------------------------
+// 히스토리 저장 — 로그인한 사용자에 한해, 새로 생성된 브리핑을 stock_analyses에 버전으로 남긴다.
+// 캐시 히트로 응답한 경우엔 이미 이전 호출에서 저장됐을 것이므로 다시 저장하지 않는다(호출부에서
+// isNew일 때만 이 함수를 부른다). 저장은 부가 기능이라 실패해도 브리핑 응답 자체를 막지 않는다 —
+// 그래서 호출부는 이 함수를 항상 .catch로 감싸 에러를 삼킨다.
+// ---------------------------------------------------------------------------
+async function saveAnalysisForUser(
+  ticker: string,
+  name: string,
+  data: { price: Price; news: NewsItem[]; briefing: Briefing; generatedAt: string },
+) {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return; // 비로그인 요청은 지금까지처럼 DB에 남기지 않는다.
+
+  const { error } = await supabase.from("stock_analyses").insert({
+    user_id: user.id,
+    ticker,
+    stock_name: name,
+    price: data.price,
+    news: data.news,
+    briefing: data.briefing,
+    generated_at: data.generatedAt,
+  });
+  if (error) throw error;
 }
 
 export async function POST(request: Request) {
@@ -387,7 +533,7 @@ export async function POST(request: Request) {
       return NextResponse.json(cachedEntry.data);
     }
 
-    const [news, price, fxSummary, intlRateSummary] = await Promise.all([
+    const [news, price, fxSummary, intlRateSummary, historySummary] = await Promise.all([
       getNewsMultiSource(name),
       getPriceForTicker(tickerKey),
       // 환율·국제금리는 참고용 보조 데이터라 실패해도 브리핑 전체를 막지 않는다 — 조용히 빈
@@ -400,9 +546,17 @@ export async function POST(request: Request) {
         console.warn("[analyze] 국제금리 조회 실패(브리핑은 계속 진행):", error);
         return "";
       }),
+      // 0단계(이력 요약)도 같이 병렬로 — 뉴스/시세 조회를 기다리는 동안 같이 끝나서 전체
+      // 응답 시간이 거의 늘어나지 않는다. 실패해도 빈 문자열이라 아래 흐름은 그대로 간다.
+      fetchAnalysisHistory(tickerKey)
+        .then((rows) => summarizeHistory(name, tickerKey, rows))
+        .catch((error) => {
+          console.warn("[analyze] 이력 컨텍스트 준비 실패(계속 진행):", error);
+          return "";
+        }),
     ]);
 
-    const raw = await analyzeRaw(name, tickerKey, price, news, fxSummary, intlRateSummary);
+    const raw = await analyzeRaw(name, tickerKey, price, news, fxSummary, intlRateSummary, historySummary);
     const briefing = await rewritePlain(name, tickerKey, raw, news, tone);
 
     const responseData = {
@@ -413,6 +567,13 @@ export async function POST(request: Request) {
       generatedAt: new Date().toISOString(),
     };
     ANALYSIS_CACHE.set(cacheKey, { data: responseData, expiresAt: Date.now() + ANALYSIS_CACHE_TTL_MS });
+
+    // 새로 생성된 브리핑만 히스토리로 남긴다(캐시 히트 응답은 위에서 이미 return됨).
+    // 응답 이후 서버리스 인스턴스가 곧바로 정리될 수 있어 fire-and-forget 대신 await로 저장을
+    // 기다린 다음 응답한다 — 실패해도 catch로 삼켜서 브리핑 응답 자체는 항상 나가게 한다.
+    await saveAnalysisForUser(tickerKey, name, responseData).catch((error) => {
+      console.warn("[analyze] 히스토리 저장 실패:", error);
+    });
 
     return NextResponse.json(responseData);
   } catch (error) {
