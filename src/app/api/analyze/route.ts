@@ -98,7 +98,7 @@ function coerceBriefing(raw: unknown, news: NewsItem[]): Briefing {
 
 const errMsg = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** OpenAI 호환 chat/completions (NVIDIA · xAI 공용). */
+/** OpenAI 호환 chat/completions (NVIDIA · OpenRouter 공용). */
 async function callOpenAiCompatible(opts: {
   label: string;
   url: string;
@@ -108,6 +108,11 @@ async function callOpenAiCompatible(opts: {
   prompt: string;
   temperature: number;
   json?: boolean;
+  maxTokens?: number;
+  // OpenRouter 경유로 추론형 모델을 부를 때, reasoning 토큰이 출력 토큰 예산을 먹어치워서
+  // 정작 눈에 보이는 답변이 문장 중간에 잘리는 걸 막는다("Solar 응답이 문장 중간에 끊긴다"
+  // 버그의 원인) — 재작성처럼 깊은 추론이 필요 없는 작업엔 꺼두는 게 안전하다.
+  disableReasoning?: boolean;
 }): Promise<string> {
   const response = await fetch(opts.url, {
     method: "POST",
@@ -116,6 +121,8 @@ async function callOpenAiCompatible(opts: {
       model: opts.model,
       temperature: opts.temperature,
       ...(opts.json ? { response_format: { type: "json_object" } } : {}),
+      ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+      ...(opts.disableReasoning ? { reasoning: { effort: "none" } } : {}),
       messages: [
         { role: "system", content: opts.system },
         { role: "user", content: opts.prompt },
@@ -124,8 +131,15 @@ async function callOpenAiCompatible(opts: {
     cache: "no-store",
   });
   if (!response.ok) throw new Error(`${opts.label} API 오류 (${response.status}): ${await response.text()}`);
-  const content = (await response.json()).choices?.[0]?.message?.content as string | undefined;
+  const payload = await response.json();
+  const choice = payload.choices?.[0];
+  const content = choice?.message?.content as string | undefined;
   if (!content) throw new Error(`${opts.label} 응답이 비어 있습니다.`);
+  // finish_reason이 "length"면 토큰 한도 때문에 답변이 문장 중간에 잘린 것 — 이걸 그냥
+  // 돌려주면 "안 끝난 문장"이 화면에 그대로 나가버리니, 에러로 던져서 Gemini 폴백을 타게 한다.
+  if (choice?.finish_reason === "length") {
+    throw new Error(`${opts.label} 응답이 토큰 한도로 중간에 잘렸습니다(finish_reason=length).`);
+  }
   return content;
 }
 
@@ -166,6 +180,10 @@ function callSolar(system: string, prompt: string, temperature: number, json: bo
     prompt,
     temperature,
     json,
+    // 재작성 결과(원인 여러 개 + 코멘트까지 들어간 JSON)가 넉넉히 나올 토큰 한도 —
+    // 너무 낮으면 문장이 중간에 잘리고, reasoning은 이 작업엔 불필요해서 꺼둔다.
+    maxTokens: 4096,
+    disableReasoning: true,
   });
 }
 
