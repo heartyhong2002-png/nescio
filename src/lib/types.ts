@@ -47,6 +47,24 @@ export type ExchangeRate = {
   tts: number | null; // 전신환 매도율
 };
 
+// 공모주(IPO) 청약 정보 — 금융감독원 OpenDART "증권신고서(지분증권)" 공시에서 추출.
+// estimatedListingDate는 공시에 없는 값이라 "청약종료일 + 2영업일"로 추정한 것 — 화면에서
+// 반드시 "예상" 라벨을 붙여서 확정값이 아님을 알려야 한다.
+export type IpoInfo = {
+  corpCode: string; // DART 고유번호 (8자리)
+  corpName: string;
+  subscriptionStart: string | null; // YYYY-MM-DD
+  subscriptionEnd: string | null;
+  offerPriceMin: number | null; // 원
+  offerPriceMax: number | null;
+  estimatedListingDate: string | null; // YYYY-MM-DD, 추정값
+  leadUnderwriter: string | null; // 대표 주관사
+  totalShares: number | null; // 공모주식수
+  offerAmount: number | null; // 공모총액(원)
+  lockupNote: string | null; // 의무보유확약 등 참고사항 요약
+  receiptDate: string; // 증권신고서 접수일 (YYYY-MM-DD) — 정렬/캐시 키 보조용
+};
+
 export type CauseImpact = "high" | "medium" | "low";
 
 export type Cause = {
