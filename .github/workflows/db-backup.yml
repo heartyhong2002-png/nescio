@@ -39,13 +39,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
 
-      - name: Dump public schema
+            - name: Dump public schema
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
           mkdir -p backups
-          pg_dump "$DATABASE_URL" --schema=public --no-owner --no-acl -f "backups/$(date -u +%F).sql"
+          # 이름(pg_dump)으로 부르면 러너에 미리 깔려있는 16 버전이 잡힐 수 있어서(alternatives가
+          # 17로 안 바뀐 상태), 방금 설치한 17 바이너리 경로를 직접 지정한다.
+          /usr/lib/postgresql/17/bin/pg_dump "$DATABASE_URL" --schema=public --no-owner --no-acl -f "backups/$(date -u +%F).sql"
 
       - name: Prune backups older than 30 days
         run: find backups -name "*.sql" -mtime +30 -delete
