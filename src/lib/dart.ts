@@ -186,9 +186,14 @@ function isEquityRegistrationTitle(reportNm: string | undefined) {
   return !!reportNm && reportNm.includes("증권신고서") && reportNm.includes("지분증권");
 }
 
-/** 공시검색: 최근 접수된 "증권신고(지분증권)" 목록에서 아직 상장 안 된 회사(=IPO 후보)만 추린다. */
+/**
+ * 공시검색: 최근 접수된 "증권신고(지분증권)" 목록에서 아직 상장 안 된 회사(=IPO 후보)만 추린다.
+ * 한 회사가 초기 신고 -> [정정] -> [발행조건확정]까지 같은 지분증권 건으로 여러 번 공시를
+ * 내는 게 정상이라, 그대로 두면 화면에 같은 회사가 카드 여러 개로 중복 표시된다 — corp_code당
+ * 가장 최근 접수(rcept_no가 가장 큰 것) 한 건만 남기고 나머지는 버린다.
+ */
 export async function searchIpoCandidates(bgnDe: string, endDe: string): Promise<DartListItem[]> {
-  const candidates: DartListItem[] = [];
+  const byCorp = new Map<string, DartListItem>();
   let page = 1;
   for (; page <= MAX_LIST_PAGES; page += 1) {
     const data = await dartGet<DartListResponse>("list.json", {
@@ -202,11 +207,14 @@ export async function searchIpoCandidates(bgnDe: string, endDe: string): Promise
     const list = data.list ?? [];
     for (const item of list) {
       const isUnlisted = !item.stock_code || item.stock_code.trim() === "";
-      if (isUnlisted && isEquityRegistrationTitle(item.report_nm)) candidates.push(item);
+      if (!isUnlisted || !isEquityRegistrationTitle(item.report_nm) || !item.corp_code) continue;
+      const existing = byCorp.get(item.corp_code);
+      // rcept_no는 "20260914000379"처럼 접수일+일련번호라 같은 자릿수 문자열 비교로 최신순 판단 가능.
+      if (!existing || (item.rcept_no ?? "") > (existing.rcept_no ?? "")) byCorp.set(item.corp_code, item);
     }
     if (!data.total_page || page >= data.total_page) break;
   }
-  return candidates;
+  return [...byCorp.values()];
 }
 
 /** 지분증권 상세를 IpoInfo로 정규화. 실패하거나 데이터가 없으면 null(krx.ts의 safe 패턴과 동일). */
@@ -259,8 +267,18 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
   begin.setUTCDate(begin.getUTCDate() - 60);
   const bgnDe = begin.toISOString().slice(0, 10).replaceAll("-", "");
 
+  // estkRs.json(상세)은 list.json(목록)과 같은 날짜 기준으로 안 걸린다 — 실측(빅웨이브로보틱스,
+  // 목록엔 9/14 접수 [발행조건확정] 공시로 잡히는데도) 60일 창(7/17~9/15)으로 상세를 조회하면
+  // "013(데이터 없음)"이 나오고, 훨씬 넓은 창으로 물어봐야 실제 데이터(최초 신고 9/3자)가
+  // 나왔다. 즉 상세는 "이 지분증권 건이 최초로 접수된 시점" 근방을 찾는 것으로 보이는데, 그게
+  // 정정/발행조건확정 공시일보다 몇 주~몇 달 더 과거일 수 있다. 그래서 상세 조회는 목록 조회보다
+  // 훨씬 넓은 창(2년)을 따로 써서, 진짜 존재하는 공모주가 좁은 창 때문에 조용히 빠지는 걸 막는다.
+  const detailBegin = new Date(now);
+  detailBegin.setUTCDate(detailBegin.getUTCDate() - 730);
+  const detailBgnDe = detailBegin.toISOString().slice(0, 10).replaceAll("-", "");
+
   const candidates = await searchIpoCandidates(bgnDe, end);
-  const details = await Promise.allSettled(candidates.map((item) => fetchIpoDetail(item, bgnDe, end)));
+  const details = await Promise.allSettled(candidates.map((item) => fetchIpoDetail(item, detailBgnDe, end)));
 
   const today = now.toISOString().slice(0, 10);
   const ipos = details
