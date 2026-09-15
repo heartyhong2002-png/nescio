@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getMarketIndices } from "@/lib/krx";
+import { fetchOverseasIndices } from "@/lib/kis";
 import { getMarketComment } from "@/lib/market-comment";
 
 // 지수는 실시간 급변을 다루는 화면이 아니라서 서버리스 인스턴스 안에서 30분 정도는
@@ -18,8 +19,19 @@ export async function GET() {
   if (cache && cache.expiresAt > Date.now()) {
     return NextResponse.json({ indices: cache.data, comment: cache.comment });
   }
-  const indices = await getMarketIndices();
-  const comment = await getMarketComment(indices);
+  // 국내(KRX)와 해외(KIS)는 완전히 다른 공급자라 하나가 실패해도 나머지는 보여줘야 한다 —
+  // fetchOverseasIndices 자체가 내부적으로 지수별 안전 처리를 하지만, 만에 하나 그 함수
+  // 자체가 던지는 경우까지 대비해 여기서도 한 번 더 감싼다.
+  const [domestic, overseas] = await Promise.all([
+    getMarketIndices(),
+    fetchOverseasIndices().catch(() => []),
+  ]);
+  const indices = [...domestic, ...overseas];
+  // "쩐형" 코멘트는 국내 증시용으로 짜여 있다(market-comment.ts의 시스템 프롬프트가 "코스피·
+  // 코스닥을 합쳐 국내 증시 분위기"로 못박아놨고, 근거 뉴스도 코스피/코스닥만 모은다) — 해외
+  // 지수까지 프롬프트에 섞으면 지시문과 데이터가 안 맞아서 국내 지수만 넘긴다. 화면엔 그대로
+  // 해외 지수도 같이 뜬다.
+  const comment = await getMarketComment(domestic);
   cache = { data: indices, comment, expiresAt: Date.now() + CACHE_TTL_MS };
   return NextResponse.json({ indices, comment });
 }

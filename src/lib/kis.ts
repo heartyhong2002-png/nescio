@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { serverEnv } from "./server-env";
 import { PricePoint } from "./krx";
-import { Valuation } from "./types";
+import { MarketIndex, Valuation } from "./types";
 
 /**
  * 한국투자증권(KIS) Open API 클라이언트.
@@ -461,4 +461,61 @@ async function fetchDividendYield(ticker: string, price: number | null): Promise
 
   if (annualDividendPerShare <= 0) return null;
   return (annualDividendPerShare / price) * 100;
+}
+
+// ---------------------------------------------------------------------------
+// 해외지수 (홈 화면 "주요 지수" 카드에 니케이/상해/심천/항셍 추가용)
+// ---------------------------------------------------------------------------
+
+/**
+ * 해외지수분봉조회[v1_해외주식-031] — 분봉 API지만 output1에 현재가/전일종가/전일대비율이
+ * 같이 온다(KIS 공식 예제 examples_llm/overseas_stock/inquire_time_indexchartprice 참고).
+ * 분봉 시계열(output2)은 안 쓰고 현재가 스냅샷(output1)만 뽑아 쓴다.
+ *
+ * ⚠️ 지수 코드(OVERSEAS_INDEX_CODES)는 KIS 공식 문서/예제에 지수별 코드 목록이 없어서
+ * (예제엔 S&P500="SPX"만 나옴) 업계에서 흔히 쓰는 표기(N225/HSI/SHCOMP/SZCOMP)로 추정해
+ * 넣었다 — 이 세션은 조직 네트워크 정책상 KIS API를 직접 호출해 검증하지 못했다. 코드가
+ * 틀리면 그 지수만 조용히 빠지거나(err) 엉뚱한 종목명으로 나올 수 있으니, 화면에 처음
+ * 띄워보고 니케이/상해/심천/항셍 값이 실제 지수와 맞는지, 아예 안 뜨는 건 없는지 꼭 확인해서
+ * 필요하면 아래 코드를 실측값으로 바꿔야 한다.
+ */
+const OVERSEAS_INDEX_CODES: { name: MarketIndex["name"]; code: string }[] = [
+  { name: "니케이225", code: "N225" },
+  { name: "상해종합", code: "SHCOMP" },
+  { name: "심천종합", code: "SZCOMP" },
+  { name: "항셍지수", code: "HSI" },
+];
+
+async function fetchOverseasIndex(name: MarketIndex["name"], code: string): Promise<MarketIndex | null> {
+  try {
+    const data = await kisGet("/uapi/overseas-price/v1/quotations/inquire-time-indexchartprice", "FHKST03030200", {
+      FID_COND_MRKT_DIV_CODE: "N",
+      FID_INPUT_ISCD: code,
+      FID_HOUR_CLS_CODE: "0",
+      FID_PW_DATA_INCU_YN: "N", // 현재가 스냅샷만 필요 — 분봉 과거분까지는 안 받는다.
+    });
+    const row = asRows(data.output1)[0];
+    const close = toNumber(row?.ovrs_nmix_prpr);
+    const changeRate = toNumber(row?.prdy_ctrt);
+    if (close === null || changeRate === null) return null;
+    return { name, close, changeRate };
+  } catch (error) {
+    console.warn(`[kis] 해외지수(${name}/${code}) 조회 실패, 건너뜀:`, error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+/** 니케이225·상해종합·심천종합·항셍지수를 한 번에 조회. 실패한 지수는 조용히 빠진다. */
+export async function fetchOverseasIndices(): Promise<MarketIndex[]> {
+  const appKey = serverEnv("KIS_APP_KEY");
+  const appSecret = serverEnv("KIS_APP_SECRET");
+  if (!appKey || !appSecret) return []; // 키 없으면 국내 지수만 보여주고 조용히 생략.
+
+  const settled = await Promise.allSettled(
+    OVERSEAS_INDEX_CODES.map(({ name, code }) => fetchOverseasIndex(name, code)),
+  );
+  return settled
+    .filter((r): r is PromiseFulfilledResult<MarketIndex | null> => r.status === "fulfilled")
+    .map((r) => r.value)
+    .filter((index): index is MarketIndex => index !== null);
 }

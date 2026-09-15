@@ -65,17 +65,27 @@ function MarketIndexStrip({ indices, comment }: { indices: MarketIndex[] | null;
 
   return (
     <div style={{ marginBottom: 18 }}>
-      <div style={{ display: "flex", gap: 10 }}>
+      {/* 코스피/코스닥 2개일 땐 꽉 채우고, 해외 지수까지 붙어 4~6개가 되면 한 화면에 다
+          욱여넣기보다 가로 스크롤로 넘기는 게 낫다 — 폭이 좁아지면 숫자가 다 안 보인다. */}
+      <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 2 }}>
         {indices.map((index) => {
           const direction = changeDirection(index.changeRate);
           return (
             <div
               key={index.name}
               className="card"
-              style={{ padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flex: 1 }}
+              style={{
+                padding: "10px 14px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                flex: "1 1 150px",
+                minWidth: 150,
+              }}
             >
-              <span style={{ fontSize: 12.5, fontWeight: 700 }}>{index.name}</span>
-              <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap" }}>{index.name}</span>
+              <span style={{ display: "flex", alignItems: "baseline", gap: 6, whiteSpace: "nowrap" }}>
                 <span style={{ fontSize: 13.5, fontWeight: 600 }}>{formatPrice(index.close)}</span>
                 <span className={`price-${direction}`} style={{ fontSize: 12 }}>
                   {changeArrow(index.changeRate)}{" "}
