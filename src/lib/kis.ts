@@ -505,6 +505,31 @@ async function fetchOverseasIndex(name: MarketIndex["name"], code: string): Prom
   }
 }
 
+/**
+ * 임시 디버그용 — fetchOverseasIndex와 똑같이 호출하되 파싱 없이 KIS가 실제로 보낸
+ * output1/output2를 그대로 반환한다. 지수 코드(OVERSEAS_INDEX_CODES)와 필드명
+ * (ovrs_nmix_prpr/prdy_ctrt)이 둘 다 미검증 추정치라, close/changeRate가 0으로 깨질 때
+ * 실제 KIS 응답이 어떻게 생겼는지 봐야 어느 쪽이 틀렸는지 알 수 있다. 원인 확인되면
+ * 이 함수와 /api/market-indices의 ?debug=1 분기는 지워도 된다.
+ */
+export async function fetchOverseasIndicesDebug(): Promise<Record<string, unknown>> {
+  const result: Record<string, unknown> = {};
+  for (const { name, code } of OVERSEAS_INDEX_CODES) {
+    try {
+      const data = await kisGet("/uapi/overseas-price/v1/quotations/inquire-time-indexchartprice", "FHKST03030200", {
+        FID_COND_MRKT_DIV_CODE: "N",
+        FID_INPUT_ISCD: code,
+        FID_HOUR_CLS_CODE: "0",
+        FID_PW_DATA_INCU_YN: "N",
+      });
+      result[`${name}(${code})`] = { output1: data.output1, output2FirstRow: data.output2?.[0] ?? null };
+    } catch (error) {
+      result[`${name}(${code})`] = { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  return result;
+}
+
 /** 니케이225·상해종합·심천종합·항셍지수를 한 번에 조회. 실패한 지수는 조용히 빠진다. */
 export async function fetchOverseasIndices(): Promise<MarketIndex[]> {
   const appKey = serverEnv("KIS_APP_KEY");

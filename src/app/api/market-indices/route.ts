@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getMarketIndices } from "@/lib/krx";
-import { fetchOverseasIndices } from "@/lib/kis";
+import { fetchOverseasIndicesDebug } from "@/lib/kis";
 import { getMarketComment } from "@/lib/market-comment";
 
 // 지수는 실시간 급변을 다루는 화면이 아니라서 서버리스 인스턴스 안에서 30분 정도는
@@ -15,22 +15,24 @@ type Cache = {
 let cache: Cache | null = null;
 const CACHE_TTL_MS = 30 * 60_000;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 임시 디버그 통로 — 해외지수(니케이/상해/심천/항셍)가 0/0.00%로 깨지는 원인을 찾으려고
+  // KIS 원본 응답을 그대로 보고 싶을 때 /api/market-indices?debug=1 로 호출한다. 원인
+  // 확인되면 이 분기와 kis.ts의 fetchOverseasIndicesDebug는 지워도 된다.
+  if (request.nextUrl.searchParams.get("debug") === "1") {
+    const debug = await fetchOverseasIndicesDebug();
+    return NextResponse.json({ debug });
+  }
   if (cache && cache.expiresAt > Date.now()) {
     return NextResponse.json({ indices: cache.data, comment: cache.comment });
   }
-  // 국내(KRX)와 해외(KIS)는 완전히 다른 공급자라 하나가 실패해도 나머지는 보여줘야 한다 —
-  // fetchOverseasIndices 자체가 내부적으로 지수별 안전 처리를 하지만, 만에 하나 그 함수
-  // 자체가 던지는 경우까지 대비해 여기서도 한 번 더 감싼다.
-  const [domestic, overseas] = await Promise.all([
-    getMarketIndices(),
-    fetchOverseasIndices().catch(() => []),
-  ]);
-  const indices = [...domestic, ...overseas];
-  // "쩐형" 코멘트는 국내 증시용으로 짜여 있다(market-comment.ts의 시스템 프롬프트가 "코스피·
-  // 코스닥을 합쳐 국내 증시 분위기"로 못박아놨고, 근거 뉴스도 코스피/코스닥만 모은다) — 해외
-  // 지수까지 프롬프트에 섞으면 지시문과 데이터가 안 맞아서 국내 지수만 넘긴다. 화면엔 그대로
-  // 해외 지수도 같이 뜬다.
+  // 해외지수(니케이/상해/심천/항셍)는 당분간 뺀다 — KIS의 FHKST03030200(지수분봉조회)가
+  // 이 4개 지수에 대해 모든 필드를 "0.00"으로 반환한다(?debug=1로 실측 확인 완료). 다른
+  // 개발자 사례를 보면 이 TR 자체가 미국 지수 전용일 가능성이 있어 코드값을 바꿔도 안 될
+  // 수 있다 — 아시아 지수를 다시 켜려면 fetchOverseasIndicesDebug로 실측하면서 제대로 된
+  // 엔드포인트/코드를 찾아야 한다. 코스피/코스닥은 KRX 데이터라 이 이슈와 무관하게 정상.
+  const domestic = await getMarketIndices();
+  const indices = domestic;
   const comment = await getMarketComment(domestic);
   cache = { data: indices, comment, expiresAt: Date.now() + CACHE_TTL_MS };
   return NextResponse.json({ indices, comment });

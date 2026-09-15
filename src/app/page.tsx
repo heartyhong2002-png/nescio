@@ -71,10 +71,11 @@ function MarketIndexStrip({ indices, comment }: { indices: MarketIndex[] | null;
       </div>
     );
   }
-  // KIS 해외지수 코드가 아직 실측 검증 전이라(kis.ts 주석 참고) close/changeRate가 둘 다
-  // 정확히 0으로 오는 경우가 있는데, 실제 지수가 0일 수는 없으니 이건 조회 실패로 보고
-  // 조용히 숨긴다 — 국기까지 붙여놓고 깨진 "0/0.00%"를 그대로 보여주는 것보단 낫다.
-  const visibleIndices = indices.filter((index) => !(index.close === 0 && index.changeRate === 0));
+  // KIS 해외지수 코드(kis.ts의 OVERSEAS_INDEX_CODES)가 아직 실측 검증 전이라 니케이225·
+  // 상해종합·심천종합·항셍지수가 close/changeRate 둘 다 0으로 깨져 올 수 있다 — 이건 알고
+  // 있는 문제이고, 코드값을 실제로 고치기 전까지는 숨기지 않고 그대로 보여준다(사용자가
+  // 직접 확인해서 코드를 고쳐야 하니 눈에 보여야 한다).
+  const visibleIndices = indices;
   if (visibleIndices.length === 0) return null;
 
   return (
