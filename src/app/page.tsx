@@ -12,6 +12,16 @@ import { useLiveWatchlistPrices } from "@/lib/use-live-prices";
 
 type SummaryItem = Stock & { close: number | null; changeRate: number | null; newsCount: number | null };
 
+// 지수 이름 -> 국기 이모지. 코스피/코스닥은 국내라 같은 국기를 쓴다.
+const INDEX_FLAG: Record<string, string> = {
+  코스피: "🇰🇷",
+  코스닥: "🇰🇷",
+  니케이225: "🇯🇵",
+  상해종합: "🇨🇳",
+  심천종합: "🇨🇳",
+  항셍지수: "🇭🇰",
+};
+
 // LiveSparkline은 (현재가, 기준값) 쌍을 받는데 우리가 들고 있는 건 (현재가, 등락률%)이라
 // 기준값을 역산해서 넘긴다 — 등락률은 항상 전일 종가 대비라는 이 앱의 기존 규약과 맞춘다.
 function referenceFromChangeRate(price: number, changeRate: number) {
@@ -61,33 +71,40 @@ function MarketIndexStrip({ indices, comment }: { indices: MarketIndex[] | null;
       </div>
     );
   }
-  if (indices.length === 0) return null;
+  // KIS 해외지수 코드가 아직 실측 검증 전이라(kis.ts 주석 참고) close/changeRate가 둘 다
+  // 정확히 0으로 오는 경우가 있는데, 실제 지수가 0일 수는 없으니 이건 조회 실패로 보고
+  // 조용히 숨긴다 — 국기까지 붙여놓고 깨진 "0/0.00%"를 그대로 보여주는 것보단 낫다.
+  const visibleIndices = indices.filter((index) => !(index.close === 0 && index.changeRate === 0));
+  if (visibleIndices.length === 0) return null;
 
   return (
-    <div style={{ marginBottom: 18 }}>
+    <div style={{ marginBottom: 20 }}>
       {/* 코스피/코스닥 2개일 땐 꽉 채우고, 해외 지수까지 붙어 4~6개가 되면 한 화면에 다
-          욱여넣기보다 가로 스크롤로 넘기는 게 낫다 — 폭이 좁아지면 숫자가 다 안 보인다. */}
+          욱여넣기보다 가로 스크롤로 넘기는 게 낫다 — 폭이 좁아지면 숫자가 다 안 보인다.
+          카드를 세로로(국가·이름 위, 가격·등락 아래) 배치해서 숫자가 안 잘리고 여유 있게 보이게 한다. */}
       <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 2 }}>
-        {indices.map((index) => {
+        {visibleIndices.map((index) => {
           const direction = changeDirection(index.changeRate);
           return (
             <div
               key={index.name}
               className="card"
               style={{
-                padding: "10px 14px",
+                padding: "14px 18px",
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
+                flexDirection: "column",
                 gap: 8,
-                flex: "1 1 150px",
-                minWidth: 150,
+                flex: "1 1 172px",
+                minWidth: 172,
               }}
             >
-              <span style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap" }}>{index.name}</span>
-              <span style={{ display: "flex", alignItems: "baseline", gap: 6, whiteSpace: "nowrap" }}>
-                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{formatPrice(index.close)}</span>
-                <span className={`price-${direction}`} style={{ fontSize: 12 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: 16 }}>{INDEX_FLAG[index.name] ?? "🌐"}</span>
+                {index.name}
+              </span>
+              <span style={{ display: "flex", alignItems: "baseline", gap: 8, whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: 17, fontWeight: 700 }}>{formatPrice(index.close)}</span>
+                <span className={`price-${direction}`} style={{ fontSize: 13.5, fontWeight: 600 }}>
                   {changeArrow(index.changeRate)}{" "}
                   {index.changeRate !== null ? `${Math.abs(index.changeRate).toFixed(2)}%` : "—"}
                 </span>
@@ -97,11 +114,11 @@ function MarketIndexStrip({ indices, comment }: { indices: MarketIndex[] | null;
         })}
       </div>
       {comment && (
-        <div className="card" style={{ marginTop: 10, padding: "12px 14px" }}>
-          <div className="eyebrow" style={{ marginBottom: 6 }}>
+        <div className="card" style={{ marginTop: 12, padding: "20px 22px" }}>
+          <div className="eyebrow" style={{ marginBottom: 10 }}>
             오늘 시장 분위기
           </div>
-          <div style={{ fontSize: 13.5, lineHeight: 1.55 }}>{comment}</div>
+          <div style={{ fontSize: 15, lineHeight: 1.75 }}>{comment}</div>
         </div>
       )}
     </div>
@@ -184,22 +201,24 @@ export default function HomePage() {
               <Link
                 href={`/stock/${mover.ticker}?name=${encodeURIComponent(mover.name)}`}
                 className="hero-card"
-                style={{ display: "block", marginBottom: 22 }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 16px", marginBottom: 18 }}
               >
-                <div className="eyebrow" style={{ marginBottom: 10 }}>
-                  가장 크게 움직인 종목
+                <div style={{ minWidth: 0 }}>
+                  <div className="eyebrow" style={{ marginBottom: 4, fontSize: 9.5 }}>
+                    가장 크게 움직인 종목
+                  </div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.4 }}>
+                    {mover.name}(이)가 오늘 가장 크게 움직였어요
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.85)", lineHeight: 1.5, marginTop: 3 }}>
+                    {formatPrice(mover.close)}원 · {changeArrow(mover.changeRate)}{" "}
+                    {Math.abs(mover.changeRate ?? 0).toFixed(2)}%{changeEmoji(mover.changeRate)}
+                  </div>
                 </div>
-                <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.45, marginBottom: 10 }}>
-                  {mover.name}(이)가 오늘 가장 크게 움직였어요
-                </div>
-                <div style={{ fontSize: 14, color: "rgba(255,255,255,0.9)", lineHeight: 1.55 }}>
-                  {formatPrice(mover.close)}원 · {changeArrow(mover.changeRate)}{" "}
-                  {Math.abs(mover.changeRate ?? 0).toFixed(2)}%{changeEmoji(mover.changeRate)} — 왜 그런지 브리핑에서 확인하세요.
-                </div>
-                <div style={{ fontSize: 13, marginTop: 14, fontWeight: 600 }}>브리핑 보기 →</div>
+                <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap" }}>브리핑 →</div>
               </Link>
             ) : summaryLoading ? (
-              <div className="skeleton" style={{ height: 150, borderRadius: 18, marginBottom: 22 }} />
+              <div className="skeleton" style={{ height: 62, borderRadius: 18, marginBottom: 18 }} />
             ) : null}
 
             <div className="section-title">
