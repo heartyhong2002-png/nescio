@@ -29,6 +29,8 @@ export type NewsItem = {
   description: string;
   link: string;
   pubDate: string;
+  source?: string;
+  language?: string;
 };
 
 export type Price = {
@@ -50,15 +52,37 @@ export type ExchangeRate = {
 // 공모주(IPO) 청약 정보 — 금융감독원 OpenDART "증권신고서(지분증권)" 공시에서 추출.
 // estimatedListingDate는 공시에 없는 값이라 "청약종료일 + 2영업일"로 추정한 것 — 화면에서
 // 반드시 "예상" 라벨을 붙여서 확정값이 아님을 알려야 한다.
+// 증권신고서의 "인수인정보" 그룹 한 행 — 주관사별 배정(인수)주식수 등 청약 전 미리 알 수 있는
+// 정보. 실제 청약 결과(수요예측 경쟁률 등)는 DART 구조화 API에 없어 여기 포함하지 않는다.
+export type UnderwriterAllocation = {
+  name: string; // 증권사명
+  role: string | null; // 대표/공동 등 인수인구분
+  shares: number | null; // 배정(인수)주식수
+  percentage: number | null; // 공모주식수 대비 인수 비율 (%)
+  retailShares: number | null; // 일반청약자 배정물량 (통상 25% 추정 또는 확정치)
+  equalShares: number | null; // 균등배정 예상물량 (일반청약자의 50%)
+  proportionalShares: number | null; // 비례배정 예상물량 (일반청약자의 50%)
+  subscriptionLimit?: string | null; // 최고 청약한도 (예: "15,000 ~ 18,000주")
+};
+
 export type IpoInfo = {
-  corpCode: string; // DART 고유번호 (8자리)
+  corpCode: string; // DART 고유번호 (8자리) 또는 임시 식별자
   corpName: string;
   subscriptionStart: string | null; // YYYY-MM-DD
   subscriptionEnd: string | null;
+  refundDate: string | null; // 환불일/배정공고일 (YYYY-MM-DD)
+  paymentDate: string | null; // 납입기일 (YYYY-MM-DD)
   offerPriceMin: number | null; // 원
   offerPriceMax: number | null;
+  confirmedPrice: number | null; // 확정 공모가 (원)
+  hopePriceBand: string | null; // 희망 공모가 밴드 (예: "16,500 ~ 19,500원")
+  institutionCompetitionRate: string | null; // 기관 수요예측 경쟁률 (예: "1187.74:1")
+  lockupRatio: string | null; // 의무보유확약 비율 (예: "21.75%")
+  subscriptionCompetitionRate: string | null; // 일반 청약 경쟁률 (예: "1375.34:1")
+  minSubscriptionDeposit: number | null; // 최소 10주 청약 시 필요 증거금 (원, 50% 기준)
   estimatedListingDate: string | null; // YYYY-MM-DD, 추정값
-  leadUnderwriter: string | null; // 대표 주관사
+  leadUnderwriter: string | null; // 대표 주관사 (요약 표시용 — "유진증권(대표) · 미래에셋증권(공동)")
+  underwriterAllocations: UnderwriterAllocation[]; // 증권사별 배정주식수 상세
   totalShares: number | null; // 공모주식수
   offerAmount: number | null; // 공모총액(원)
   lockupNote: string | null; // 의무보유확약 등 참고사항 요약

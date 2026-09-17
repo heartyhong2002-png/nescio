@@ -43,3 +43,19 @@ export function formatMarketCap(value: number | null) {
   if (eok > 0) return `${eok}억`;
   return `${value.toLocaleString("ko-KR")}원`;
 }
+
+export function formatSharesCompact(shares: number | null) {
+  if (shares === null || Number.isNaN(shares)) return "—";
+  if (shares >= 100_000_000) return `${(shares / 100_000_000).toFixed(1).replace(/\.0$/, "")}억주`;
+  if (shares >= 10_000) return `${(shares / 10_000).toFixed(1).replace(/\.0$/, "")}만주`;
+  return `${shares.toLocaleString("ko-KR")}주`;
+}
+
+export function formatAmountCompact(amount: number | null) {
+  if (amount === null || Number.isNaN(amount)) return "—";
+  const jo = Math.floor(amount / 1e12);
+  const eok = Math.round((amount % 1e12) / 1e8);
+  if (jo > 0) return eok > 0 ? `${jo}조 ${eok}억원` : `${jo}조원`;
+  if (eok > 0) return `${eok}억원`;
+  return `${amount.toLocaleString("ko-KR")}원`;
+}

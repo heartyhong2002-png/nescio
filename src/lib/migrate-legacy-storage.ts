@@ -41,11 +41,6 @@ export async function migrateLegacyStorage(
   if (typeof window === "undefined") return null;
   if (window.localStorage.getItem(MIGRATED_FLAG) === "true") return null;
 
-  if (alreadyOnboarded) {
-    window.localStorage.setItem(MIGRATED_FLAG, "true");
-    return null;
-  }
-
   try {
     const legacyOnboarded = readJSON<boolean>(LEGACY_KEYS.onboarded, false);
     const legacyProfile = readJSON<{ persona: Persona | null; sectors: SectorId[] }>(LEGACY_KEYS.profile, {
@@ -61,12 +56,19 @@ export async function migrateLegacyStorage(
       return null;
     }
 
+    // 관심종목은 계정의 온보딩 여부와 무관하게 로컬에 남아있다면 항상 Supabase로 병합
     if (legacyWatchlist.length > 0) {
       const { error } = await supabase.from("watchlist_items").upsert(
         legacyWatchlist.map((stock) => ({ user_id: userId, ticker: stock.ticker, name: stock.name, market: stock.market })),
         { onConflict: "user_id,ticker" },
       );
       if (error) console.warn("[migrate] 관심종목 이전 실패:", error);
+    }
+
+    // 계정이 이미 온보딩을 마쳤다면 기존 프로필은 덮어쓰지 않음
+    if (alreadyOnboarded) {
+      window.localStorage.setItem(MIGRATED_FLAG, "true");
+      return null;
     }
 
     const patch: ProfileRow = { persona: legacyProfile.persona, sectors: legacyProfile.sectors, onboarded: legacyOnboarded };

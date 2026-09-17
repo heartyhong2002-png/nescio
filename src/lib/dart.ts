@@ -1,5 +1,6 @@
 import { serverEnv } from "./server-env";
-import { IpoInfo } from "./types";
+import { IpoInfo, UnderwriterAllocation } from "./types";
+import { fetch38IpoData, normalizeCorpName, ScrapedUnderwriter } from "./ipo-scraper";
 
 /**
  * 금융감독원 OpenDART(opendart.fss.or.kr) — 공모주(IPO) 청약 정보 조회.
@@ -79,6 +80,17 @@ function toIsoDate(value: string | undefined): string | null {
   return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
 }
 
+/** "2026년 09월 22일" / "2026.09.22" / "20260922" 등 단일 날짜 문자열 파싱. */
+function parseSingleDate(raw: string | undefined): string | null {
+  if (!raw || raw.trim() === "-" || raw.trim() === "") return null;
+  const match = raw.match(/(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})\s*일?/);
+  if (match) {
+    const [, y, m, d] = match;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  return toIsoDate(raw);
+}
+
 /**
  * "청약기일" 필드(sbd)는 시작~종료가 한 문자열에 같이 온다. 실측(2026-09-14, 빅웨이브로보틱스)
  * 결과 실제 포맷은 "2026년 09월 15일 ~ 2026년 09월 16일"처럼 "YYYY년 MM월 DD일" 한글 표기였다
@@ -145,18 +157,47 @@ function findField(rows: DartEstkRow[], ...keys: string[]) {
   return undefined;
 }
 
-/** "인수인정보" 그룹의 대표/공동 주관사를 전부 모아 "유진증권(대표) · 미래에셋증권(공동)" 형태로. */
-function collectUnderwriters(rows: DartEstkRow[]): string | null {
+/**
+ * "인수인정보" 그룹에서 증권사별 배정(인수)주식수를 뽑는다. 실측(빅웨이브로보틱스) 응답 기준
+ * udtcnt=인수수량(그 증권사가 총액인수한 주식수), udtamt=인수금액, actsen=인수인구분(대표/공동),
+ * actnmn=인수인명. 총 공모주식수(totalShares)를 바탕으로 비중(%)과 일반청약자 물량(25% 추정)도 계산한다.
+ */
+function collectUnderwriterAllocations(rows: DartEstkRow[], totalShares: number | null): UnderwriterAllocation[] {
   const seen = new Set<string>();
-  const parts: string[] = [];
+  const result: UnderwriterAllocation[] = [];
   for (const row of rows) {
     const name = row["actnmn"];
     if (!name || !name.trim() || seen.has(name)) continue;
     seen.add(name);
-    const role = row["actsen"];
-    parts.push(role ? `${name}(${role})` : name);
+    const shares = toNumber(row["udtcnt"]);
+    const percentage =
+      shares !== null && totalShares && totalShares > 0
+        ? Math.round((shares / totalShares) * 1000) / 10
+        : null;
+    // 일반청약자 배정 물량 (통상 전체 공모주식수 / 각 인수분량의 25%)
+    const retailShares = shares !== null ? Math.round(shares * 0.25) : null;
+    // 균등배정 50%, 비례배정 50%
+    const equalShares = retailShares !== null ? Math.round(retailShares * 0.5) : null;
+    const proportionalShares =
+      retailShares !== null && equalShares !== null ? retailShares - equalShares : null;
+
+    result.push({
+      name,
+      role: row["actsen"] ?? null,
+      shares,
+      percentage,
+      retailShares,
+      equalShares,
+      proportionalShares,
+    });
   }
-  return parts.length > 0 ? parts.join(" · ") : null;
+  return result;
+}
+
+/** 위 배정 목록을 "유진증권(대표) · 미래에셋증권(공동)" 같은 한 줄 요약으로. */
+function summarizeUnderwriters(allocations: UnderwriterAllocation[]): string | null {
+  if (allocations.length === 0) return null;
+  return allocations.map(({ name, role }) => (role ? `${name}(${role})` : name)).join(" · ");
 }
 
 /** "일반청약자환매청구권"(풋백옵션) 그룹을 사람이 읽을 수 있는 한 줄 요약으로. 없으면 null. */
@@ -230,10 +271,15 @@ export async function fetchIpoDetail(item: DartListItem, bgnDe: string, endDe: s
     if (rows.length === 0) return null;
 
     const { start, end } = parseSubscriptionRange(findField(rows, "sbd"));
+    const generalRows = findGroupRows(data, "일반사항");
+    const refundDate = parseSingleDate(findField(generalRows, "asand")) ?? parseSingleDate(findField(generalRows, "pymd"));
+    const paymentDate = parseSingleDate(findField(generalRows, "pymd"));
     const offerPrice = toNumber(findField(rows, "slprc"));
+    const minSubscriptionDeposit = offerPrice !== null ? Math.round(offerPrice * 10 * 0.5) : null;
     const offerAmount = toNumber(findField(rows, "slta"));
     const totalShares = toNumber(findField(rows, "stkcnt"));
-    const leadUnderwriter = collectUnderwriters(findGroupRows(data, "인수인정보"));
+    const underwriterAllocations = collectUnderwriterAllocations(findGroupRows(data, "인수인정보"), totalShares);
+    const leadUnderwriter = summarizeUnderwriters(underwriterAllocations);
     const lockupNote = summarizePutback(findGroupRows(data, "환매청구권"));
     const receiptDate = toIsoDate(item.rcept_dt) ?? bgnDe;
 
@@ -242,12 +288,21 @@ export async function fetchIpoDetail(item: DartListItem, bgnDe: string, endDe: s
       corpName: item.corp_name,
       subscriptionStart: start,
       subscriptionEnd: end,
+      refundDate,
+      paymentDate,
       // slprc가 "10,000 ~ 12,000"처럼 범위로 올 수도, 확정 단일값으로 올 수도 있어 보인다 —
       // 범위 파싱은 parseSubscriptionRange처럼 별도로 처리하지 않고 우선 단일값으로 다룬다.
       offerPriceMin: offerPrice,
       offerPriceMax: offerPrice,
+      confirmedPrice: null,
+      hopePriceBand: null,
+      institutionCompetitionRate: null,
+      lockupRatio: null,
+      subscriptionCompetitionRate: null,
+      minSubscriptionDeposit,
       estimatedListingDate: end ? addBusinessDays(end, SUBSCRIPTION_TO_LISTING_BUSINESS_DAYS) : null,
       leadUnderwriter,
+      underwriterAllocations,
       totalShares,
       offerAmount,
       lockupNote,
@@ -259,7 +314,7 @@ export async function fetchIpoDetail(item: DartListItem, bgnDe: string, endDe: s
   }
 }
 
-/** 최근 60일 접수분 중 아직 청약이 끝나지 않은 공모주를 청약임박순으로 반환. */
+/** 최근 60일 접수분 DART 공시와 38커뮤니케이션 수요예측·배정 데이터를 합성하여 반환. */
 export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
   const now = new Date();
   const end = now.toISOString().slice(0, 10).replaceAll("-", "");
@@ -267,28 +322,170 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
   begin.setUTCDate(begin.getUTCDate() - 60);
   const bgnDe = begin.toISOString().slice(0, 10).replaceAll("-", "");
 
-  // estkRs.json(상세)은 list.json(목록)과 같은 날짜 기준으로 안 걸린다 — 실측(빅웨이브로보틱스,
-  // 목록엔 9/14 접수 [발행조건확정] 공시로 잡히는데도) 60일 창(7/17~9/15)으로 상세를 조회하면
-  // "013(데이터 없음)"이 나오고, 훨씬 넓은 창으로 물어봐야 실제 데이터(최초 신고 9/3자)가
-  // 나왔다. 즉 상세는 "이 지분증권 건이 최초로 접수된 시점" 근방을 찾는 것으로 보이는데, 그게
-  // 정정/발행조건확정 공시일보다 몇 주~몇 달 더 과거일 수 있다. 그래서 상세 조회는 목록 조회보다
-  // 훨씬 넓은 창(2년)을 따로 써서, 진짜 존재하는 공모주가 좁은 창 때문에 조용히 빠지는 걸 막는다.
   const detailBegin = new Date(now);
   detailBegin.setUTCDate(detailBegin.getUTCDate() - 730);
   const detailBgnDe = detailBegin.toISOString().slice(0, 10).replaceAll("-", "");
 
-  const candidates = await searchIpoCandidates(bgnDe, end);
+  // DART 공시 목록 조회와 38커뮤니케이션 스크래핑을 병렬로 동시 실행
+  const [candidates, scraped38Map] = await Promise.all([
+    searchIpoCandidates(bgnDe, end).catch((err) => {
+      console.warn("[dart] searchIpoCandidates 실패:", err);
+      return [];
+    }),
+    fetch38IpoData().catch((err) => {
+      console.warn("[dart] fetch38IpoData 실패:", err);
+      return new Map();
+    }),
+  ]);
+
   const details = await Promise.allSettled(candidates.map((item) => fetchIpoDetail(item, detailBgnDe, end)));
 
   const today = now.toISOString().slice(0, 10);
-  const ipos = details
+  const dartIpos = details
     .filter((r): r is PromiseFulfilledResult<IpoInfo | null> => r.status === "fulfilled")
     .map((r) => r.value)
-    .filter((ipo): ipo is IpoInfo => ipo !== null)
-    // 청약종료일 정보가 없는 건 화면에 정렬 기준을 못 잡으니 제외하고, 청약이 이미 끝난(오늘보다
-    // 전인) 건도 제외한다 — 진행 중이거나 앞으로 시작할 공모주만 보여달라는 요청 반영.
+    .filter((ipo): ipo is IpoInfo => ipo !== null);
+
+  const matchedCorpNames = new Set<string>();
+
+  // 1. DART 공모주 데이터에 38 수요예측 결과 및 실제 일반청약자 배정/한도 데이터 합성
+  const mergedIpos: IpoInfo[] = dartIpos.map((ipo) => {
+    const norm = normalizeCorpName(ipo.corpName);
+    matchedCorpNames.add(norm);
+
+    // 38 데이터에서 매칭 (정확 일치 또는 상호 포함 매칭)
+    let scraped = scraped38Map.get(norm);
+    if (!scraped) {
+      for (const [key, val] of scraped38Map.entries()) {
+        if (norm.includes(key) || key.includes(norm)) {
+          scraped = val;
+          matchedCorpNames.add(key);
+          break;
+        }
+      }
+    }
+
+    if (!scraped) return ipo;
+
+    // 수요예측 결과 합성
+    const institutionCompetitionRate = scraped.institutionCompetitionRate ?? ipo.institutionCompetitionRate;
+    const lockupRatio = scraped.lockupRatio ?? ipo.lockupRatio;
+    const subscriptionCompetitionRate = scraped.subscriptionCompetitionRate ?? ipo.subscriptionCompetitionRate;
+    const hopePriceBand = scraped.hopePriceBand ?? ipo.hopePriceBand;
+    const confirmedPrice = scraped.confirmedPrice ?? ipo.confirmedPrice;
+
+    // 확정 공모가가 있으면 공모가 및 10주 증거금 보정
+    let offerPriceMin = ipo.offerPriceMin;
+    let offerPriceMax = ipo.offerPriceMax;
+    let minSubscriptionDeposit = ipo.minSubscriptionDeposit;
+    if (confirmedPrice !== null) {
+      offerPriceMin = confirmedPrice;
+      offerPriceMax = confirmedPrice;
+      minSubscriptionDeposit = Math.round(confirmedPrice * 10 * 0.5);
+    }
+
+    // 증권사별 배정 수량 및 청약 한도 합성
+    const underwriterAllocations = [...ipo.underwriterAllocations];
+    for (const alloc of underwriterAllocations) {
+      const allocNorm = normalizeCorpName(alloc.name);
+      const matchedU = scraped.underwriters.find((u: ScrapedUnderwriter) => {
+        const uNorm = normalizeCorpName(u.name);
+        return uNorm.includes(allocNorm) || allocNorm.includes(uNorm);
+      });
+      if (matchedU) {
+        if (matchedU.shares !== null && matchedU.shares > 0) {
+          alloc.retailShares = matchedU.shares;
+          alloc.equalShares = Math.round(matchedU.shares * 0.5);
+          alloc.proportionalShares = matchedU.shares - alloc.equalShares;
+        }
+        if (matchedU.limit) {
+          alloc.subscriptionLimit = matchedU.limit;
+        }
+        if (matchedU.role && !alloc.role) {
+          alloc.role = matchedU.role;
+        }
+      }
+    }
+
+    // DART에 증권사 정보가 비어있고 38에 있다면 38 데이터로 채움
+    if (underwriterAllocations.length === 0 && scraped.underwriters.length > 0) {
+      for (const u of scraped.underwriters) {
+        underwriterAllocations.push({
+          name: u.name,
+          role: u.role,
+          shares: u.shares,
+          percentage: null,
+          retailShares: u.shares,
+          equalShares: u.shares ? Math.round(u.shares * 0.5) : null,
+          proportionalShares: u.shares ? Math.round(u.shares * 0.5) : null,
+          subscriptionLimit: u.limit,
+        });
+      }
+    }
+
+    const leadUnderwriter = summarizeUnderwriters(underwriterAllocations) || ipo.leadUnderwriter;
+
+    return {
+      ...ipo,
+      offerPriceMin,
+      offerPriceMax,
+      confirmedPrice,
+      hopePriceBand,
+      institutionCompetitionRate,
+      lockupRatio,
+      subscriptionCompetitionRate,
+      minSubscriptionDeposit,
+      leadUnderwriter,
+      underwriterAllocations,
+    };
+  });
+
+  // 2. 38커뮤니케이션에는 잡혀있으나 DART 60일 목록에는 아직 안 잡힌 예정 공모주 추가
+  for (const [key, scraped] of scraped38Map.entries()) {
+    if (matchedCorpNames.has(key)) continue;
+    if (!scraped.subscriptionEnd || Date.parse(scraped.subscriptionEnd) < Date.parse(today)) continue;
+
+    const underwriterAllocations: UnderwriterAllocation[] = scraped.underwriters.map((u: ScrapedUnderwriter) => ({
+      name: u.name,
+      role: u.role,
+      shares: u.shares,
+      percentage: null,
+      retailShares: u.shares,
+      equalShares: u.shares ? Math.round(u.shares * 0.5) : null,
+      proportionalShares: u.shares ? Math.round(u.shares * 0.5) : null,
+      subscriptionLimit: u.limit,
+    }));
+
+    const price = scraped.confirmedPrice;
+    const minDeposit = price ? Math.round(price * 10 * 0.5) : null;
+
+    mergedIpos.push({
+      corpCode: `38-${scraped.no}`,
+      corpName: scraped.name,
+      subscriptionStart: scraped.subscriptionStart,
+      subscriptionEnd: scraped.subscriptionEnd,
+      refundDate: scraped.subscriptionEnd ? addBusinessDays(scraped.subscriptionEnd, 2) : null,
+      paymentDate: scraped.subscriptionEnd ? addBusinessDays(scraped.subscriptionEnd, 2) : null,
+      offerPriceMin: scraped.confirmedPrice,
+      offerPriceMax: scraped.confirmedPrice,
+      confirmedPrice: scraped.confirmedPrice,
+      hopePriceBand: scraped.hopePriceBand,
+      institutionCompetitionRate: scraped.institutionCompetitionRate,
+      lockupRatio: scraped.lockupRatio,
+      subscriptionCompetitionRate: scraped.subscriptionCompetitionRate,
+      minSubscriptionDeposit: minDeposit,
+      estimatedListingDate: scraped.subscriptionEnd ? addBusinessDays(scraped.subscriptionEnd, 2) : null,
+      leadUnderwriter: summarizeUnderwriters(underwriterAllocations),
+      underwriterAllocations,
+      totalShares: scraped.totalShares,
+      offerAmount: null,
+      lockupNote: null,
+      receiptDate: today,
+    });
+  }
+
+  // 청약이 아직 끝나지 않은 공모주만 청약임박순 정렬
+  return mergedIpos
     .filter((ipo) => ipo.subscriptionEnd !== null && Date.parse(ipo.subscriptionEnd) >= Date.parse(today))
     .sort((a, b) => (a.subscriptionEnd ?? "").localeCompare(b.subscriptionEnd ?? ""));
-
-  return ipos;
 }

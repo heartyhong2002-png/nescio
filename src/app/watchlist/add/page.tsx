@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { recommendStocksForSectors, SECTORS, SECTOR_STOCKS } from "@/lib/sectors";
-import { useOnboardingProfile, useRecentSearches, useWatchlist } from "@/lib/storage";
+import { useAuth, useOnboardingProfile, useRecentSearches, useWatchlist } from "@/lib/storage";
 import { Stock } from "@/lib/types";
 
 function WatchlistAddContent() {
@@ -13,6 +13,7 @@ function WatchlistAddContent() {
   const searchParams = useSearchParams();
   const fromOnboarding = searchParams.get("from") === "onboarding";
 
+  const { user, loading: authLoading } = useAuth();
   const { profile, loading: profileLoading } = useOnboardingProfile();
   const { watchlist, toggle, addMany, has, loading: watchlistLoading } = useWatchlist();
   const { recentSearches, push, remove } = useRecentSearches();
@@ -83,6 +84,33 @@ function WatchlistAddContent() {
           {watchlist.length}개 담김
         </div>
       </div>
+
+      {!authLoading && !user && !fromOnboarding && (
+        <div
+          style={{
+            background: "var(--accent-soft)",
+            border: "1px solid rgba(0,0,0,0.06)",
+            borderRadius: 12,
+            padding: "12px 16px",
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            fontSize: 13,
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 600 }}>💡 계정 연동 안내</div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+              지금 담은 관심종목은 로그인 시 Supabase 클라우드에 안전하게 영구 저장됩니다.
+            </div>
+          </div>
+          <Link href="/onboarding/login" className="btn btn-primary" style={{ whiteSpace: "nowrap", padding: "6px 12px", fontSize: 12.5, minHeight: "unset", height: "auto" }}>
+            로그인
+          </Link>
+        </div>
+      )}
 
       <div className="search-field" style={{ marginBottom: 20 }}>
         🔍

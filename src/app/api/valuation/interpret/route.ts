@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/server-env";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 import { MetricNote, ValuationInterpretation } from "@/lib/types";
 
 // xAI 호출 1건이라 analyze보다는 가볍지만, 종목당 캐시(10분)를 우회해 다른 숫자 조합으로
@@ -146,6 +147,31 @@ async function generate(
   return coerce(parsed);
 }
 
+// 로그인한 사용자에 한해, 새로 생성된 해설을 valuation_interpretations에 버전으로 남긴다.
+// 캐시 히트(같은 종목·같은 지표 조합을 10분 내 재요청)면 이미 저장된 것이므로 호출부에서
+// isNew일 때만 부른다. 부가 기능이라 실패해도 응답 자체는 막지 않는다.
+async function saveInterpretationForUser(
+  ticker: string,
+  name: string,
+  metrics: MetricsInput,
+  interpretation: ValuationInterpretation,
+) {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const { error } = await supabase.from("valuation_interpretations").insert({
+    user_id: user.id,
+    ticker,
+    stock_name: name,
+    metrics,
+    interpretation,
+  });
+  if (error) throw error;
+}
+
 export async function POST(request: Request) {
   try {
     const { ok, retryAfterMs } = rateLimit(`interpret:${clientIp(request)}`, RATE_LIMIT.limit, RATE_LIMIT.windowMs);
@@ -180,16 +206,27 @@ export async function POST(request: Request) {
     const key = cacheKey(ticker || name, metrics);
     const hit = cache.get(key);
     let promise: Promise<ValuationInterpretation>;
+    let isNew = false;
     if (hit && Date.now() < hit.expiresAt) {
       promise = hit.promise;
     } else {
+      isNew = true;
       promise = generate(name, ticker, metrics, close, changeRate);
       cache.set(key, { promise, expiresAt: Date.now() + CACHE_TTL_MS });
       // 호출이 실패하면 다음 요청이 다시 시도할 수 있게 캐시에서 뺀다.
       promise.catch(() => cache.delete(key));
     }
 
-    return NextResponse.json({ interpretation: await promise });
+    const interpretation = await promise;
+
+    // 새로 생성된 해설만 히스토리로 남긴다(캐시 히트는 이미 저장된 것).
+    if (isNew) {
+      await saveInterpretationForUser(ticker, name, metrics, interpretation).catch((error) => {
+        console.warn("[valuation/interpret] 히스토리 저장 실패:", error);
+      });
+    }
+
+    return NextResponse.json({ interpretation });
   } catch (error) {
     const message = error instanceof Error ? error.message : "지표 해석을 불러오지 못했습니다.";
     return NextResponse.json({ error: message }, { status: 500 });

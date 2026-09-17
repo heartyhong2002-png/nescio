@@ -52,8 +52,12 @@ export default function CauseDetailView({ analysis, cause }: { analysis: Analysi
             {sourceNews.map((item) => (
               <a key={item.link} href={item.link} target="_blank" rel="noreferrer" style={{ display: "block", padding: "11px 0", borderBottom: "1px solid var(--line)", color: "inherit" }}>
                 <div style={{ fontSize: 12, lineHeight: 1.5 }}>{item.title}</div>
-                <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>
-                  {new Date(item.pubDate).toLocaleDateString("ko-KR")}
+                <div className="muted" style={{ fontSize: 10, marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                  {item.source && <span>{item.source}</span>}
+                  {item.language === "en" && (
+                    <span style={{ padding: "1px 5px", borderRadius: 4, border: "1px solid var(--line)", fontSize: 9 }}>해외</span>
+                  )}
+                  <span>{new Date(item.pubDate).toLocaleDateString("ko-KR")}</span>
                 </div>
               </a>
             ))}

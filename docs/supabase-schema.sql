@@ -67,3 +67,57 @@ create policy "watchlist: delete own" on public.watchlist_items
 --   set role authenticated;
 --   set request.jwt.claim.sub = '<테스트용 다른 uuid>';
 --   select * from public.watchlist_items; -- 그 uuid 소유가 아닌 행은 하나도 안 보여야 정상
+
+-- ---------------------------------------------------------------------------
+-- stock_analyses / valuation_interpretations: AI가 만든 종목 요약본 히스토리
+--
+-- 종목 상세 페이지(/stock/[ticker])를 열 때마다 서버가 새로 만드는 AI 브리핑(원인 분석 +
+-- "쩐형" 코멘트)과 재무지표 해설을, 로그인한 사용자에 한해 버전으로 계속 쌓아 남긴다.
+-- watchlist_items처럼 "현재 값 하나"가 아니라 "매번 새로 생성된 스냅샷"이라 unique 제약을
+-- 걸지 않고 created_at 기준으로 여러 행이 쌓이게 둔다. 저장은 /api/analyze,
+-- /api/valuation/interpret 라우트가 응답 직전에 서버 사이드에서 처리한다(클라이언트가 직접
+-- insert하지 않음) — 그래서 insert 정책도 select 정책과 함께 "본인 것만"으로 걸어둔다.
+-- ---------------------------------------------------------------------------
+
+create table public.stock_analyses (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  ticker text not null,
+  stock_name text not null,
+  price jsonb not null,        -- Price 타입 스냅샷 (close/changeRate/marketCap)
+  news jsonb not null default '[]', -- NewsItem[] — 이 브리핑이 근거로 쓴 뉴스 목록
+  briefing jsonb not null,     -- Briefing 타입 (oneLiner/causes/aiComment) 전체
+  generated_at timestamptz not null, -- analyze route가 응답에 찍은 생성 시각
+  created_at timestamptz not null default now()
+);
+
+create index stock_analyses_user_ticker_idx
+  on public.stock_analyses (user_id, ticker, created_at desc);
+
+alter table public.stock_analyses enable row level security;
+
+create policy "stock_analyses: select own" on public.stock_analyses
+  for select using (auth.uid() = user_id);
+create policy "stock_analyses: insert own" on public.stock_analyses
+  for insert with check (auth.uid() = user_id);
+-- update/delete 정책 없음 — 히스토리는 쌓이기만 하고 수정하지 않는다(필요해지면 그때 추가).
+
+create table public.valuation_interpretations (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  ticker text not null,
+  stock_name text not null,
+  metrics jsonb not null,         -- 해설을 만들 때 입력한 {per, pbr, dividend, marketCap}
+  interpretation jsonb not null,  -- ValuationInterpretation 타입 전체
+  created_at timestamptz not null default now()
+);
+
+create index valuation_interpretations_user_ticker_idx
+  on public.valuation_interpretations (user_id, ticker, created_at desc);
+
+alter table public.valuation_interpretations enable row level security;
+
+create policy "valuation_interpretations: select own" on public.valuation_interpretations
+  for select using (auth.uid() = user_id);
+create policy "valuation_interpretations: insert own" on public.valuation_interpretations
+  for insert with check (auth.uid() = user_id);

@@ -54,8 +54,25 @@ export default function MyPage() {
         </div>
         {authLoading ? (
           <div className="skeleton" style={{ height: 22, width: 160, borderRadius: 6 }} />
+        ) : user ? (
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>{user.email}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
+              <span style={{ fontSize: 12, padding: "3px 8px", borderRadius: 6, background: "var(--accent-soft)", color: "var(--accent)", fontWeight: 600 }}>
+                ☁️ Supabase 클라우드 동기화 중
+              </span>
+            </div>
+          </div>
         ) : (
-          <div style={{ fontSize: 16, fontWeight: 600 }}>{user?.email ?? "로그인이 필요해요"}</div>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>로그인이 필요해요</div>
+            <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
+              로그인하시면 관심종목과 맞춤 브리핑이 안전하게 클라우드에 보관됩니다.
+            </p>
+            <Link href="/onboarding/login" className="btn btn-primary" style={{ display: "inline-flex", minWidth: 140 }}>
+              로그인 / 회원가입
+            </Link>
+          </div>
         )}
       </div>
 
@@ -90,34 +107,38 @@ export default function MyPage() {
         <span className="muted">→</span>
       </Link>
 
-      <button className="btn btn-secondary" style={{ maxWidth: 200, marginBottom: 14 }} onClick={handleLogout}>
-        로그아웃
-      </button>
+      {user && (
+        <>
+          <button className="btn btn-secondary" style={{ maxWidth: 200, marginBottom: 14 }} onClick={handleLogout}>
+            로그아웃
+          </button>
 
-      {confirmingDelete ? (
-        <div className="card">
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>정말 탈퇴하시겠어요?</div>
-          <p className="muted" style={{ fontSize: 12, marginBottom: 14 }}>
-            계정과 관심종목, 투자 성향 등 모든 데이터가 즉시 삭제되고 되돌릴 수 없어요.
-          </p>
-          {deleteError && (
-            <div className="error-box" style={{ marginBottom: 12 }}>
-              {deleteError}
+          {confirmingDelete ? (
+            <div className="card">
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>정말 탈퇴하시겠어요?</div>
+              <p className="muted" style={{ fontSize: 12, marginBottom: 14 }}>
+                계정과 관심종목, 투자 성향 등 모든 데이터가 즉시 삭제되고 되돌릴 수 없어요.
+              </p>
+              {deleteError && (
+                <div className="error-box" style={{ marginBottom: 12 }}>
+                  {deleteError}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-secondary" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
+                  취소
+                </button>
+                <button className="btn btn-danger" onClick={handleDeleteAccount} disabled={deleting}>
+                  {deleting ? "탈퇴 처리 중..." : "탈퇴하기"}
+                </button>
+              </div>
             </div>
+          ) : (
+            <button className="btn-ghost" style={{ fontSize: 12, color: "#b3313f" }} onClick={() => setConfirmingDelete(true)}>
+              계정 탈퇴
+            </button>
           )}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-secondary" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
-              취소
-            </button>
-            <button className="btn btn-danger" onClick={handleDeleteAccount} disabled={deleting}>
-              {deleting ? "탈퇴 처리 중..." : "탈퇴하기"}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button className="btn-ghost" style={{ fontSize: 12, color: "#b3313f" }} onClick={() => setConfirmingDelete(true)}>
-          계정 탈퇴
-        </button>
+        </>
       )}
     </AppShell>
   );

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/lib/storage";
 
 const NAV = [
   { href: "/", label: "브리핑" },
@@ -14,6 +15,7 @@ const NAV = [
 
 export default function SiteHeader() {
   const pathname = usePathname();
+  const { user, loading } = useAuth();
 
   return (
     <header className="site-header">
@@ -32,7 +34,44 @@ export default function SiteHeader() {
             );
           })}
         </nav>
-        <span className="site-header-cta">관심 종목 뉴스 맥락 브리핑</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {!loading && (
+            user ? (
+              <Link
+                href="/my"
+                style={{
+                  fontSize: 12.5,
+                  padding: "5px 10px",
+                  borderRadius: 8,
+                  background: "var(--accent-soft)",
+                  color: "var(--accent)",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}
+              >
+                <span>☁️</span>
+                <span>{user.email.split("@")[0]}</span>
+              </Link>
+            ) : (
+              <Link
+                href="/onboarding/login"
+                className="btn btn-primary"
+                style={{
+                  fontSize: 12.5,
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  height: "auto",
+                  minHeight: "unset",
+                }}
+              >
+                로그인
+              </Link>
+            )
+          )}
+        </div>
       </div>
     </header>
   );

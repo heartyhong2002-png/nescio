@@ -7,7 +7,7 @@ import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 import { Briefing, Cause, NewsItem, Price } from "@/lib/types";
 
-// 2단계 LLM 호출(NVIDIA + xAI)이라 요청 1건 비용이 크다. IP당 분당 5회로 제한해
+// 2단계 LLM 호출(NVIDIA + 오픈소스 모델)이라 요청 1건 비용이 크다. IP당 분당 5회로 제한해
 // 스크립트로 캐시를 우회하며 계속 새 종목명을 찔러 API 비용을 태우는 걸 막는다.
 const RATE_LIMIT = { limit: 5, windowMs: 60_000 };
 
@@ -154,12 +154,11 @@ async function callOpenAiCompatible(opts: {
 }
 
 /**
- * NVIDIA(무료 티어, nemotron) — 1단계 사실 분석뿐 아니라 2단계 "쩐형" 재작성에도 재사용한다.
- * 원래 2단계는 xAI Grok → Upstage Solar Pro 3(OpenRouter 무료)로 옮겨왔는데, Solar Pro 3의
- * 무료 프로모션 기간 자체가 끝나버려서(OpenRouter가 404로 "paid slug로 이전하라"는 응답을
- * 줌) 유료 전환 없이 계속 무료로 쓸 수 있는, 이미 이 프로젝트에 검증되어 있는 NVIDIA로
- * 다시 옮긴다. opts는 2단계(JSON 응답 + 넉넉한 토큰 한도)에서만 쓰고, 1단계 기존 호출부는
- * opts 없이 그대로 호출하면 됨.
+ * NVIDIA(무료 티어, nemotron) — 1단계(원본 사실 분석) 전용. 2단계(쩐형 재작성)는
+ * "분석은 NVIDIA, 멘트는 오픈소스 LLM"이라는 요구사항에 따라 아래 callGroq/callCerebras로
+ * 넘어갔다 — 자세한 경위는 이 파일 상단 및 2단계 섹션 주석 참고. opts는 과거 2단계에서
+ * JSON 응답 + 넉넉한 토큰 한도용으로 쓰던 흔적이라 지금은 안 쓰이지만, 다른 호출부 호환을
+ * 위해 시그니처는 그대로 둔다.
  */
 function callNvidia(
   system: string,
@@ -206,6 +205,55 @@ function callOpenRouter(system: string, prompt: string, temperature: number): Pr
   });
 }
 
+/**
+ * Groq — 오픈소스(오픈 웨이트) 모델을 자체 칩(LPU)으로 서빙하는 회사. 무료 티어 유지가
+ * 한시적 프로모션이 아니라 "속도 자랑용 무료 체험"이라는 사업모델 자체라서, Solar Pro 3
+ * 때처럼 어느 날 갑자기 끊길 위험이 적다. 2단계(쩐형 재작성)를 "오픈소스 LLM이 쓴다"는
+ * 요구사항에 맞춰 1순위 제공자로 쓴다.
+ */
+function callGroq(
+  system: string,
+  prompt: string,
+  temperature: number,
+  opts?: { json?: boolean; maxTokens?: number },
+): Promise<string> {
+  const apiKey = serverEnv("GROQ_API_KEY");
+  if (!apiKey) throw new Error("GROQ_API_KEY를 .env에 설정하세요. (발급: https://console.groq.com/keys)");
+  return callOpenAiCompatible({
+    label: "Groq",
+    url: "https://api.groq.com/openai/v1/chat/completions",
+    apiKey,
+    model: serverEnv("GROQ_MODEL") || "llama-3.3-70b-versatile",
+    system,
+    prompt,
+    temperature,
+    json: opts?.json,
+    maxTokens: opts?.maxTokens,
+  });
+}
+
+/** Cerebras — Groq와 같은 이유의 2순위 폴백. Groq가 무료 한도에 걸리거나 실패했을 때만 탄다. */
+function callCerebras(
+  system: string,
+  prompt: string,
+  temperature: number,
+  opts?: { json?: boolean; maxTokens?: number },
+): Promise<string> {
+  const apiKey = serverEnv("CEREBRAS_API_KEY");
+  if (!apiKey) throw new Error("CEREBRAS_API_KEY를 .env에 설정하세요. (발급: https://cloud.cerebras.ai)");
+  return callOpenAiCompatible({
+    label: "Cerebras",
+    url: "https://api.cerebras.ai/v1/chat/completions",
+    apiKey,
+    model: serverEnv("CEREBRAS_MODEL") || "gpt-oss-120b",
+    system,
+    prompt,
+    temperature,
+    json: opts?.json,
+    maxTokens: opts?.maxTokens,
+  });
+}
+
 async function callGemini(
   system: string,
   prompt: string,
@@ -248,7 +296,7 @@ async function callGemini(
   return content;
 }
 
-/** 기본 제공자를 먼저 시도하고, 실패하면 Gemini로 한 번 더 시도한다. */
+/** 기본 제공자를 먼저 시도하고, 실패하면 Gemini로 한 번 더 시도한다. (1단계 원본 분석 전용) */
 async function withGeminiFallback(
   label: string,
   primary: () => Promise<string>,
@@ -265,6 +313,28 @@ async function withGeminiFallback(
       throw new Error(`${label} 실패 — 기본: ${errMsg(primaryError)} / Gemini 폴백: ${errMsg(fallbackError)}`);
     }
   }
+}
+
+/**
+ * 제공자를 순서대로 시도하고, 앞선 게 실패하면 다음으로 넘어간다(2단계 쩐형 재작성 전용).
+ * API 키가 없는 제공자는 아예 건너뛴다 — 안 쓰는 제공자의 ".env에 설정하세요" 에러가
+ * 로그만 채우는 걸 막는다. 전부 실패해야 진짜로 에러를 던진다.
+ */
+async function withFallbackChain(
+  label: string,
+  providers: Array<{ name: string; hasKey: boolean; call: () => Promise<string> }>,
+): Promise<string> {
+  const errors: string[] = [];
+  for (const provider of providers) {
+    if (!provider.hasKey) continue;
+    try {
+      return await provider.call();
+    } catch (error) {
+      errors.push(`${provider.name}: ${errMsg(error)}`);
+      console.warn(`[analyze] ${label} — ${provider.name} 실패, 다음 제공자로 폴백:`, errMsg(error));
+    }
+  }
+  throw new Error(`${label} 전체 제공자 실패 — ${errors.join(" / ") || "설정된 API 키 없음"}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -410,7 +480,10 @@ async function analyzeRaw(
 }
 
 // ---------------------------------------------------------------------------
-// 2단계: NVIDIA(무료, 폴백 Gemini) — "쩐형" 캐릭터로 재작성 (1단계 사실은 그대로, 톤만 바꾼다)
+// 2단계: 오픈소스(Groq → Cerebras, 폴백 Gemini) — "쩐형" 캐릭터로 재작성
+// (1단계 사실은 그대로, 톤만 바꾼다). "NVIDIA가 분석하고 오픈소스가 멘트를 쓴다"는
+// 요구사항에 맞춰 1단계(analyzeRaw)는 NVIDIA, 2단계(여기)는 Groq/Cerebras를 우선 쓰고
+// 둘 다 실패했을 때만 Gemini로 넘어간다.
 // ---------------------------------------------------------------------------
 type Tone = "mild" | "medium" | "spicy" | "nuclear";
 
@@ -474,11 +547,11 @@ async function rewritePlain(
   const system = buildJeonhyungSystem(tone);
   const prompt = buildRewritePrompt(name, ticker, rawAnalysis, news);
 
-  const content = await withGeminiFallback(
-    "2단계 쩐형 재작성",
-    () => callNvidia(system, prompt, 0.9, { json: true, maxTokens: 4096 }),
-    () => callGemini(system, prompt, { temperature: 0.9, json: true }),
-  );
+  const content = await withFallbackChain("2단계 쩐형 재작성", [
+    { name: "Groq", hasKey: !!serverEnv("GROQ_API_KEY"), call: () => callGroq(system, prompt, 0.9, { json: true, maxTokens: 4096 }) },
+    { name: "Cerebras", hasKey: !!serverEnv("CEREBRAS_API_KEY"), call: () => callCerebras(system, prompt, 0.9, { json: true, maxTokens: 4096 }) },
+    { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, { temperature: 0.9, json: true }) },
+  ]);
 
   let raw: unknown;
   try {
