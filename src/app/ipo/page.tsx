@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { formatAmountCompact, formatPrice, formatSharesCompact } from "@/lib/format";
-import { CompanyInfo, IpoInfo } from "@/lib/types";
+import { CompanyInfo, IpoInfo, IpoListingsData } from "@/lib/types";
 
 function useIpos() {
   const [ipos, setIpos] = useState<IpoInfo[] | null>(null);
@@ -37,6 +37,35 @@ function useIpos() {
   }, []);
 
   return { ipos, setIpos, error };
+}
+
+function useIpoListings() {
+  const [data, setData] = useState<IpoListingsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/ipos/listings")
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled) {
+          setData(json);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "신규상장 정보를 불러오지 못했습니다.");
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return { data, loading, error };
 }
 
 function CompanyOverviewCard({ company, corpName }: { company?: CompanyInfo | null; corpName: string }) {
@@ -567,8 +596,361 @@ function parsePercentNumber(percentStr: string | null): number | null {
   return Number.isFinite(val) ? val : null;
 }
 
+function ListingsView() {
+  const { data, loading, error } = useIpoListings();
+  const [filter, setFilter] = useState<"ALL" | "DOUBLE" | "LOSS">("ALL");
+
+  if (loading && !data) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="skeleton" style={{ height: 90, borderRadius: 16 }} />
+        <div className="skeleton" style={{ height: 140, borderRadius: 16 }} />
+        <div className="skeleton" style={{ height: 300, borderRadius: 16 }} />
+      </div>
+    );
+  }
+
+  if (error && !data) {
+    return <div className="error-box" style={{ marginBottom: 16 }}>{error}</div>;
+  }
+
+  const stats = data?.stats;
+  const upcoming = data?.upcoming ?? [];
+  const history = data?.history ?? [];
+
+  const filteredHistory = history.filter((item) => {
+    if (filter === "DOUBLE") return item.badge === "TRIPLE" || item.badge === "DOUBLE";
+    if (filter === "LOSS") return item.badge === "LOSS";
+    return true;
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* 1. 2026 시장 종합 성적표 배너 */}
+      {stats && (
+        <div>
+          <div className="eyebrow" style={{ marginBottom: 10, fontSize: 11 }}>
+            2026 공모주 시장 첫날 움직임 종합 ({stats.totalCount}개사 분석)
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+              gap: 10,
+            }}
+          >
+            <div className="card" style={{ padding: "12px 14px", textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>평균 시초가 수익률</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "var(--up)" }}>{stats.avgOpenReturn}</div>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>공모가의 약 2.3배</div>
+            </div>
+            <div className="card" style={{ padding: "12px 14px", textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>평균 첫날 종가 수익률</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "var(--accent-dark)" }}>{stats.avgFirstDayReturn}</div>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>차익실현 후 안착</div>
+            </div>
+            <div className="card" style={{ padding: "12px 14px", textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>따따블 (+300%)</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#7c3aed" }}>{stats.tripleCount}개사</div>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>마키나락스, 폴레드 등</div>
+            </div>
+            <div className="card" style={{ padding: "12px 14px", textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>공모가 하회 (손실)</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "var(--down)" }}>{stats.lossCount}개사</div>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>손실 비율 약 29%</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. 상장 예정 공모주 현황 */}
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+          <div className="eyebrow" style={{ fontSize: 11 }}>
+            상장 예정 공모주 <span className="muted">{upcoming.length}건</span>
+          </div>
+          <span className="muted" style={{ fontSize: 11 }}>
+            최근 상장 대기 종목
+          </span>
+        </div>
+
+        {upcoming.length > 0 ? (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 10,
+            }}
+          >
+            {upcoming.map((item) => (
+              <div
+                key={item.name}
+                className="card"
+                style={{
+                  padding: "12px 14px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{item.name}</span>
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      background: "rgba(124, 58, 237, 0.1)",
+                      color: "var(--accent-dark)",
+                      border: "1px solid rgba(124, 58, 237, 0.2)",
+                    }}
+                  >
+                    상장 예정
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--muted)", display: "flex", justifyContent: "space-between" }}>
+                  <span>상장예정일: <strong style={{ color: "var(--ink)" }}>{item.listingDate}</strong></span>
+                  <span>공모가: <strong style={{ color: "var(--ink)" }}>{item.offerPrice ? `${item.offerPrice.toLocaleString()}원` : "미정"}</strong></span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="placeholder-box" style={{ padding: 20, fontSize: 13 }}>
+            현재 상장 대기 중인 종목이 없습니다.
+          </div>
+        )}
+      </div>
+
+      {/* 3. 2026 신규상장 공모주 첫날 성적표 */}
+      <div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 10,
+            flexWrap: "wrap",
+            gap: 8,
+          }}
+        >
+          <div className="eyebrow" style={{ fontSize: 11 }}>
+            2026 상장 첫날 실전 성적표 <span className="muted">{filteredHistory.length}건</span>
+          </div>
+
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => setFilter("ALL")}
+              style={{
+                fontSize: 11,
+                padding: "3px 8px",
+                borderRadius: 6,
+                border: "1px solid var(--line)",
+                background: filter === "ALL" ? "var(--accent)" : "var(--surface)",
+                color: filter === "ALL" ? "#fff" : "var(--muted)",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              전체 ({history.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilter("DOUBLE")}
+              style={{
+                fontSize: 11,
+                padding: "3px 8px",
+                borderRadius: 6,
+                border: "1px solid var(--line)",
+                background: filter === "DOUBLE" ? "#7c3aed" : "var(--surface)",
+                color: filter === "DOUBLE" ? "#fff" : "var(--muted)",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              🚀 따블 이상 ({stats?.doubleCount ?? 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilter("LOSS")}
+              style={{
+                fontSize: 11,
+                padding: "3px 8px",
+                borderRadius: 6,
+                border: "1px solid var(--line)",
+                background: filter === "LOSS" ? "var(--up)" : "var(--surface)",
+                color: filter === "LOSS" ? "#fff" : "var(--muted)",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              ⚠️ 손실 ({stats?.lossCount ?? 0})
+            </button>
+          </div>
+        </div>
+
+        {/* 성적표 테이블 */}
+        <div
+          style={{
+            overflowX: "auto",
+            borderRadius: 12,
+            border: "1px solid var(--line)",
+            background: "var(--surface)",
+          }}
+        >
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: 12.5,
+              textAlign: "left",
+              minWidth: 560,
+            }}
+          >
+            <thead>
+              <tr
+                style={{
+                  background: "var(--surface-sunken)",
+                  borderBottom: "1px solid var(--line)",
+                  color: "var(--muted)",
+                  fontSize: 11.5,
+                }}
+              >
+                <th style={{ padding: "9px 12px" }}>종목명 (상장일)</th>
+                <th style={{ padding: "9px 10px", textAlign: "right" }}>공모가</th>
+                <th style={{ padding: "9px 10px", textAlign: "right" }}>시초가 (수익률)</th>
+                <th style={{ padding: "9px 10px", textAlign: "right" }}>첫날 종가 (최종 수익률)</th>
+                <th style={{ padding: "9px 12px", textAlign: "center" }}>첫날 성적</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredHistory.map((item, idx) => {
+                const isLoss = item.badge === "LOSS";
+                const isTriple = item.badge === "TRIPLE";
+                const isDouble = item.badge === "DOUBLE";
+
+                return (
+                  <tr
+                    key={item.name + item.listingDate}
+                    style={{
+                      borderBottom: idx < filteredHistory.length - 1 ? "1px solid var(--line)" : "none",
+                    }}
+                  >
+                    <td style={{ padding: "10px 12px" }}>
+                      <div style={{ fontWeight: 600, color: "var(--ink)" }}>{item.name}</div>
+                      <div className="muted" style={{ fontSize: 10.5, marginTop: 2 }}>{item.listingDate}</div>
+                    </td>
+                    <td style={{ padding: "10px 10px", textAlign: "right", color: "var(--muted)" }}>
+                      {item.offerPrice ? `${item.offerPrice.toLocaleString()}원` : "-"}
+                    </td>
+                    <td style={{ padding: "10px 10px", textAlign: "right" }}>
+                      <div style={{ fontWeight: 600, color: "var(--ink)" }}>
+                        {item.openPrice ? `${item.openPrice.toLocaleString()}원` : "-"}
+                      </div>
+                      {item.openReturnRate && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: item.openReturnRate.startsWith("-") ? "var(--down)" : "var(--up)",
+                          }}
+                        >
+                          {item.openReturnRate}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: "10px 10px", textAlign: "right" }}>
+                      <div style={{ fontWeight: 700, color: "var(--ink)" }}>
+                        {item.firstDayClose ? `${item.firstDayClose.toLocaleString()}원` : "-"}
+                      </div>
+                      {item.firstDayReturnRate && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: item.firstDayReturnRate.startsWith("-") ? "var(--down)" : "var(--up)",
+                          }}
+                        >
+                          {item.firstDayReturnRate}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: "10px 12px", textAlign: "center" }}>
+                      {isTriple && (
+                        <span
+                          style={{
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            padding: "2px 7px",
+                            borderRadius: 4,
+                            background: "linear-gradient(135deg, #7c3aed, #db2777)",
+                            color: "#fff",
+                          }}
+                        >
+                          따따블 (+300%)
+                        </span>
+                      )}
+                      {isDouble && (
+                        <span
+                          style={{
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            padding: "2px 7px",
+                            borderRadius: 4,
+                            background: "rgba(16, 185, 129, 0.15)",
+                            color: "#059669",
+                            border: "1px solid rgba(16, 185, 129, 0.3)",
+                          }}
+                        >
+                          따블 달성
+                        </span>
+                      )}
+                      {!isTriple && !isDouble && !isLoss && (
+                        <span
+                          style={{
+                            fontSize: 10.5,
+                            fontWeight: 600,
+                            padding: "2px 7px",
+                            borderRadius: 4,
+                            background: "rgba(49, 130, 246, 0.1)",
+                            color: "var(--accent-dark)",
+                          }}
+                        >
+                          공모가 상회
+                        </span>
+                      )}
+                      {isLoss && (
+                        <span
+                          style={{
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            padding: "2px 7px",
+                            borderRadius: 4,
+                            background: "rgba(239, 68, 68, 0.12)",
+                            color: "var(--up)",
+                            border: "1px solid rgba(239, 68, 68, 0.25)",
+                          }}
+                        >
+                          공모가 하회
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function IpoPage() {
   const { ipos, setIpos, error } = useIpos();
+  const [activeTab, setActiveTab] = useState<"subscription" | "listings">("subscription");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [refreshingCorp, setRefreshingCorp] = useState<string | null>(null);
 
@@ -605,14 +987,66 @@ export default function IpoPage() {
     <AppShell narrow>
       <div className="topbar" style={{ alignItems: "flex-start" }}>
         <div>
-          <div className="page-title">공모주 청약 & 수요예측</div>
+          <div className="page-title">공모주 캘린더 & 시장 동향</div>
           <p className="muted" style={{ fontSize: 13, marginTop: 6, lineHeight: 1.5 }}>
-            DART 공시와 38커뮤니케이션 데이터를 결합해 <strong>기관 수요예측 결과</strong>와 <strong>증권사별 실제 배정수량·한도</strong>를 한눈에 제공해요.
+            청약 일정·수요예측·AI 진단부터 <strong>상장 예정일 및 2026 신규상장 첫날 실전 성적표</strong>까지 한눈에 확인하세요.
           </p>
         </div>
       </div>
 
-      {error && <div className="error-box" style={{ marginBottom: 16 }}>{error}</div>}
+      {/* 상단 탭 스위처 */}
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          marginBottom: 16,
+          borderBottom: "1px solid var(--line)",
+          paddingBottom: 8,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setActiveTab("subscription")}
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            padding: "7px 14px",
+            borderRadius: 8,
+            border: "none",
+            background: activeTab === "subscription" ? "var(--accent)" : "transparent",
+            color: activeTab === "subscription" ? "#fff" : "var(--muted)",
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+          }}
+        >
+          📝 공모 청약 & AI 진단
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("listings")}
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            padding: "7px 14px",
+            borderRadius: 8,
+            border: "none",
+            background: activeTab === "listings" ? "var(--accent)" : "transparent",
+            color: activeTab === "listings" ? "#fff" : "var(--muted)",
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+          }}
+        >
+          🚀 2026 상장 현황 & 첫날 성적표
+        </button>
+      </div>
+
+      {/* 탭 1: 신규상장 현황 & 첫날 성적표 */}
+      {activeTab === "listings" && <ListingsView />}
+
+      {/* 탭 2: 기존 청약 일정 & AI 진단 */}
+      {activeTab === "subscription" && (
+        <>
+          {error && <div className="error-box" style={{ marginBottom: 16 }}>{error}</div>}
 
       {loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1179,6 +1613,8 @@ export default function IpoPage() {
           <div className="note-box" style={{ marginTop: 24, fontSize: 12, lineHeight: 1.6 }}>
             금융감독원 전자공시(OpenDART)와 IPO 포털을 교차 검증하여 청약일정, 확정공모가, 기관 수요예측 경쟁률, 의무보유확약 비율, 증권사별 배정수량 및 청약 한도를 통합 제공합니다.
           </div>
+        </>
+      )}
         </>
       )}
     </AppShell>

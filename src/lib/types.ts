@@ -117,6 +117,35 @@ export type IpoInfo = {
   aiAnalysis?: IpoAiAnalysis | null; // LLM 기반 청약 AI 진단 결과
 };
 
+export type IpoListingItem = {
+  name: string; // 종목명
+  listingDate: string; // YYYY/MM/DD
+  currentPrice: number | null; // 현재가
+  changeRate: string | null; // 전일비 (%)
+  offerPrice: number | null; // 공모가 (원)
+  openPrice: number | null; // 시초가 (원)
+  openReturnRate: string | null; // 시초가 대비 공모가 수익률 (예: "+125.6%")
+  firstDayClose: number | null; // 상장 첫날 종가 (원)
+  firstDayReturnRate: string | null; // 첫날 종가 기준 공모가 대비 수익률 (예: "+300.0%")
+  isUpcoming: boolean; // 상장 예정 여부
+  badge?: "TRIPLE" | "DOUBLE" | "PROFIT" | "LOSS" | "UPCOMING"; // 성적 뱃지
+};
+
+export type IpoMarketStats = {
+  totalCount: number; // 2026년 상장 종목 수
+  avgOpenReturn: string; // 평균 시초가 수익률 (+125.6%)
+  avgFirstDayReturn: string; // 평균 첫날 종가 수익률 (+78.8%)
+  tripleCount: number; // 따따블 (+300%) 종목 수
+  doubleCount: number; // 따블 이상 (100%+) 종목 수
+  lossCount: number; // 공모가 하회 (손실) 종목 수
+};
+
+export type IpoListingsData = {
+  upcoming: IpoListingItem[];
+  history: IpoListingItem[];
+  stats: IpoMarketStats;
+};
+
 export type CauseImpact = "high" | "medium" | "low";
 
 export type Cause = {
