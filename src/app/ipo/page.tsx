@@ -14,11 +14,22 @@ function useIpos() {
     fetch("/api/ipos")
       .then(async (response) => {
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "공모주 정보를 불러오지 못했습니다.");
-        if (!cancelled) setIpos(data.ipos);
+        if (!cancelled) {
+          if (Array.isArray(data.ipos)) {
+            setIpos(data.ipos);
+          } else {
+            setIpos([]);
+          }
+          if (!response.ok && data.error) {
+            setError(data.error);
+          }
+        }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "공모주 정보를 불러오지 못했습니다.");
+        if (!cancelled) {
+          setIpos([]);
+          setError(err instanceof Error ? err.message : "공모주 정보를 불러오지 못했습니다.");
+        }
       });
     return () => {
       cancelled = true;

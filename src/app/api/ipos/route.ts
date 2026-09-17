@@ -10,10 +10,10 @@ type Cache = { data: IpoInfo[]; expiresAt: number };
 let cache: Cache | null = null;
 const CACHE_TTL_MS = 30 * 60_000;
 
-export async function GET() {
-  const key = serverEnv("DART_API_KEY");
-  if (!key) return NextResponse.json({ error: "DART_API_KEY를 설정하세요." }, { status: 500 });
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
 
+export async function GET() {
   if (cache && cache.expiresAt > Date.now()) {
     return NextResponse.json({ ipos: cache.data });
   }
@@ -23,7 +23,8 @@ export async function GET() {
     cache = { data: ipos, expiresAt: Date.now() + CACHE_TTL_MS };
     return NextResponse.json({ ipos });
   } catch (error) {
+    console.error("[api/ipos] 공모주 목록 조회 실패:", error);
     const message = error instanceof Error ? error.message : "공모주 정보를 불러오지 못했습니다.";
-    return NextResponse.json({ error: message }, { status: 502 });
+    return NextResponse.json({ error: message, ipos: [] }, { status: 200 });
   }
 }

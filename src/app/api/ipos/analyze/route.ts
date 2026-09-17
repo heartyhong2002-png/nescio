@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { analyzeIpoWithAi } from "@/lib/ipo-analyzer";
 import { IpoInfo } from "@/lib/types";
 
+export const maxDuration = 60;
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();

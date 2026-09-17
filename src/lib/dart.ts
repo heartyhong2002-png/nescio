@@ -222,7 +222,7 @@ const SUBSCRIPTION_TO_LISTING_BUSINESS_DAYS = 2;
 // 클라이언트 쪽에서 직접 거른다(초기 신고/[정정]/[발행조건확정] 전부 이 두 단어를 포함하는 걸
 // 실측으로 확인함). 필터가 서버에서 안 걸러주니 대상 집합이 커져서(하루 발행공시만 100건 넘게
 // 나올 때도 있음) 60일 치를 다 보려면 페이지 상한도 크게 잡아야 한다.
-const MAX_LIST_PAGES = 60; // page_count=100 기준 최대 6,000건 — 60일 치 발행공시(C) 전체를 커버
+const MAX_LIST_PAGES = 10; // Vercel 서버리스 타임아웃 방지를 위해 최근 1,000건 공시 탐색
 
 function isEquityRegistrationTitle(reportNm: string | undefined) {
   return !!reportNm && reportNm.includes("증권신고서") && reportNm.includes("지분증권");
@@ -235,6 +235,9 @@ function isEquityRegistrationTitle(reportNm: string | undefined) {
  * 가장 최근 접수(rcept_no가 가장 큰 것) 한 건만 남기고 나머지는 버린다.
  */
 export async function searchIpoCandidates(bgnDe: string, endDe: string): Promise<DartListItem[]> {
+  const key = serverEnv("DART_API_KEY");
+  if (!key) return [];
+
   const byCorp = new Map<string, DartListItem>();
   let page = 1;
   for (; page <= MAX_LIST_PAGES; page += 1) {
@@ -339,7 +342,9 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     }),
   ]);
 
-  const details = await Promise.allSettled(candidates.map((item) => fetchIpoDetail(item, detailBgnDe, end)));
+  const details = await Promise.allSettled(
+    candidates.slice(0, 10).map((item) => fetchIpoDetail(item, detailBgnDe, end)),
+  );
 
   const today = now.toISOString().slice(0, 10);
   const dartIpos = details
