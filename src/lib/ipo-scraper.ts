@@ -28,6 +28,14 @@ export type ScrapedIpoData = {
   totalShares: number | null; // 총 공모주식수
   minShares: number | null; // 최소 청약 단위
   underwriters: ScrapedUnderwriter[]; // 증권사별 배정 & 한도
+  sector: string | null; // 업종
+  ceo: string | null; // 대표자명
+  companySize: string | null; // 기업구분
+  homepage: string | null; // 홈페이지 URL
+  phone: string | null; // 대표전화
+  revenue: string | null; // 최근 매출액
+  profit: string | null; // 순이익 또는 세전계속사업이익
+  capital: string | null; // 자본금
 };
 
 type CacheEntry = {
@@ -121,6 +129,14 @@ async function scrape38Detail(no: string): Promise<{
   totalShares: number | null;
   minShares: number | null;
   underwriters: ScrapedUnderwriter[];
+  sector: string | null;
+  ceo: string | null;
+  companySize: string | null;
+  homepage: string | null;
+  phone: string | null;
+  revenue: string | null;
+  profit: string | null;
+  capital: string | null;
 }> {
   try {
     const html = await fetchEucKr(`http://www.38.co.kr/html/fund/?o=v&no=${no}`);
@@ -133,6 +149,15 @@ async function scrape38Detail(no: string): Promise<{
     let confirmedPrice: number | null = null;
     let totalShares: number | null = null;
     let minShares: number | null = null;
+
+    let sector: string | null = null;
+    let ceo: string | null = null;
+    let companySize: string | null = null;
+    let homepage: string | null = null;
+    let phone: string | null = null;
+    let revenue: string | null = null;
+    let profit: string | null = null;
+    let capital: string | null = null;
 
     const minMatch = html.match(/(?:최소\s*청약\s*(?:단위|수량|주식수)?|청약단위)\s*[:：]?\s*([0-9,]+)\s*주/i);
     if (minMatch) {
@@ -150,6 +175,43 @@ async function scrape38Detail(no: string): Promise<{
     for (const tr of trMatches) {
       const tds = [...tr[1].matchAll(/<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/gi)].map((m) => cleanText(m[1]));
       const rowStr = tds.join(" | ");
+
+      // 기업 개요 정보 추출
+      if (tds[0] === "업종" && tds[1]) {
+        sector = tds[1] !== "-" ? tds[1] : null;
+      }
+
+      if (tds[0] === "대표자") {
+        if (tds[1] && tds[1] !== "-") ceo = tds[1];
+        if (tds[2] === "기업구분" && tds[3] && tds[3] !== "-") companySize = tds[3];
+      } else if (tds[0] === "기업구분" && tds[1] && tds[1] !== "-") {
+        companySize = tds[1];
+      }
+
+      if (tds[0] === "홈페이지") {
+        if (tds[1] && tds[1] !== "-" && tds[1] !== "") {
+          let hp = tds[1];
+          if (!hp.startsWith("http://") && !hp.startsWith("https://")) {
+            hp = `https://${hp}`;
+          }
+          homepage = hp;
+        }
+        if (tds[2] === "대표전화" && tds[3] && tds[3] !== "-") phone = tds[3];
+      }
+
+      if (tds[0] === "매출액") {
+        if (tds[1] && tds[1] !== "-") revenue = tds[1];
+        if (tds[2]?.includes("이익") && tds[3] && tds[3] !== "-") {
+          profit = tds[3];
+        }
+      }
+
+      if (tds[0] === "순이익") {
+        if (tds[1] && tds[1] !== "-") profit = tds[1];
+        if (tds[2] === "자본금" && tds[3] && tds[3] !== "-") capital = tds[3];
+      } else if (tds[0] === "자본금" && tds[1] && tds[1] !== "-") {
+        capital = tds[1];
+      }
 
       // 1. 수요예측결과 (기관경쟁률 / 의무보유확약)
       if (rowStr.includes("수요예측결과") && tds.length >= 4) {
@@ -257,6 +319,14 @@ async function scrape38Detail(no: string): Promise<{
       totalShares,
       minShares: minShares ?? 10,
       underwriters,
+      sector,
+      ceo,
+      companySize,
+      homepage,
+      phone,
+      revenue,
+      profit,
+      capital,
     };
   } catch (err) {
     console.warn(`[ipo-scraper] detail for no=${no} failed:`, err instanceof Error ? err.message : err);
@@ -269,6 +339,14 @@ async function scrape38Detail(no: string): Promise<{
       totalShares: null,
       minShares: 10,
       underwriters: [],
+      sector: null,
+      ceo: null,
+      companySize: null,
+      homepage: null,
+      phone: null,
+      revenue: null,
+      profit: null,
+      capital: null,
     };
   }
 }
@@ -376,6 +454,14 @@ export async function fetch38IpoData(): Promise<Map<string, ScrapedIpoData>> {
             totalShares: detail.totalShares,
             minShares: detail.minShares,
             underwriters: detail.underwriters,
+            sector: detail.sector,
+            ceo: detail.ceo,
+            companySize: detail.companySize,
+            homepage: detail.homepage,
+            phone: detail.phone,
+            revenue: detail.revenue,
+            profit: detail.profit,
+            capital: detail.capital,
           };
 
           resultMap.set(item.name, scraped);

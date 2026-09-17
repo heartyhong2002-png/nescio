@@ -65,11 +65,26 @@ export type UnderwriterAllocation = {
   subscriptionLimit?: string | null; // 최고 청약한도 (예: "15,000 ~ 18,000주")
 };
 
+export type CompanyInfo = {
+  summary?: string | null; // 기업 개요 및 주요 비즈니스 모델 설명
+  sector?: string | null; // 업종 (예: 방송장비 제조업, 응용 소프트웨어 개발 등)
+  ceo?: string | null; // 대표자
+  companySize?: string | null; // 기업구분 (예: 중소일반, 벤처기업 등)
+  homepage?: string | null; // 공식 웹사이트 URL
+  phone?: string | null; // 대표 전화번호
+  address?: string | null; // 본사 소재지
+  establishedDate?: string | null; // 설립일
+  revenue?: string | null; // 최근 매출액 (예: "46,644 (백만원)")
+  profit?: string | null; // 최근 순이익 또는 세전이익 (예: "5,157 (백만원)")
+  capital?: string | null; // 자본금 (예: "876 (백만원)")
+};
+
 export type IpoAiAnalysis = {
   verdict: "STRONG_APPLY" | "APPLY" | "NEUTRAL" | "PASS";
   verdictLabel: string; // "적극 청약 추천" | "청약 추천" | "중립 (균등만 소액)" | "청약 패스 권고"
   score: number; // 0 ~ 100점
   oneLiner: string; // 한 줄 진단 요약
+  businessSummary?: string; // 기업의 주요 제품/서비스 및 핵심 비즈니스 요약
   strengths: string[]; // 긍정 요인 (호재)
   cautions: string[]; // 주의 요인 (리스크)
   strategy: string; // 맞춤형 청약 전략 가이드
@@ -98,6 +113,7 @@ export type IpoInfo = {
   offerAmount: number | null; // 공모총액(원)
   lockupNote: string | null; // 의무보유확약 등 참고사항 요약
   receiptDate: string; // 증권신고서 접수일 (YYYY-MM-DD) — 정렬/캐시 키 보조용
+  companyInfo?: CompanyInfo | null; // 기업 기본정보 (업종, 대표자, 재무현황 등)
   aiAnalysis?: IpoAiAnalysis | null; // LLM 기반 청약 AI 진단 결과
 };
 

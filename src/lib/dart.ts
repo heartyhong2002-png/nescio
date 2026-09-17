@@ -464,6 +464,20 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
 
     const leadUnderwriter = summarizeUnderwriters(cleanedAllocations) || ipo.leadUnderwriter;
 
+    // 38커뮤니케이션에서 수집된 기업 정보 매핑
+    const companyInfo = scraped
+      ? {
+          sector: scraped.sector,
+          ceo: scraped.ceo,
+          companySize: scraped.companySize,
+          homepage: scraped.homepage,
+          phone: scraped.phone,
+          revenue: scraped.revenue,
+          profit: scraped.profit,
+          capital: scraped.capital,
+        }
+      : ipo.companyInfo ?? null;
+
     const mergedObj: IpoInfo = {
       ...ipo,
       offerPriceMin,
@@ -477,6 +491,7 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
       minSubscriptionDeposit,
       leadUnderwriter,
       underwriterAllocations: cleanedAllocations,
+      companyInfo,
     };
     mergedObj.aiAnalysis = generateRuleBasedAnalysis(mergedObj);
 
@@ -549,6 +564,16 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
       offerAmount: null,
       lockupNote: null,
       receiptDate: today,
+      companyInfo: {
+        sector: scraped.sector,
+        ceo: scraped.ceo,
+        companySize: scraped.companySize,
+        homepage: scraped.homepage,
+        phone: scraped.phone,
+        revenue: scraped.revenue,
+        profit: scraped.profit,
+        capital: scraped.capital,
+      },
     };
     scrapedIpo.aiAnalysis = generateRuleBasedAnalysis(scrapedIpo);
     mergedIpos.push(scrapedIpo);

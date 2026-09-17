@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { formatAmountCompact, formatPrice, formatSharesCompact } from "@/lib/format";
-import { IpoInfo } from "@/lib/types";
+import { CompanyInfo, IpoInfo } from "@/lib/types";
 
 function useIpos() {
   const [ipos, setIpos] = useState<IpoInfo[] | null>(null);
@@ -28,6 +28,189 @@ function useIpos() {
   return { ipos, setIpos, error };
 }
 
+function CompanyOverviewCard({ company, corpName }: { company?: CompanyInfo | null; corpName: string }) {
+  if (!company || (!company.sector && !company.ceo && !company.revenue && !company.homepage && !company.capital)) {
+    return null;
+  }
+
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--line)",
+        borderRadius: 12,
+        padding: "14px 16px",
+        marginBottom: 18,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+          flexWrap: "wrap",
+          gap: 8,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
+          <span>🏢</span> {corpName} 기업 정보 & 재무 현황
+          {company.companySize && (
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "2px 6px",
+                borderRadius: 4,
+                background: "var(--surface-sunken)",
+                color: "var(--muted)",
+                border: "1px solid var(--line)",
+              }}
+            >
+              {company.companySize}
+            </span>
+          )}
+        </div>
+
+        {company.homepage && (
+          <a
+            href={company.homepage}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              fontSize: 11.5,
+              color: "var(--accent-dark)",
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "3px 9px",
+              borderRadius: 6,
+              background: "var(--accent-soft)",
+              border: "1px solid rgba(124, 58, 237, 0.2)",
+              fontWeight: 600,
+            }}
+          >
+            <span>🌐</span> 공식 홈페이지 바로가기 ↗
+          </a>
+        )}
+      </div>
+
+      {/* 기본 정보 & 재무 정보 그리드 */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+          gap: 10,
+        }}
+      >
+        {company.sector && (
+          <div
+            style={{
+              background: "var(--surface-sunken)",
+              padding: "9px 12px",
+              borderRadius: 8,
+              border: "1px solid var(--line)",
+            }}
+          >
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>주요 업종</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)" }}>
+              {company.sector}
+            </div>
+          </div>
+        )}
+
+        {company.ceo && (
+          <div
+            style={{
+              background: "var(--surface-sunken)",
+              padding: "9px 12px",
+              borderRadius: 8,
+              border: "1px solid var(--line)",
+            }}
+          >
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>대표자명</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)" }}>
+              {company.ceo}
+            </div>
+          </div>
+        )}
+
+        {company.revenue && (
+          <div
+            style={{
+              background: "var(--surface-sunken)",
+              padding: "9px 12px",
+              borderRadius: 8,
+              border: "1px solid var(--line)",
+            }}
+          >
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>최근 매출액</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent-dark)" }}>
+              {company.revenue}
+            </div>
+          </div>
+        )}
+
+        {company.profit && (
+          <div
+            style={{
+              background: "var(--surface-sunken)",
+              padding: "9px 12px",
+              borderRadius: 8,
+              border: "1px solid var(--line)",
+            }}
+          >
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>순이익 (세전)</div>
+            <div
+              style={{
+                fontSize: 12.5,
+                fontWeight: 700,
+                color: company.profit.includes("-") ? "var(--up)" : "#059669",
+              }}
+            >
+              {company.profit}
+            </div>
+          </div>
+        )}
+
+        {company.capital && (
+          <div
+            style={{
+              background: "var(--surface-sunken)",
+              padding: "9px 12px",
+              borderRadius: 8,
+              border: "1px solid var(--line)",
+            }}
+          >
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>자본금</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)" }}>
+              {company.capital}
+            </div>
+          </div>
+        )}
+
+        {company.phone && (
+          <div
+            style={{
+              background: "var(--surface-sunken)",
+              padding: "9px 12px",
+              borderRadius: 8,
+              border: "1px solid var(--line)",
+            }}
+          >
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>대표 전화번호</div>
+            <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--ink-soft)" }}>
+              {company.phone}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function IpoAiReportCard({
   ipo,
   onRefresh,
@@ -44,49 +227,50 @@ function IpoAiReportCard({
     STRONG_APPLY: {
       bg: "rgba(16, 185, 129, 0.08)",
       border: "rgba(16, 185, 129, 0.3)",
-      badgeBg: "rgba(16, 185, 129, 0.18)",
+      badgeBg: "rgba(16, 185, 129, 0.15)",
       badgeColor: "#059669",
-      icon: "🟢",
+      icon: "🚀",
     },
     APPLY: {
       bg: "rgba(49, 130, 246, 0.08)",
-      border: "rgba(49, 130, 246, 0.3)",
-      badgeBg: "rgba(49, 130, 246, 0.18)",
+      border: "rgba(49, 130, 246, 0.25)",
+      badgeBg: "rgba(49, 130, 246, 0.12)",
       badgeColor: "var(--down)",
-      icon: "🔵",
+      icon: "✨",
     },
     NEUTRAL: {
       bg: "rgba(245, 158, 11, 0.08)",
-      border: "rgba(245, 158, 11, 0.3)",
-      badgeBg: "rgba(245, 158, 11, 0.18)",
+      border: "rgba(245, 158, 11, 0.25)",
+      badgeBg: "rgba(245, 158, 11, 0.15)",
       badgeColor: "#d97706",
-      icon: "🟡",
+      icon: "⚖️",
     },
     PASS: {
       bg: "rgba(239, 68, 68, 0.08)",
-      border: "rgba(239, 68, 68, 0.3)",
-      badgeBg: "rgba(239, 68, 68, 0.18)",
+      border: "rgba(239, 68, 68, 0.25)",
+      badgeBg: "rgba(239, 68, 68, 0.12)",
       badgeColor: "var(--up)",
-      icon: "🔴",
+      icon: "✋",
     },
   }[analysis.verdict] ?? {
     bg: "var(--surface-sunken)",
     border: "var(--line)",
-    badgeBg: "var(--surface-sunken)",
+    badgeBg: "var(--surface)",
     badgeColor: "var(--ink)",
-    icon: "⚪",
+    icon: "🤖",
   };
 
   return (
     <div
       style={{
         background: toneConfig.bg,
-        border: `1px solid ${toneConfig.border}`,
+        border: `1.5px solid ${toneConfig.border}`,
         borderRadius: 12,
-        padding: "16px 18px",
-        marginBottom: 18,
+        padding: "16px 16px",
+        marginBottom: 20,
       }}
     >
+      {/* AI 리포트 헤더 */}
       <div
         style={{
           display: "flex",
@@ -100,12 +284,12 @@ function IpoAiReportCard({
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span
             style={{
-              fontSize: 13,
-              fontWeight: 800,
-              color: "var(--ink)",
+              fontSize: 12,
+              fontWeight: 700,
+              color: "var(--accent-dark)",
               display: "flex",
               alignItems: "center",
-              gap: 5,
+              gap: 4,
             }}
           >
             <span>🤖</span> AI 청약 판단 리포트
@@ -178,6 +362,37 @@ function IpoAiReportCard({
       >
         💡 {analysis.oneLiner}
       </div>
+
+      {/* 기업 주요 사업 & 비즈니스 모델 요약 */}
+      {analysis.businessSummary && (
+        <div
+          style={{
+            background: "rgba(255, 255, 255, 0.75)",
+            border: "1px solid var(--line)",
+            borderRadius: 8,
+            padding: "10px 14px",
+            fontSize: 12,
+            color: "var(--ink-soft)",
+            lineHeight: 1.55,
+            marginBottom: 12,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11.5,
+              fontWeight: 700,
+              color: "var(--accent-dark)",
+              marginBottom: 4,
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            <span>🏢</span> 기업 주요 사업 & 비즈니스 요약
+          </div>
+          {analysis.businessSummary}
+        </div>
+      )}
 
       {/* 호재 및 주의점 2열/그리드 */}
       <div
@@ -451,6 +666,22 @@ export default function IpoPage() {
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                             <span>{ipo.corpName}</span>
+                            {/* 업종 뱃지 */}
+                            {ipo.companyInfo?.sector && (
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  padding: "2px 7px",
+                                  borderRadius: 6,
+                                  background: "var(--surface-sunken)",
+                                  color: "var(--muted)",
+                                  border: "1px solid var(--line)",
+                                }}
+                              >
+                                {ipo.companyInfo.sector}
+                              </span>
+                            )}
                             {/* AI 청약 판단 배지 */}
                             {ipo.aiAnalysis && (
                               <span
@@ -613,6 +844,12 @@ export default function IpoPage() {
                           isRefreshing={refreshingCorp === ipo.corpName}
                         />
                       )}
+
+                      {/* 0.5 🏢 기업 개요 & 재무 현황 카드 */}
+                      <CompanyOverviewCard
+                        company={ipo.companyInfo}
+                        corpName={ipo.corpName}
+                      />
 
                       {/* 1. 기관 수요예측 결과 하이라이트 카드 (핵심 추가!) */}
                       <div style={{ marginBottom: 18 }}>
