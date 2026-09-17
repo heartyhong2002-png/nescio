@@ -13,6 +13,7 @@
    2단계(xAI Grok)가 그 분석을 캐주얼한 캐릭터 말투로 다시 씀(말투 강도는 4단계로 조절 가능,
    `src/app/api/analyze/route.ts`의 `TONE_RULES` 참고). 투자 매수·매도 권유는 하지 않고
    항상 면책 문구가 붙습니다.
+5. 공모주(IPO) 청약 & AI 진단: DART 전자공시 및 38커뮤니케이션 데이터를 교차 검증하여 기관 수요예측 경쟁률, 의무보유확약 비율, 복수 주관사별 일반청약자 배정주식수 및 최고 청약한도, 최소 청약 단위(증거금)를 제공하며, LLM 기반 청약 AI 진단 리포트(청약 추천/신중/패스 판정, 점수, 핵심 호재/주의점, 맞춤 청약 전략)를 제공합니다.
 
 ## 폴더 구조
 
@@ -62,6 +63,8 @@ npm run dev
 | `KIS_APP_KEY` / `KIS_APP_SECRET` | 분봉·기간별 차트, PER/PBR/배당/시가총액 (한국투자증권 Open API) | 필수 |
 | `EXIM_AUTH_KEY` | 환율 화면 · 브리핑 참고용 환율 (한국수출입은행 Open API, [신청](https://www.koreaexim.go.kr) 무료) | 필수 (환율 기능용) |
 | `DART_API_KEY` | 공모주 화면 — 청약일정·공모가·주관사 (금융감독원 OpenDART, [신청](https://opendart.fss.or.kr) 무료, 이메일 인증만 필요) | 필수 (공모주 기능용) |
+| `GROQ_API_KEY` | 공모주 청약 AI 분석 및 2단계 캐릭터 톤 고속 생성 (Groq LPU) | 선택 (빠른 응답) |
+| `GEMINI_API_KEY` | 공모주 청약 AI 분석 및 텍스트 폴백 (Google Gemini) | 선택 |
 | `NVIDIA_MODEL` / `XAI_MODEL` | 각 단계에서 쓸 모델명 오버라이드 | 선택 (기본값 있음) |
 | `KIS_BASE_URL` | KIS API 베이스 URL 오버라이드 (기본: 실전 `openapi.koreainvestment.com:9443`) | 선택 |
 | `SUPABASE_SERVICE_ROLE_KEY` | 계정 탈퇴(관리자 권한으로 auth 사용자 삭제) 전용 — Settings → API의 "service_role secret" 키. **RLS를 완전히 우회하는 비밀 키라 절대 `.env.local`(클라이언트 번들)에 넣지 말고 반드시 여기(`notebooks/.env`, 서버 전용)에만 둘 것** | 필수 (계정 탈퇴 기능용) |
