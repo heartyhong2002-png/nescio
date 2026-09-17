@@ -117,13 +117,16 @@ async function generate(
   close: number | null,
   changeRate: number | null,
 ): Promise<ValuationInterpretation> {
-  const apiKey = serverEnv("XAI_API_KEY");
-  if (!apiKey) throw new Error("XAI_API_KEY를 .env에 설정하세요.");
-  const model = serverEnv("XAI_MODEL") || "grok-4-1-fast-non-reasoning";
+  const ollamaBase = serverEnv("OLLAMA_BASE_URL") || "http://localhost:11434";
+  const model = serverEnv("OLLAMA_MODEL") || "qwen2.5:7b-instruct";
+  const ollamaKey = serverEnv("OLLAMA_API_KEY"); // 로컬 Ollama는 불필요, Groq 등 외부 API 사용 시 설정
 
-  const response = await fetch("https://api.x.ai/v1/chat/completions", {
+  const response = await fetch(`${ollamaBase}/v1/chat/completions`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(ollamaKey ? { Authorization: `Bearer ${ollamaKey}` } : {}),
+    },
     body: JSON.stringify({
       model,
       temperature: 0.4,
@@ -135,14 +138,14 @@ async function generate(
     }),
     cache: "no-store",
   });
-  if (!response.ok) throw new Error(`xAI API 오류 (${response.status}): ${await response.text()}`);
+  if (!response.ok) throw new Error(`Ollama API 오류 (${response.status}): ${await response.text()}`);
   const content = (await response.json()).choices?.[0]?.message?.content as string;
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
   } catch {
-    throw new Error(`xAI 응답이 JSON이 아닙니다: ${(content ?? "").slice(0, 300)}`);
+    throw new Error(`Ollama 응답이 JSON이 아닙니다: ${(content ?? "").slice(0, 300)}`);
   }
   return coerce(parsed);
 }

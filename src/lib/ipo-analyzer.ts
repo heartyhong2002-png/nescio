@@ -130,11 +130,27 @@ export function generateRuleBasedAnalysis(ipo: IpoInfo): IpoAiAnalysis {
     strategy = `무리한 청약보다는 상장 후 시장 안착 과정을 지켜보거나 다음 우량 공모주를 기다리는 것을 추천합니다.`;
   }
 
+  // 비즈니스 모델 및 기업 개요 요약 도출
+  let businessSummary = "";
+  if (ipo.companyInfo?.sector) {
+    const parts: string[] = [`${ipo.corpName}은(는) '${ipo.companyInfo.sector}' 전문 기업입니다.`];
+    if (ipo.companyInfo.revenue) {
+      parts.push(`최근 연간 매출액은 ${ipo.companyInfo.revenue}이며, ${ipo.companyInfo.profit ? `순이익(또는 세전이익)은 ${ipo.companyInfo.profit} 수준입니다.` : ""}`);
+    }
+    if (ipo.companyInfo.companySize) {
+      parts.push(`기업 분류는 ${ipo.companyInfo.companySize}입니다.`);
+    }
+    businessSummary = parts.join(" ");
+  } else {
+    businessSummary = `${ipo.corpName}은(는) 이번 기업공개(IPO)를 통해 신규 조달한 공모 자금으로 R&D 경쟁력 강화 및 사업 포트폴리오 확장에 나설 예정입니다.`;
+  }
+
   return {
     verdict,
     verdictLabel,
     score,
     oneLiner,
+    businessSummary,
     strengths: strengths.slice(0, 3),
     cautions: cautions.slice(0, 2),
     strategy,
@@ -174,12 +190,13 @@ async function callOpenAiFormat(opts: {
 }
 
 const SYSTEM_PROMPT = `너는 대한민국 공모주(IPO) 투자 전문 수석 애널리스트다.
-제공된 공모주의 객관적 데이터(기관 수요예측 경쟁률, 의무보유확약 비율, 확정 공모가 및 희망 밴드, 주관사별 배정물량, 환불일 등)를 정밀하게 종합 분석하여 투자자가 '청약을 해야 할지 말아야 할지' 명쾌하고 날카로운 분석을 내린다.
+제공된 공모주의 기업 정보(업종, 재무, 대표자) 및 청약 데이터(기관 수요예측 경쟁률, 의무보유확약 비율, 확정 공모가 및 희망 밴드, 주관사별 배정물량, 환불일 등)를 정밀하게 종합 분석하여 투자자가 '어떤 회사인지'와 '청약을 해야 할지 말아야 할지' 명쾌하고 날카로운 분석을 내린다.
 
 규칙:
 1. 근거 없는 억측은 금지하며, 주어진 기관 경쟁률과 확약 비율, 밸류에이션 위치를 최우선 팩트로 삼는다.
-2. 친절하고 신뢰감 있는 전문가 톤으로 작성한다.
-3. 반드시 아래 JSON 스키마로만 출력한다.
+2. businessSummary에는 일반 투자자가 한눈에 이해할 수 있도록 해당 기업의 핵심 사업 분야, 주요 제품/솔루션, 비즈니스 경쟁력을 친절하고 명확한 2~3문장으로 설명한다.
+3. 친절하고 신뢰감 있는 전문가 톤으로 작성한다.
+4. 반드시 아래 JSON 스키마로만 출력한다.
 
 출력 JSON 스키마:
 {
@@ -187,6 +204,7 @@ const SYSTEM_PROMPT = `너는 대한민국 공모주(IPO) 투자 전문 수석 �
   "verdictLabel": "적극 청약 추천" | "청약 추천 (균등 노림)" | "신중한 접근" | "청약 패스 권고",
   "score": number, // 0 ~ 100점 사이 정수
   "oneLiner": string, // 1~2문장의 임팩트 있는 결론 요약
+  "businessSummary": string, // 기업이 무슨 사업을 하고 무엇을 파는지 2~3문장 설명
   "strengths": string[], // 핵심 호재/강점 2~3개
   "cautions": string[], // 주의/리스크 요인 1~2개
   "strategy": string // 구체적 청약 가이드 (어느 주관사가 유리한지, 균등 vs 비례 전략, 환불일 고려 등)
@@ -200,9 +218,28 @@ function buildUserPrompt(ipo: IpoInfo): string {
     )
     .join("\n");
 
-  return `다음 공모주 청약 데이터를 분석하여 청약 판단 리포트를 작성해줘:
+  const company = ipo.companyInfo;
+  const companyProfileStr = company
+    ? [
+        `- 업종: ${company.sector || "정보 없음"}`,
+        `- 대표자: ${company.ceo || "정보 없음"}`,
+        `- 기업구분: ${company.companySize || "정보 없음"}`,
+        `- 최근 매출액: ${company.revenue || "정보 없음"}`,
+        `- 최근 순이익/세전이익: ${company.profit || "정보 없음"}`,
+        `- 자본금: ${company.capital || "정보 없음"}`,
+        company.homepage ? `- 공식 홈페이지: ${company.homepage}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "기업 상세정보 없음";
 
+  return `다음 공모주 청약 및 기업 데이터를 분석하여 기업 개요 요약과 청약 판단 리포트를 작성해줘:
+
+[기업 개요]
 - 종목명: ${ipo.corpName}
+${companyProfileStr}
+
+[공모 청약 정보]
 - 청약 일정: ${ipo.subscriptionStart || "미정"} ~ ${ipo.subscriptionEnd || "미정"}
 - 환불일: ${ipo.refundDate || "청약 종료 2영업일 후"}
 - 희망 공모가 밴드: ${ipo.hopePriceBand || "미정"}
@@ -213,7 +250,7 @@ function buildUserPrompt(ipo: IpoInfo): string {
 - 최소 청약 단위: ${ipo.minSubscriptionShares ?? 10}주 (필요 증거금: ${ipo.minSubscriptionDeposit ? `${ipo.minSubscriptionDeposit.toLocaleString()}원` : "계산중"})
 - 환매청구권(풋백옵션): ${ipo.lockupNote || "없음"}
 
-주관사 및 배정 현황:
+[주관사 및 배정 현황]
 ${underwritersStr || "주관사 정보 없음"}`;
 }
 
@@ -281,28 +318,7 @@ export async function analyzeIpoWithAi(ipo: IpoInfo): Promise<IpoAiAnalysis> {
     }
   }
 
-  // 3. xAI 시도
-  const xaiKey = serverEnv("XAI_API_KEY");
-  if (xaiKey) {
-    try {
-      const content = await callOpenAiFormat({
-        url: "https://api.x.ai/v1/chat/completions",
-        apiKey: xaiKey,
-        model: serverEnv("XAI_MODEL") || "grok-4-1-fast-non-reasoning",
-        system: SYSTEM_PROMPT,
-        prompt,
-      });
-      const parsed = JSON.parse(content) as IpoAiAnalysis;
-      if (parsed.verdict && parsed.score !== undefined) {
-        ANALYSIS_CACHE.set(cacheKey, { analysis: parsed, expiresAt: Date.now() + CACHE_TTL_MS });
-        return parsed;
-      }
-    } catch (err) {
-      console.warn("[ipo-analyzer] xAI failed, falling back to rule engine:", err instanceof Error ? err.message : err);
-    }
-  }
-
-  // 4. 안전한 룰베이스 분석 폴백 (절대 실패하지 않고 고품질 데이터 기반 분석 산출)
+  // 3. 안전한 룰베이스 분석 폴백 (절대 실패하지 않고 고품질 데이터 기반 분석 산출)
   const ruleResult = generateRuleBasedAnalysis(ipo);
   ANALYSIS_CACHE.set(cacheKey, { analysis: ruleResult, expiresAt: Date.now() + CACHE_TTL_MS });
   return ruleResult;

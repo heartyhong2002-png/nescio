@@ -248,12 +248,22 @@ _JEONHYUNG_SYSTEM_TEMPLATE = """너는 '쩐형'이라는 캐릭터야. 주식 �
 
 
 def rewrite_plain(stock_name: str, ticker: str, raw_analysis: str, tone: str = "nuclear") -> dict:
-    """1단계(analyze_raw) 결과를 '쩐형' 캐릭터 톤으로 재작성한다 (xAI Grok, JSON 강제 출력)."""
-    api_key = os.getenv("XAI_API_KEY")
-    if not api_key:
-        raise RuntimeError(".env에 XAI_API_KEY를 설정하세요.")
+    """1단계(analyze_raw) 결과를 '쩐형' 캐릭터 톤으로 재작성한다 (로컬 Ollama, JSON 강제 출력).
+
+    xAI Grok 대신 로컬 Ollama를 사용한다. Ollama가 OpenAI 호환 엔드포인트를 제공하므로
+    요청 포맷은 동일하고 URL·인증만 다르다.
+    OLLAMA_MODEL 환경변수로 모델을 오버라이드할 수 있다 (기본: qwen2.5:7b-instruct).
+    """
     if tone not in _JEONHYUNG_TONE_RULES:
         raise ValueError(f"알 수 없는 tone입니다: {tone} (mild/medium/spicy/nuclear 중 선택)")
+
+    ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    model = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct")
+    ollama_key = os.getenv("OLLAMA_API_KEY")  # 로컬 Ollama는 불필요, Groq 등 외부 API 사용 시 설정
+
+    headers = {"Content-Type": "application/json"}
+    if ollama_key:
+        headers["Authorization"] = f"Bearer {ollama_key}"
 
     system = _JEONHYUNG_SYSTEM_TEMPLATE.format(tone_rule=_JEONHYUNG_TONE_RULES[tone])
     prompt = f"""[1단계 분석]
@@ -262,13 +272,10 @@ def rewrite_plain(stock_name: str, ticker: str, raw_analysis: str, tone: str = "
 {raw_analysis}"""
 
     response = requests.post(
-        "https://api.x.ai/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
+        f"{ollama_base}/v1/chat/completions",
+        headers=headers,
         json={
-            "model": os.getenv("XAI_MODEL", "grok-4-1-fast-non-reasoning"),
+            "model": model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt},
@@ -276,16 +283,16 @@ def rewrite_plain(stock_name: str, ticker: str, raw_analysis: str, tone: str = "
             "temperature": 0.9,
             "response_format": {"type": "json_object"},
         },
-        timeout=60,
+        timeout=120,  # 로컬 모델은 첫 토큰까지 시간이 더 걸릴 수 있다
     )
     if not response.ok:
-        raise RuntimeError(f"xAI API 오류 ({response.status_code}): {response.text}")
+        raise RuntimeError(f"Ollama API 오류 ({response.status_code}): {response.text}")
 
     content = response.json()["choices"][0]["message"]["content"]
     try:
         plain = json.loads(content)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"xAI 응답이 JSON이 아닙니다: {content[:300]}") from exc
+        raise RuntimeError(f"Ollama 응답이 JSON이 아닙니다: {content[:300]}") from exc
 
     # 면책 문구는 캐릭터 톤과 무관하게 코드에서 고정으로 붙인다 (모델이 빼먹어도 항상 붙게).
     plain["disclaimer"] = "이 코멘트는 참고용 설명이며, 투자 판단과 책임은 본인에게 있습니다."
