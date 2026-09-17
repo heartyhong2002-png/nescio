@@ -146,6 +146,18 @@ export type IpoListingsData = {
   stats: IpoMarketStats;
 };
 
+export type IpoMonthlyAnalysis = {
+  month: string; // "2026-09" 또는 "ALL"
+  monthTitle: string; // "2026년 9월" 또는 "2026년 전체 종합"
+  headline: string; // 1줄 헤드라인
+  marketMood: "HYPER_BULL" | "SELECTIVE" | "COOLING" | "CRASH"; // 시장 분위기
+  marketMoodLabel: string; // "초과열 (따따블 랠리)" | "선별 청약 (옥석 가리기)" | "수급 조정" | "냉각기 (공모가 하회 속출)"
+  monthlySummary: string; // 월간 전반 분위기 요약
+  keyFactors: string[]; // 주가 등락을 가른 핵심 요인들
+  policyAndIssues: string[]; // 당시 증시 정책 및 제도/거시 이슈
+  investorTakeaway: string; // 실전 투자자를 위한 교훈 & 시사점
+};
+
 export type CauseImpact = "high" | "medium" | "low";
 
 export type Cause = {

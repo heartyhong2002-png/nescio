@@ -3,7 +3,66 @@
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { formatAmountCompact, formatPrice, formatSharesCompact } from "@/lib/format";
-import { CompanyInfo, IpoInfo, IpoListingsData } from "@/lib/types";
+import { CompanyInfo, IpoInfo, IpoListingsData, IpoMonthlyAnalysis } from "@/lib/types";
+
+function useMonthlyAnalysis(initialMonth = "ALL") {
+  const [month, setMonth] = useState(initialMonth);
+  const [analysis, setAnalysis] = useState<IpoMonthlyAnalysis | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+
+    fetch(`/api/ipos/monthly-analysis?month=${encodeURIComponent(month)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) {
+          if (data.analysis) {
+            setAnalysis(data.analysis);
+          } else if (data.error) {
+            setError(data.error);
+          }
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "월별 AI 분석 리포트를 불러오지 못했습니다.");
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [month]);
+
+  const refresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/ipos/monthly-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month }),
+      });
+      const data = await res.json();
+      if (data.analysis) {
+        setAnalysis(data.analysis);
+      }
+    } catch (err) {
+      console.error("[useMonthlyAnalysis] refresh error:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  return { month, setMonth, analysis, loading, error, refresh, refreshing };
+}
 
 function useIpos() {
   const [ipos, setIpos] = useState<IpoInfo[] | null>(null);
@@ -596,6 +655,277 @@ function parsePercentNumber(percentStr: string | null): number | null {
   return Number.isFinite(val) ? val : null;
 }
 
+const MONTH_SELECTOR_OPTIONS = [
+  { value: "ALL", label: "2026 전체 종합" },
+  { value: "2026-09", label: "9월" },
+  { value: "2026-08", label: "8월" },
+  { value: "2026-07", label: "7월" },
+  { value: "2026-06", label: "6월" },
+  { value: "2026-05", label: "5월" },
+  { value: "2026-04", label: "4월" },
+  { value: "2026-03", label: "3월" },
+];
+
+function MonthlyAiReportCard() {
+  const { month, setMonth, analysis, loading, error, refresh, refreshing } = useMonthlyAnalysis("ALL");
+
+  const moodStyle = {
+    HYPER_BULL: {
+      bg: "rgba(239, 68, 68, 0.08)",
+      border: "rgba(239, 68, 68, 0.25)",
+      badgeBg: "linear-gradient(135deg, #ef4444, #dc2626)",
+      badgeColor: "#fff",
+      icon: "🔥",
+    },
+    SELECTIVE: {
+      bg: "rgba(124, 58, 237, 0.08)",
+      border: "rgba(124, 58, 237, 0.25)",
+      badgeBg: "linear-gradient(135deg, #7c3aed, #6d28d9)",
+      badgeColor: "#fff",
+      icon: "⚖️",
+    },
+    COOLING: {
+      bg: "rgba(49, 130, 246, 0.08)",
+      border: "rgba(49, 130, 246, 0.25)",
+      badgeBg: "linear-gradient(135deg, #3182f6, #1d4ed8)",
+      badgeColor: "#fff",
+      icon: "❄️",
+    },
+    CRASH: {
+      bg: "rgba(100, 116, 139, 0.1)",
+      border: "rgba(100, 116, 139, 0.25)",
+      badgeBg: "linear-gradient(135deg, #64748b, #475569)",
+      badgeColor: "#fff",
+      icon: "⚠️",
+    },
+  }[analysis?.marketMood ?? "SELECTIVE"];
+
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--line)",
+        borderRadius: 14,
+        padding: "18px 20px",
+        boxShadow: "0 2px 10px rgba(0, 0, 0, 0.02)",
+      }}
+    >
+      {/* 1. 상단 타이틀 & 리프레시 버튼 */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: 14,
+          flexWrap: "wrap",
+          gap: 10,
+        }}
+      >
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 16 }}>🤖</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: "var(--ink)" }}>
+              AI 월별 시장 트렌드 & 정책/이슈 분석
+            </span>
+          </div>
+          <p className="muted" style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.4, margin: "4px 0 0" }}>
+            해당 월의 상장 종목 성적표, 금융당국 정책(가격제한폭 400%·기술특례 실사 등) 및 시장 수급을 AI가 종합 분석합니다.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={refresh}
+          disabled={refreshing || loading}
+          style={{
+            fontSize: 11.5,
+            padding: "5px 10px",
+            borderRadius: 6,
+            background: "var(--surface-sunken)",
+            border: "1px solid var(--line)",
+            color: "var(--ink)",
+            cursor: refreshing || loading ? "default" : "pointer",
+            fontWeight: 600,
+            opacity: refreshing || loading ? 0.6 : 1,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          <span>🔄</span>
+          <span>{refreshing ? "AI 재분석 중..." : "AI 재분석"}</span>
+        </button>
+      </div>
+
+      {/* 2. 월 선택 칩 바 */}
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          overflowX: "auto",
+          paddingBottom: 8,
+          marginBottom: 14,
+          scrollbarWidth: "none",
+        }}
+      >
+        {MONTH_SELECTOR_OPTIONS.map((opt) => {
+          const isActive = month === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setMonth(opt.value)}
+              style={{
+                fontSize: 11.5,
+                fontWeight: isActive ? 700 : 500,
+                padding: "4px 11px",
+                borderRadius: 20,
+                border: isActive ? "1px solid var(--accent)" : "1px solid var(--line)",
+                background: isActive ? "var(--accent)" : "var(--surface-sunken)",
+                color: isActive ? "#fff" : "var(--muted)",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                transition: "all 0.15s ease",
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 3. 콘텐츠 영역 */}
+      {loading ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "10px 0" }}>
+          <div className="skeleton" style={{ height: 40, borderRadius: 8 }} />
+          <div className="skeleton" style={{ height: 80, borderRadius: 8 }} />
+        </div>
+      ) : error ? (
+        <div className="error-box" style={{ fontSize: 12, padding: 12 }}>
+          {error}
+        </div>
+      ) : analysis ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* 헤드라인 및 분위기 카드 */}
+          <div
+            style={{
+              padding: "14px 16px",
+              borderRadius: 10,
+              background: moodStyle.bg,
+              border: `1px solid ${moodStyle.border}`,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: "2px 8px",
+                  borderRadius: 4,
+                  background: moodStyle.badgeBg,
+                  color: moodStyle.badgeColor,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <span>{moodStyle.icon}</span>
+                <span>{analysis.marketMoodLabel}</span>
+              </span>
+              <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>
+                {analysis.monthTitle}
+              </span>
+            </div>
+
+            <div style={{ fontSize: 14, fontWeight: 800, color: "var(--ink)", lineHeight: 1.45, marginBottom: 8 }}>
+              "{analysis.headline}"
+            </div>
+
+            <p style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.6, margin: 0 }}>
+              {analysis.monthlySummary}
+            </p>
+          </div>
+
+          {/* 2열 분석 그리드: 주가 핵심 요인 vs 정책 & 제도 이슈 */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              gap: 12,
+            }}
+          >
+            {/* 좌측: 📈 주가 결정 핵심 요인 */}
+            <div
+              style={{
+                padding: "12px 14px",
+                borderRadius: 10,
+                background: "var(--surface-sunken)",
+                border: "1px solid var(--line)",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                <span>📈</span> 주가 등락 핵심 요인
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: "var(--ink-soft)", lineHeight: 1.6 }}>
+                {analysis.keyFactors.map((factor, idx) => (
+                  <li key={idx} style={{ marginBottom: 4 }}>
+                    {factor}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* 우측: 🏛️ 당시 증시 정책 & 제도/거시 이슈 */}
+            <div
+              style={{
+                padding: "12px 14px",
+                borderRadius: 10,
+                background: "var(--surface-sunken)",
+                border: "1px solid var(--line)",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                <span>🏛️</span> 당시 정책 & 제도 / 시장 이슈
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: "var(--ink-soft)", lineHeight: 1.6 }}>
+                {analysis.policyAndIssues.map((issue, idx) => (
+                  <li key={idx} style={{ marginBottom: 4 }}>
+                    {issue}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {/* 하단: 💡 실전 투자자 교훈 & 시사점 */}
+          {analysis.investorTakeaway && (
+            <div
+              style={{
+                padding: "11px 14px",
+                borderRadius: 8,
+                background: "rgba(124, 58, 237, 0.05)",
+                border: "1px dashed rgba(124, 58, 237, 0.3)",
+                fontSize: 12,
+                lineHeight: 1.55,
+                color: "var(--ink)",
+                display: "flex",
+                gap: 8,
+                alignItems: "flex-start",
+              }}
+            >
+              <span style={{ fontSize: 15, flexShrink: 0 }}>💡</span>
+              <div>
+                <strong style={{ color: "var(--accent-dark)", marginRight: 4 }}>투자자 실전 교훈:</strong>
+                {analysis.investorTakeaway}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ListingsView() {
   const { data, loading, error } = useIpoListings();
   const [filter, setFilter] = useState<"ALL" | "DOUBLE" | "LOSS">("ALL");
@@ -626,6 +956,9 @@ function ListingsView() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* 0. 🤖 AI 월별 시장 트렌드 & 정책/이슈 분석 리포트 */}
+      <MonthlyAiReportCard />
+
       {/* 1. 2026 시장 종합 성적표 배너 */}
       {stats && (
         <div>
