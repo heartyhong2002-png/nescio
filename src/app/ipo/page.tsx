@@ -25,7 +25,265 @@ function useIpos() {
     };
   }, []);
 
-  return { ipos, error };
+  return { ipos, setIpos, error };
+}
+
+function IpoAiReportCard({
+  ipo,
+  onRefresh,
+  isRefreshing,
+}: {
+  ipo: IpoInfo;
+  onRefresh?: (ipo: IpoInfo) => void;
+  isRefreshing?: boolean;
+}) {
+  const analysis = ipo.aiAnalysis;
+  if (!analysis) return null;
+
+  const toneConfig = {
+    STRONG_APPLY: {
+      bg: "rgba(16, 185, 129, 0.08)",
+      border: "rgba(16, 185, 129, 0.3)",
+      badgeBg: "rgba(16, 185, 129, 0.18)",
+      badgeColor: "#059669",
+      icon: "🟢",
+    },
+    APPLY: {
+      bg: "rgba(49, 130, 246, 0.08)",
+      border: "rgba(49, 130, 246, 0.3)",
+      badgeBg: "rgba(49, 130, 246, 0.18)",
+      badgeColor: "var(--down)",
+      icon: "🔵",
+    },
+    NEUTRAL: {
+      bg: "rgba(245, 158, 11, 0.08)",
+      border: "rgba(245, 158, 11, 0.3)",
+      badgeBg: "rgba(245, 158, 11, 0.18)",
+      badgeColor: "#d97706",
+      icon: "🟡",
+    },
+    PASS: {
+      bg: "rgba(239, 68, 68, 0.08)",
+      border: "rgba(239, 68, 68, 0.3)",
+      badgeBg: "rgba(239, 68, 68, 0.18)",
+      badgeColor: "var(--up)",
+      icon: "🔴",
+    },
+  }[analysis.verdict] ?? {
+    bg: "var(--surface-sunken)",
+    border: "var(--line)",
+    badgeBg: "var(--surface-sunken)",
+    badgeColor: "var(--ink)",
+    icon: "⚪",
+  };
+
+  return (
+    <div
+      style={{
+        background: toneConfig.bg,
+        border: `1px solid ${toneConfig.border}`,
+        borderRadius: 12,
+        padding: "16px 18px",
+        marginBottom: 18,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+          flexWrap: "wrap",
+          gap: 8,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 800,
+              color: "var(--ink)",
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            <span>🤖</span> AI 청약 판단 리포트
+          </span>
+          <span
+            style={{
+              fontSize: 11.5,
+              fontWeight: 700,
+              padding: "3px 9px",
+              borderRadius: 6,
+              background: toneConfig.badgeBg,
+              color: toneConfig.badgeColor,
+            }}
+          >
+            {toneConfig.icon} {analysis.verdictLabel}
+          </span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)" }}>
+            점수: {analysis.score}점 / 100
+          </span>
+        </div>
+
+        {onRefresh && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRefresh(ipo);
+            }}
+            disabled={isRefreshing}
+            style={{
+              fontSize: 11,
+              padding: "4px 9px",
+              borderRadius: 6,
+              border: "1px solid var(--line)",
+              background: "var(--surface)",
+              color: "var(--muted)",
+              cursor: isRefreshing ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <span
+              style={{
+                display: "inline-block",
+                transform: isRefreshing ? "rotate(180deg)" : "none",
+                transition: "transform 0.4s",
+              }}
+            >
+              🔄
+            </span>
+            {isRefreshing ? "AI 재분석 중..." : "AI 심층 재분석"}
+          </button>
+        )}
+      </div>
+
+      {/* 한 줄 핵심 진단 */}
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--line)",
+          borderRadius: 8,
+          padding: "10px 14px",
+          fontSize: 13,
+          fontWeight: 600,
+          color: "var(--ink)",
+          lineHeight: 1.5,
+          marginBottom: 12,
+        }}
+      >
+        💡 {analysis.oneLiner}
+      </div>
+
+      {/* 호재 및 주의점 2열/그리드 */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: 10,
+          marginBottom: 12,
+        }}
+      >
+        {analysis.strengths && analysis.strengths.length > 0 && (
+          <div
+            style={{
+              background: "rgba(255,255,255,0.7)",
+              borderRadius: 8,
+              padding: "10px 12px",
+              border: "1px solid var(--line)",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11.5,
+                fontWeight: 700,
+                color: "#059669",
+                marginBottom: 6,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <span>✅</span> 청약 추천 및 긍정 요인
+            </div>
+            <ul
+              style={{
+                margin: 0,
+                paddingLeft: 16,
+                fontSize: 11.5,
+                lineHeight: 1.5,
+                color: "var(--ink-soft)",
+              }}
+            >
+              {analysis.strengths.map((s, idx) => (
+                <li key={idx}>{s}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {analysis.cautions && analysis.cautions.length > 0 && (
+          <div
+            style={{
+              background: "rgba(255,255,255,0.7)",
+              borderRadius: 8,
+              padding: "10px 12px",
+              border: "1px solid var(--line)",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11.5,
+                fontWeight: 700,
+                color: "#d97706",
+                marginBottom: 6,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <span>⚠️</span> 리스크 및 주의 요인
+            </div>
+            <ul
+              style={{
+                margin: 0,
+                paddingLeft: 16,
+                fontSize: 11.5,
+                lineHeight: 1.5,
+                color: "var(--ink-soft)",
+              }}
+            >
+              {analysis.cautions.map((c, idx) => (
+                <li key={idx}>{c}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* 맞춤 청약 전략 */}
+      {analysis.strategy && (
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--ink-soft)",
+            lineHeight: 1.5,
+            background: "rgba(124, 58, 237, 0.05)",
+            border: "1px solid rgba(124, 58, 237, 0.15)",
+            borderRadius: 8,
+            padding: "8px 12px",
+          }}
+        >
+          <strong style={{ color: "var(--accent-dark)" }}>🎯 추천 청약 전략: </strong>
+          {analysis.strategy}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function formatWithDayOfWeek(iso: string | null): string {
@@ -84,8 +342,36 @@ function parsePercentNumber(percentStr: string | null): number | null {
 }
 
 export default function IpoPage() {
-  const { ipos, error } = useIpos();
+  const { ipos, setIpos, error } = useIpos();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [refreshingCorp, setRefreshingCorp] = useState<string | null>(null);
+
+  const handleRefreshAnalysis = async (targetIpo: IpoInfo) => {
+    if (refreshingCorp) return;
+    setRefreshingCorp(targetIpo.corpName);
+    try {
+      const res = await fetch("/api/ipos/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ipo: targetIpo }),
+      });
+      if (!res.ok) throw new Error("분석 요청 실패");
+      const data = await res.json();
+      if (data.analysis) {
+        setIpos((prev) =>
+          prev
+            ? prev.map((item) =>
+                item.corpCode === targetIpo.corpCode ? { ...item, aiAnalysis: data.analysis } : item,
+              )
+            : null,
+        );
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRefreshingCorp(null);
+    }
+  };
 
   const loading = ipos === null && !error;
 
@@ -165,6 +451,39 @@ export default function IpoPage() {
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                             <span>{ipo.corpName}</span>
+                            {/* AI 청약 판단 배지 */}
+                            {ipo.aiAnalysis && (
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  padding: "2px 7px",
+                                  borderRadius: 6,
+                                  background:
+                                    ipo.aiAnalysis.verdict === "STRONG_APPLY"
+                                      ? "rgba(16, 185, 129, 0.15)"
+                                      : ipo.aiAnalysis.verdict === "APPLY"
+                                      ? "rgba(49, 130, 246, 0.12)"
+                                      : ipo.aiAnalysis.verdict === "NEUTRAL"
+                                      ? "rgba(245, 158, 11, 0.15)"
+                                      : "rgba(239, 68, 68, 0.12)",
+                                  color:
+                                    ipo.aiAnalysis.verdict === "STRONG_APPLY"
+                                      ? "#059669"
+                                      : ipo.aiAnalysis.verdict === "APPLY"
+                                      ? "var(--down)"
+                                      : ipo.aiAnalysis.verdict === "NEUTRAL"
+                                      ? "#d97706"
+                                      : "var(--up)",
+                                  border:
+                                    ipo.aiAnalysis.verdict === "STRONG_APPLY"
+                                      ? "1px solid rgba(16, 185, 129, 0.3)"
+                                      : "1px solid var(--line)",
+                                }}
+                              >
+                                🤖 {ipo.aiAnalysis.verdictLabel} ({ipo.aiAnalysis.score}점)
+                              </span>
+                            )}
                             {/* 수요예측 기관경쟁률 배지 */}
                             {ipo.institutionCompetitionRate && (
                               <span
@@ -216,6 +535,16 @@ export default function IpoPage() {
                             청약 {formatScheduleRange(ipo.subscriptionStart, ipo.subscriptionEnd)} · 공모가{" "}
                             <span style={{ fontWeight: 600, color: "var(--ink)" }}>
                               {formatPriceRange(ipo.offerPriceMin, ipo.offerPriceMax, ipo.confirmedPrice)}
+                            </span>
+                            {" · "}
+                            <span>
+                              최소 청약:{" "}
+                              <strong style={{ color: "var(--ink)" }}>{ipo.minSubscriptionShares ?? 10}주</strong>
+                              {ipo.minSubscriptionDeposit && (
+                                <span style={{ color: "var(--accent-dark)", fontWeight: 600 }}>
+                                  {" "}(증거금 {formatAmountCompact(ipo.minSubscriptionDeposit)}원)
+                                </span>
+                              )}
                             </span>
                           </div>
                         </div>
@@ -276,6 +605,15 @@ export default function IpoPage() {
                   {/* 펼쳐진 상세 영역 */}
                   {isOpen && (
                     <div style={{ padding: "18px 20px 22px", borderTop: "1px solid var(--line)" }}>
+                      {/* 0. 🤖 AI 청약 판단 리포트 (LLM 기반) */}
+                      {ipo.aiAnalysis && (
+                        <IpoAiReportCard
+                          ipo={ipo}
+                          onRefresh={handleRefreshAnalysis}
+                          isRefreshing={refreshingCorp === ipo.corpName}
+                        />
+                      )}
+
                       {/* 1. 기관 수요예측 결과 하이라이트 카드 (핵심 추가!) */}
                       <div style={{ marginBottom: 18 }}>
                         <div className="eyebrow" style={{ marginBottom: 10, fontSize: 11 }}>
@@ -394,13 +732,13 @@ export default function IpoPage() {
                           value={formatPriceRange(ipo.offerPriceMin, ipo.offerPriceMax, ipo.confirmedPrice)}
                         />
                         <MetricCard
-                          label="균등 최소 증거금 (10주)"
+                          label={`균등 최소 청약 (${ipo.minSubscriptionShares ?? 10}주)`}
                           value={
                             ipo.minSubscriptionDeposit !== null
                               ? `${formatPrice(ipo.minSubscriptionDeposit)}원`
                               : "미정"
                           }
-                          sub="증거금률 50% 기준"
+                          sub={`최소단위 ${ipo.minSubscriptionShares ?? 10}주 · 증거금률 50%`}
                           accent
                         />
                         <MetricCard
@@ -556,7 +894,7 @@ export default function IpoPage() {
                             <strong>증권사 배정 전략</strong>: 배정 수량이 더 많은 증권사에 청약할수록 균등 배정 확률이 높아지며, 일반/우대 고객 등급에 따라 최고 청약 한도가 달라져요.
                           </li>
                           <li>
-                            <strong>균등 배정</strong>: 최소 청약 단위(10주)에 해당하는 증거금만 입금해도 1계좌당 동일한 배정 기회를 얻을 수 있어요.
+                            <strong>균등 배정</strong>: 최소 청약 단위({ipo.minSubscriptionShares ?? 10}주)에 해당하는 증거금만 입금해도 1계좌당 동일한 배정 기회를 얻을 수 있어요.
                           </li>
                         </ul>
                       </div>

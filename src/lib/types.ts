@@ -65,6 +65,16 @@ export type UnderwriterAllocation = {
   subscriptionLimit?: string | null; // 최고 청약한도 (예: "15,000 ~ 18,000주")
 };
 
+export type IpoAiAnalysis = {
+  verdict: "STRONG_APPLY" | "APPLY" | "NEUTRAL" | "PASS";
+  verdictLabel: string; // "적극 청약 추천" | "청약 추천" | "중립 (균등만 소액)" | "청약 패스 권고"
+  score: number; // 0 ~ 100점
+  oneLiner: string; // 한 줄 진단 요약
+  strengths: string[]; // 긍정 요인 (호재)
+  cautions: string[]; // 주의 요인 (리스크)
+  strategy: string; // 맞춤형 청약 전략 가이드
+};
+
 export type IpoInfo = {
   corpCode: string; // DART 고유번호 (8자리) 또는 임시 식별자
   corpName: string;
@@ -79,7 +89,8 @@ export type IpoInfo = {
   institutionCompetitionRate: string | null; // 기관 수요예측 경쟁률 (예: "1187.74:1")
   lockupRatio: string | null; // 의무보유확약 비율 (예: "21.75%")
   subscriptionCompetitionRate: string | null; // 일반 청약 경쟁률 (예: "1375.34:1")
-  minSubscriptionDeposit: number | null; // 최소 10주 청약 시 필요 증거금 (원, 50% 기준)
+  minSubscriptionShares?: number | null; // 최소 청약 단위 (보통 10주 또는 20주)
+  minSubscriptionDeposit: number | null; // 최소 청약 시 필요 증거금 (원, 50% 기준)
   estimatedListingDate: string | null; // YYYY-MM-DD, 추정값
   leadUnderwriter: string | null; // 대표 주관사 (요약 표시용 — "유진증권(대표) · 미래에셋증권(공동)")
   underwriterAllocations: UnderwriterAllocation[]; // 증권사별 배정주식수 상세
@@ -87,6 +98,7 @@ export type IpoInfo = {
   offerAmount: number | null; // 공모총액(원)
   lockupNote: string | null; // 의무보유확약 등 참고사항 요약
   receiptDate: string; // 증권신고서 접수일 (YYYY-MM-DD) — 정렬/캐시 키 보조용
+  aiAnalysis?: IpoAiAnalysis | null; // LLM 기반 청약 AI 진단 결과
 };
 
 export type CauseImpact = "high" | "medium" | "low";

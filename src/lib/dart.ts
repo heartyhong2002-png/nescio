@@ -1,6 +1,7 @@
 import { serverEnv } from "./server-env";
 import { IpoInfo, UnderwriterAllocation } from "./types";
-import { fetch38IpoData, normalizeCorpName, ScrapedUnderwriter } from "./ipo-scraper";
+import { fetch38IpoData, normalizeBrokerName, normalizeCorpName, ScrapedUnderwriter } from "./ipo-scraper";
+import { generateRuleBasedAnalysis } from "./ipo-analyzer";
 
 /**
  * 금융감독원 OpenDART(opendart.fss.or.kr) — 공모주(IPO) 청약 정보 조회.
@@ -373,24 +374,30 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     const subscriptionCompetitionRate = scraped.subscriptionCompetitionRate ?? ipo.subscriptionCompetitionRate;
     const hopePriceBand = scraped.hopePriceBand ?? ipo.hopePriceBand;
     const confirmedPrice = scraped.confirmedPrice ?? ipo.confirmedPrice;
+    const minSubscriptionShares = scraped.minShares ?? ipo.minSubscriptionShares ?? 10;
 
-    // 확정 공모가가 있으면 공모가 및 10주 증거금 보정
+    // 확정 공모가가 있으면 공모가 및 최소증거금 보정
     let offerPriceMin = ipo.offerPriceMin;
     let offerPriceMax = ipo.offerPriceMax;
     let minSubscriptionDeposit = ipo.minSubscriptionDeposit;
-    if (confirmedPrice !== null) {
-      offerPriceMin = confirmedPrice;
-      offerPriceMax = confirmedPrice;
-      minSubscriptionDeposit = Math.round(confirmedPrice * 10 * 0.5);
+    const basePrice = confirmedPrice ?? offerPriceMax ?? offerPriceMin;
+    if (basePrice !== null && basePrice > 0) {
+      if (confirmedPrice !== null) {
+        offerPriceMin = confirmedPrice;
+        offerPriceMax = confirmedPrice;
+      }
+      minSubscriptionDeposit = Math.round(basePrice * minSubscriptionShares * 0.5);
     }
 
     // 증권사별 배정 수량 및 청약 한도 합성
-    const underwriterAllocations = [...ipo.underwriterAllocations];
+    const underwriterAllocations: UnderwriterAllocation[] = [...ipo.underwriterAllocations];
+
+    // 1) 기존 DART 증권사 정보 매칭 및 보강
     for (const alloc of underwriterAllocations) {
-      const allocNorm = normalizeCorpName(alloc.name);
+      const allocNorm = normalizeBrokerName(alloc.name);
       const matchedU = scraped.underwriters.find((u: ScrapedUnderwriter) => {
-        const uNorm = normalizeCorpName(u.name);
-        return uNorm.includes(allocNorm) || allocNorm.includes(uNorm);
+        const uNorm = normalizeBrokerName(u.name);
+        return uNorm === allocNorm || uNorm.includes(allocNorm) || allocNorm.includes(uNorm);
       });
       if (matchedU) {
         if (matchedU.shares !== null && matchedU.shares > 0) {
@@ -404,15 +411,24 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
         if (matchedU.role && !alloc.role) {
           alloc.role = matchedU.role;
         }
+        // 통일된 표준 증권사 이름 적용 (예: 아이비케이 -> IBK투자증권)
+        if (matchedU.name && !matchedU.name.includes(",")) {
+          alloc.name = matchedU.name;
+        }
       }
     }
 
-    // DART에 증권사 정보가 비어있고 38에 있다면 38 데이터로 채움
-    if (underwriterAllocations.length === 0 && scraped.underwriters.length > 0) {
-      for (const u of scraped.underwriters) {
+    // 2) 38 데이터에 있는 모든 증권사 중 DART에 누락된 증권사들을 빠짐없이 추가
+    for (const u of scraped.underwriters) {
+      const uNorm = normalizeBrokerName(u.name);
+      const exists = underwriterAllocations.some((a) => {
+        const aNorm = normalizeBrokerName(a.name);
+        return aNorm === uNorm || aNorm.includes(uNorm) || uNorm.includes(aNorm);
+      });
+      if (!exists && u.name) {
         underwriterAllocations.push({
           name: u.name,
-          role: u.role,
+          role: u.role || "인수/공동",
           shares: u.shares,
           percentage: null,
           retailShares: u.shares,
@@ -423,9 +439,32 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
       }
     }
 
-    const leadUnderwriter = summarizeUnderwriters(underwriterAllocations) || ipo.leadUnderwriter;
+    // 3) 만약 증권사 이름에 콤마(,)가 섞여서 여러 증권사가 한 객체로 뭉쳐있는 경우 개별 분리
+    const cleanedAllocations: UnderwriterAllocation[] = [];
+    for (const alloc of underwriterAllocations) {
+      if (alloc.name.includes(",") || alloc.name.includes("·")) {
+        const splitNames = alloc.name.split(/[,·]/).map((s) => s.trim()).filter(Boolean);
+        for (let idx = 0; idx < splitNames.length; idx++) {
+          const sName = splitNames[idx];
+          const exists = underwriterAllocations.some(
+            (other) => other !== alloc && normalizeCorpName(other.name) === normalizeCorpName(sName),
+          );
+          if (!exists) {
+            cleanedAllocations.push({
+              ...alloc,
+              name: sName,
+              role: idx === 0 ? alloc.role || "대표주관" : "공동주관",
+            });
+          }
+        }
+      } else {
+        cleanedAllocations.push(alloc);
+      }
+    }
 
-    return {
+    const leadUnderwriter = summarizeUnderwriters(cleanedAllocations) || ipo.leadUnderwriter;
+
+    const mergedObj: IpoInfo = {
       ...ipo,
       offerPriceMin,
       offerPriceMax,
@@ -434,10 +473,14 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
       institutionCompetitionRate,
       lockupRatio,
       subscriptionCompetitionRate,
+      minSubscriptionShares,
       minSubscriptionDeposit,
       leadUnderwriter,
-      underwriterAllocations,
+      underwriterAllocations: cleanedAllocations,
     };
+    mergedObj.aiAnalysis = generateRuleBasedAnalysis(mergedObj);
+
+    return mergedObj;
   });
 
   // 2. 38커뮤니케이션에는 잡혀있으나 DART 60일 목록에는 아직 안 잡힌 예정 공모주 추가
@@ -445,7 +488,7 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     if (matchedCorpNames.has(key)) continue;
     if (!scraped.subscriptionEnd || Date.parse(scraped.subscriptionEnd) < Date.parse(today)) continue;
 
-    const underwriterAllocations: UnderwriterAllocation[] = scraped.underwriters.map((u: ScrapedUnderwriter) => ({
+    const rawAllocations: UnderwriterAllocation[] = scraped.underwriters.map((u: ScrapedUnderwriter) => ({
       name: u.name,
       role: u.role,
       shares: u.shares,
@@ -456,10 +499,34 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
       subscriptionLimit: u.limit,
     }));
 
-    const price = scraped.confirmedPrice;
-    const minDeposit = price ? Math.round(price * 10 * 0.5) : null;
+    // 콤마로 묶인 증권사 분리
+    const cleanedAllocations: UnderwriterAllocation[] = [];
+    for (const alloc of rawAllocations) {
+      if (alloc.name.includes(",") || alloc.name.includes("·")) {
+        const splitNames = alloc.name.split(/[,·]/).map((s) => s.trim()).filter(Boolean);
+        for (let idx = 0; idx < splitNames.length; idx++) {
+          const sName = splitNames[idx];
+          const exists = rawAllocations.some(
+            (other) => other !== alloc && normalizeCorpName(other.name) === normalizeCorpName(sName),
+          );
+          if (!exists) {
+            cleanedAllocations.push({
+              ...alloc,
+              name: sName,
+              role: idx === 0 ? alloc.role || "대표주관" : "공동주관",
+            });
+          }
+        }
+      } else {
+        cleanedAllocations.push(alloc);
+      }
+    }
 
-    mergedIpos.push({
+    const minSubscriptionShares = scraped.minShares ?? 10;
+    const price = scraped.confirmedPrice;
+    const minDeposit = price ? Math.round(price * minSubscriptionShares * 0.5) : null;
+
+    const scrapedIpo: IpoInfo = {
       corpCode: `38-${scraped.no}`,
       corpName: scraped.name,
       subscriptionStart: scraped.subscriptionStart,
@@ -473,15 +540,18 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
       institutionCompetitionRate: scraped.institutionCompetitionRate,
       lockupRatio: scraped.lockupRatio,
       subscriptionCompetitionRate: scraped.subscriptionCompetitionRate,
+      minSubscriptionShares,
       minSubscriptionDeposit: minDeposit,
       estimatedListingDate: scraped.subscriptionEnd ? addBusinessDays(scraped.subscriptionEnd, 2) : null,
-      leadUnderwriter: summarizeUnderwriters(underwriterAllocations),
-      underwriterAllocations,
+      leadUnderwriter: summarizeUnderwriters(cleanedAllocations),
+      underwriterAllocations: cleanedAllocations,
       totalShares: scraped.totalShares,
       offerAmount: null,
       lockupNote: null,
       receiptDate: today,
-    });
+    };
+    scrapedIpo.aiAnalysis = generateRuleBasedAnalysis(scrapedIpo);
+    mergedIpos.push(scrapedIpo);
   }
 
   // 청약이 아직 끝나지 않은 공모주만 청약임박순 정렬

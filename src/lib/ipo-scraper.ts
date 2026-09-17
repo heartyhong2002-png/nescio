@@ -26,6 +26,7 @@ export type ScrapedIpoData = {
   lockupRatio: string | null; // 의무보유확약 비율 (예: "21.75%")
   subscriptionCompetitionRate: string | null; // 일반 청약 경쟁률 (예: "1375.34:1")
   totalShares: number | null; // 총 공모주식수
+  minShares: number | null; // 최소 청약 단위
   underwriters: ScrapedUnderwriter[]; // 증권사별 배정 & 한도
 };
 
@@ -67,12 +68,36 @@ export function normalizeCorpName(name: string): string {
     .trim();
 }
 
+export function normalizeBrokerName(name: string): string {
+  return normalizeCorpName(name)
+    .replace(/아이비케이/g, "IBK")
+    .replace(/케이비/g, "KB")
+    .replace(/에스케이/g, "SK")
+    .replace(/엔에이치/g, "NH")
+    .replace(/비엔케이/g, "BNK")
+    .replace(/디비/g, "DB")
+    .replace(/투자증권|증권|투자/g, "")
+    .trim();
+}
+
 function toNumber(str: string | null | undefined): number | null {
   if (!str) return null;
   const cleaned = str.replace(/[^\d.]/g, "");
   if (!cleaned) return null;
   const num = Number(cleaned);
   return Number.isFinite(num) ? num : null;
+}
+
+function parseShares(str: string | null | undefined): number | null {
+  if (!str) return null;
+  // "444,400 ~ 533,280 주" 같은 범위형은 최대값 또는 첫 번째 수량을 안정적으로 추출
+  const rangeMatch = str.match(/([\d,]+)\s*~\s*([\d,]+)/);
+  if (rangeMatch) {
+    const min = Number(rangeMatch[1].replace(/[^\d]/g, ""));
+    const max = Number(rangeMatch[2].replace(/[^\d]/g, ""));
+    return Number.isFinite(max) && max > 0 ? max : Number.isFinite(min) ? min : null;
+  }
+  return toNumber(str);
 }
 
 function parseDates(dateStr: string): { start: string | null; end: string | null } {
@@ -94,6 +119,7 @@ async function scrape38Detail(no: string): Promise<{
   band: string | null;
   confirmedPrice: number | null;
   totalShares: number | null;
+  minShares: number | null;
   underwriters: ScrapedUnderwriter[];
 }> {
   try {
@@ -106,7 +132,18 @@ async function scrape38Detail(no: string): Promise<{
     let band: string | null = null;
     let confirmedPrice: number | null = null;
     let totalShares: number | null = null;
-    const underwriters: ScrapedUnderwriter[] = [];
+    let minShares: number | null = null;
+
+    const minMatch = html.match(/(?:최소\s*청약\s*(?:단위|수량|주식수)?|청약단위)\s*[:：]?\s*([0-9,]+)\s*주/i);
+    if (minMatch) {
+      minShares = toNumber(minMatch[1]);
+    }
+
+    const leadRowBrokers: string[] = [];
+    let leadRowShares: number | null = null;
+    let leadRowSharesText: string | null = null;
+    let leadRowLimit: string | null = null;
+    const syndicateUnderwriters: ScrapedUnderwriter[] = [];
 
     let inUnderwriterTable = false;
 
@@ -151,33 +188,63 @@ async function scrape38Detail(no: string): Promise<{
       }
 
       if (inUnderwriterTable) {
-        if (tds.length >= 3 && (tds[0].includes("증권") || tds[0].includes("투자"))) {
-          underwriters.push({
-            name: tds[0],
-            shares: toNumber(tds[1]),
+        if (tds.length >= 3 && (tds[0].includes("증권") || tds[0].includes("투자") || tds[0].includes("은행"))) {
+          syndicateUnderwriters.push({
+            name: tds[0].trim(),
+            shares: parseShares(tds[1]),
             sharesText: tds[1] || null,
             limit: tds[2] && tds[2] !== "-" ? tds[2] : null,
-            role: tds[3] || null,
+            role: tds[3] ? (tds[3].includes("대표") ? "대표주관" : tds[3].includes("공동") ? "공동주관" : tds[3]) : "인수회사",
           });
         } else {
           inUnderwriterTable = false;
         }
       }
 
-      // 6. 단일 주관사 행 ("주간사" row)
-      if (tds[0] === "주간사" && underwriters.length === 0) {
-        const leadName = tds[1];
-        const mShares = tds[2]?.match(/주식수:\s*([\d,]+)\s*주/);
+      // 6. 단일/복수 주관사 요약 행 ("주간사" row)
+      if (tds[0] === "주간사") {
+        const rawNames = tds[1] ? tds[1].split(/[,/·]/).map((s) => s.trim()).filter(Boolean) : [];
+        for (const rn of rawNames) {
+          if (!leadRowBrokers.includes(rn)) leadRowBrokers.push(rn);
+        }
+        const mShares = tds[2]?.match(/주식수:\s*([\d, ~]+)\s*주/);
         const mLimit = tds[2]?.match(/청약한도:\s*([^\/]+주)/);
-        if (leadName) {
+        if (mShares) {
+          leadRowShares = parseShares(mShares[1]);
+          leadRowSharesText = `${mShares[1].trim()} 주`;
+        }
+        if (mLimit && !mLimit[1].includes("-")) {
+          leadRowLimit = mLimit[1].trim();
+        }
+      }
+    }
+
+    // 주관사 전체 병합: 인수회사 테이블이 있으면 우선하고, 주간사 목록의 모든 증권사를 포함
+    const underwriters: ScrapedUnderwriter[] = [];
+    if (syndicateUnderwriters.length > 0) {
+      underwriters.push(...syndicateUnderwriters);
+      for (const b of leadRowBrokers) {
+        const exists = underwriters.some((u) => u.name.includes(b) || b.includes(u.name));
+        if (!exists) {
           underwriters.push({
-            name: leadName,
-            shares: mShares ? toNumber(mShares[1]) : null,
-            sharesText: mShares ? `${mShares[1]} 주` : null,
-            limit: mLimit ? mLimit[1].trim() : null,
-            role: "대표주관",
+            name: b,
+            shares: null,
+            sharesText: null,
+            limit: null,
+            role: "주관",
           });
         }
+      }
+    } else {
+      for (let idx = 0; idx < leadRowBrokers.length; idx++) {
+        const b = leadRowBrokers[idx];
+        underwriters.push({
+          name: b,
+          shares: leadRowBrokers.length === 1 ? leadRowShares : null,
+          sharesText: leadRowBrokers.length === 1 ? leadRowSharesText : null,
+          limit: leadRowBrokers.length === 1 ? leadRowLimit : null,
+          role: idx === 0 ? "대표주관" : "공동주관",
+        });
       }
     }
 
@@ -188,6 +255,7 @@ async function scrape38Detail(no: string): Promise<{
       band,
       confirmedPrice,
       totalShares,
+      minShares: minShares ?? 10,
       underwriters,
     };
   } catch (err) {
@@ -199,6 +267,7 @@ async function scrape38Detail(no: string): Promise<{
       band: null,
       confirmedPrice: null,
       totalShares: null,
+      minShares: 10,
       underwriters: [],
     };
   }
@@ -305,6 +374,7 @@ export async function fetch38IpoData(): Promise<Map<string, ScrapedIpoData>> {
             lockupRatio,
             subscriptionCompetitionRate,
             totalShares: detail.totalShares,
+            minShares: detail.minShares,
             underwriters: detail.underwriters,
           };
 
