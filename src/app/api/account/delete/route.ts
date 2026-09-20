@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/require-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -15,15 +15,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * 만들어뒀기 때문에, auth 사용자만 지우면 두 테이블 행은 별도 삭제 없이 자동으로 같이 지워진다.
  */
 export async function POST() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return NextResponse.json({ error: "로그인이 필요해요." }, { status: 401 });
-  }
+  const auth = await requireAuth({ requireMfa: true });
+  if (auth.response) return auth.response;
+  const user = auth.user;
 
   try {
     const admin = createAdminClient();

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import { serverEnv } from "@/lib/server-env";
 import { getPricesForTickers } from "@/lib/krx";
 import { Stock } from "@/lib/types";
@@ -26,6 +27,9 @@ const MAX_WATCHLIST_ITEMS = 50;
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireAuth();
+    if (auth.response) return auth.response;
+
     const { stocks } = (await request.json()) as { stocks: Stock[] };
     if (!Array.isArray(stocks) || stocks.length === 0) {
       return NextResponse.json({ items: [] });

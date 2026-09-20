@@ -56,6 +56,15 @@ export default function LoginPage() {
     // 라우팅을 결정한다.
     const supabase = createClient();
     const { data: userData } = await supabase.auth.getUser();
+
+    // 2FA가 등록된 사용자는 TOTP 검증 페이지로 보낸다.
+    const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aalData && aalData.currentLevel === "aal1" && aalData.nextLevel === "aal2") {
+      setSubmitting(false);
+      router.push("/onboarding/verify-mfa");
+      return;
+    }
+
     const userId = userData.user?.id;
     if (!userId) {
       setSubmitting(false);
@@ -103,6 +112,14 @@ export default function LoginPage() {
             {submitting ? "처리 중..." : mode === "login" ? "로그인" : "가입하고 시작하기"}
           </button>
         </form>
+
+        {mode === "login" && (
+          <div style={{ textAlign: "right", marginBottom: 8 }}>
+            <Link href="/onboarding/reset-password" style={{ fontSize: 12, color: "var(--accent)" }}>
+              비밀번호를 잊으셨나요?
+            </Link>
+          </div>
+        )}
 
         <p className="muted" style={{ fontSize: 12, textAlign: "center" }}>
           {mode === "login" ? (

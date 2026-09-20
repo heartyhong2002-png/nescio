@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import { serverEnv } from "@/lib/server-env";
 import { getPriceForTicker } from "@/lib/krx";
 import { fetchMajorRatesSummary, fetchInternationalRatesSummary } from "@/lib/exim";
@@ -296,24 +297,7 @@ async function callGemini(
   return content;
 }
 
-/** 기본 제공자를 먼저 시도하고, 실패하면 Gemini로 한 번 더 시도한다. (1단계 원본 분석 전용) */
-async function withGeminiFallback(
-  label: string,
-  primary: () => Promise<string>,
-  gemini: () => Promise<string>,
-): Promise<string> {
-  try {
-    return await primary();
-  } catch (primaryError) {
-    if (!serverEnv("GEMINI_API_KEY")) throw primaryError;
-    console.warn(`[analyze] ${label} 기본 제공자 실패 → Gemini 폴백:`, errMsg(primaryError));
-    try {
-      return await gemini();
-    } catch (fallbackError) {
-      throw new Error(`${label} 실패 — 기본: ${errMsg(primaryError)} / Gemini 폴백: ${errMsg(fallbackError)}`);
-    }
-  }
-}
+
 
 /**
  * 제공자를 순서대로 시도하고, 앞선 게 실패하면 다음으로 넘어간다(2단계 쩐형 재작성 전용).
@@ -472,11 +456,11 @@ async function analyzeRaw(
   historySummary: string,
 ): Promise<string> {
   const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news, fxSummary, intlRateSummary, historySummary);
-  return withGeminiFallback(
-    "1단계 원본 분석",
-    () => callNvidia(system, prompt, 0.2),
-    () => callGemini(system, prompt, { temperature: 0.2 }),
-  );
+  return withFallbackChain("1단계 원본 분석", [
+    { name: "OpenRouter", hasKey: !!serverEnv("OPENROUTER_API_KEY"), call: () => callOpenRouter(system, prompt, 0.2) },
+    { name: "NVIDIA", hasKey: !!serverEnv("NVIDIA_API_KEY"), call: () => callNvidia(system, prompt, 0.2) },
+    { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, { temperature: 0.2 }) },
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -603,6 +587,9 @@ export async function POST(request: Request) {
         { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } },
       );
     }
+
+    const auth = await requireAuth();
+    if (auth.response) return auth.response;
 
     const body = await request.json();
     const { name, ticker } = body as { name?: unknown; ticker?: unknown };

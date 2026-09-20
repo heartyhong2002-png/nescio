@@ -109,6 +109,15 @@ export default function MyPage() {
 
       {user && (
         <>
+          <div className="section-title">보안</div>
+          <Link href="/my/security" className="option-row" style={{ marginBottom: 26 }}>
+            <div>
+              <div className="option-title">보안 설정</div>
+              <div className="option-desc">2단계 인증(TOTP)을 설정하거나 해제합니다</div>
+            </div>
+            <span className="muted">→</span>
+          </Link>
+
           <button className="btn btn-secondary" style={{ maxWidth: 200, marginBottom: 14 }} onClick={handleLogout}>
             로그아웃
           </button>

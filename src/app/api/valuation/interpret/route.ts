@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import { serverEnv } from "@/lib/server-env";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
@@ -184,6 +185,9 @@ export async function POST(request: Request) {
         { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } },
       );
     }
+
+    const auth = await requireAuth();
+    if (auth.response) return auth.response;
 
     const body = (await request.json()) as Body;
     const name = typeof body.stock?.name === "string" ? body.stock.name.trim() : "";

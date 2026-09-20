@@ -1,8 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import type { User } from "@supabase/supabase-js";
+
+export type SessionResult = { response: NextResponse; user: User | null };
 
 /**
- * src/proxy.ts에서 매 요청마다 호출 — Supabase 세션 쿠키를 갱신(refresh)한다.
+ * src/proxy.ts에서 매 요청마다 호출 — Supabase 세션 쿠키를 갱신(refresh)하고,
+ * 검증된 user 정보도 같이 돌려준다(proxy.ts의 라우트 보호 판단용).
  *
  * 반드시 supabase.auth.getUser()를 써야 한다 — getSession()이 아니다. getSession()은 쿠키에 든
  * JWT를 서버에 검증 요청 없이 그냥 읽기만 해서, 만료되었거나 위조된 세션도 그대로 통과시킬 수
@@ -11,7 +15,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * 확인한다. (반대로 클라이언트 쪽 auth-context.tsx에서 getSession()/onAuthStateChange를 쓰는 건
  * 별개 — 브라우저 SDK가 로컬에서 이미 검증/관리하는 세션이라 이 경고 대상이 아니다.)
  */
-export async function updateSession(request: NextRequest) {
+export async function updateSession(request: NextRequest): Promise<SessionResult> {
   let supabaseResponse = NextResponse.next({ request });
 
   // 이 proxy는 사실상 모든 경로에서 매 요청마다 실행된다 — env var가 비어있는데
@@ -20,7 +24,7 @@ export async function updateSession(request: NextRequest) {
   // 나머지 페이지는 정상 동작).
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) return supabaseResponse;
+  if (!url || !key) return { response: supabaseResponse, user: null };
 
   const supabase = createServerClient(url, key, {
     cookies: {
@@ -35,9 +39,8 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // 세션 갱신만 목적 — 여기서 리다이렉트는 하지 않는다(§3 참고: 서버 사이드 라우트 보호는
-  // 이번 스코프 밖, 지금처럼 클라이언트 컴포넌트가 리다이렉트 UX를 그대로 담당).
-  await supabase.auth.getUser();
+  // 세션 갱신 + 검증된 사용자 정보를 proxy.ts에 돌려준다.
+  const { data: { user } } = await supabase.auth.getUser();
 
-  return supabaseResponse;
+  return { response: supabaseResponse, user: user ?? null };
 }

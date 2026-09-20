@@ -175,15 +175,17 @@ function StockHeader({
         </div>
       </div>
 
-      <div className="card" style={{ padding: 16, marginBottom: 14 }}>
-        <PriceChart key={`${stock.ticker}-${RANGES[range]}`} ticker={stock.ticker} range={RANGES[range]} />
-        <div className="range-tabs" style={{ marginTop: 4 }}>
-          {RANGES.map((label, index) => (
-            <button key={label} className={index === range ? "active" : undefined} onClick={() => setRange(index)}>
-              {label}
-            </button>
-          ))}
-        </div>
+      <div style={{ marginBottom: 16 }}>
+        <PriceChart
+          key={`${stock.ticker}-${RANGES[range]}`}
+          ticker={stock.ticker}
+          range={RANGES[range]}
+          onRangeChange={(newRange) => {
+            const idx = RANGES.indexOf(newRange);
+            if (idx >= 0) setRange(idx);
+          }}
+          height={380}
+        />
       </div>
 
       {oneLiner && (

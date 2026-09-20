@@ -7,6 +7,10 @@ type KrxRow = {
   TDD_CLSPRC?: string;
   FLUC_RT?: string;
   MKTCAP?: string;
+  TDD_OPNPRC?: string;
+  TDD_HGPRC?: string;
+  TDD_LWPRC?: string;
+  ACC_TRDVOL?: string;
 };
 
 const KRX_BASE_URL = "https://data-dbg.krx.co.kr/svc/apis";
@@ -108,7 +112,14 @@ export async function getPricesForTickers(tickers: string[]) {
   return result;
 }
 
-export type PricePoint = { date: string; close: number };
+export type PricePoint = {
+  date: string;
+  close: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  volume?: number;
+};
 
 async function resolveMarket(ticker: string, key: string): Promise<Market | null> {
   for (const market of MARKETS_BY_LOOKUP_PRIORITY) {
@@ -155,7 +166,17 @@ export async function fetchPriceHistory(ticker: string, calendarDays: number): P
       }),
     );
     for (const { basDd, row } of results) {
-      if (row?.TDD_CLSPRC) points.push({ date: basDd, close: Number(String(row.TDD_CLSPRC).replaceAll(",", "")) });
+      if (row?.TDD_CLSPRC) {
+        const parseNum = (v?: string) => (v ? Number(String(v).replaceAll(",", "")) : undefined);
+        points.push({
+          date: basDd,
+          close: Number(String(row.TDD_CLSPRC).replaceAll(",", "")),
+          open: parseNum(row.TDD_OPNPRC),
+          high: parseNum(row.TDD_HGPRC),
+          low: parseNum(row.TDD_LWPRC),
+          volume: parseNum(row.ACC_TRDVOL),
+        });
+      }
     }
   }
 

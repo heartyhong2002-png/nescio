@@ -244,17 +244,26 @@ async function fetchIntradayForDate(ticker: string, date: string): Promise<Price
     throw settled.find((r): r is PromiseRejectedResult => r.status === "rejected")?.reason ?? new Error("분봉 조회 실패");
   }
 
-  const byTime = new Map<string, number>();
+  const byTime = new Map<string, { close: number; open?: number; high?: number; low?: number; volume?: number }>();
   for (const row of ok.flatMap((r) => r.value)) {
     const hour = row.stck_cntg_hour; // HHMMSS
     const close = toNumber(row.stck_prpr);
     if (!hour || close === null) continue;
-    byTime.set(hour.slice(0, 4), close); // "HHMM"
+    const key = hour.slice(0, 4); // "HHMM"
+    if (!byTime.has(key)) {
+      byTime.set(key, {
+        close,
+        open: toNumber(row.stck_oprc) ?? close,
+        high: toNumber(row.stck_hgpr) ?? close,
+        low: toNumber(row.stck_lwpr) ?? close,
+        volume: toNumber(row.cntg_vol) ?? 0,
+      });
+    }
   }
 
   return [...byTime.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([time, close]) => ({ date: time, close }));
+    .map(([time, data]) => ({ date: time, ...data }));
 }
 
 /**
@@ -347,10 +356,20 @@ export async function fetchDailyHistory(ticker: string, range: string): Promise<
     },
   );
 
-  return (data.output2 ?? [])
-    .map((row) => ({ date: row.stck_bsop_date, close: toNumber(row.stck_clpr) }))
-    .filter((point): point is PricePoint => !!point.date && point.close !== null)
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const points: PricePoint[] = [];
+  for (const row of data.output2 ?? []) {
+    const close = toNumber(row.stck_clpr);
+    if (close === null || !row.stck_bsop_date) continue;
+    points.push({
+      date: row.stck_bsop_date,
+      close,
+      open: toNumber(row.stck_oprc) ?? close,
+      high: toNumber(row.stck_hgpr) ?? close,
+      low: toNumber(row.stck_lwpr) ?? close,
+      volume: toNumber(row.acml_vol) ?? 0,
+    });
+  }
+  return points.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 // 같은 종목을 여러 사용자가 조회할 때 KIS 호출을 아끼고 응답을 빠르게 하기 위한 짧은 인메모리 캐시.
