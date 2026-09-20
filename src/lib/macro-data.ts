@@ -25,29 +25,30 @@ const TARGETS = [
 ];
 
 export async function fetchMacroIndicators(): Promise<MacroIndicator[]> {
-  try {
-    const results = await yahooFinance.quote(TARGETS.map((t) => t.ticker));
-    
-    return TARGETS.map((target) => {
-      const data = results.find((r) => r.symbol === target.ticker);
-      return {
-        ticker: target.ticker,
-        name: target.name,
-        category: target.category,
-        price: data?.regularMarketPrice ?? null,
-        change: data?.regularMarketChange ?? null,
-        changePercent: data?.regularMarketChangePercent ?? null,
-        currency: data?.currency ?? "USD",
-      };
-    });
-  } catch (error) {
-    console.error("[macro-data] Failed to fetch macro indicators", error);
-    return TARGETS.map((target) => ({
-      ...target,
-      price: null,
-      change: null,
-      changePercent: null,
-      currency: "USD",
-    }));
-  }
+  const results = await Promise.all(
+    TARGETS.map(async (target) => {
+      try {
+        const data = (await yahooFinance.quote(target.ticker)) as any;
+        return {
+          ticker: target.ticker,
+          name: target.name,
+          category: target.category,
+          price: data?.regularMarketPrice ?? null,
+          change: data?.regularMarketChange ?? null,
+          changePercent: data?.regularMarketChangePercent ?? null,
+          currency: data?.currency ?? "USD",
+        };
+      } catch (error) {
+        console.warn(`[macro-data] Failed to fetch ${target.ticker}:`, error);
+        return {
+          ...target,
+          price: null,
+          change: null,
+          changePercent: null,
+          currency: "USD",
+        };
+      }
+    }),
+  );
+  return results;
 }
