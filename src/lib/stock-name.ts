@@ -6,13 +6,13 @@ import { Stock } from "./types";
 // use-briefing(AI 브리핑)과 use-summary(빠른 시세) 양쪽에서 공유한다.
 export async function resolveStockName(ticker: string): Promise<string | null> {
   try {
-    const cached = window.sessionStorage.getItem("nescio.stocks-cache");
+    const cached = window.sessionStorage.getItem("nescio.stocks-cache-v3");
     const stocks: Stock[] = cached
       ? JSON.parse(cached)
       : await fetch("/api/stocks").then(async (res) => {
           const data = await res.json();
           if (!res.ok) throw new Error(data.error);
-          window.sessionStorage.setItem("nescio.stocks-cache", JSON.stringify(data.stocks));
+          window.sessionStorage.setItem("nescio.stocks-cache-v3", JSON.stringify(data.stocks));
           return data.stocks as Stock[];
         });
     return stocks.find((stock) => stock.ticker === ticker)?.name ?? null;

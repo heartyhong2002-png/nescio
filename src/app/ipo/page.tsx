@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { formatAmountCompact, formatPrice, formatSharesCompact } from "@/lib/format";
-import { CompanyInfo, IpoInfo, IpoListingsData, IpoMonthlyAnalysis } from "@/lib/types";
+import { CompanyInfo, IpoInfo, IpoListingsData, IpoMonthlyAnalysis, Stock } from "@/lib/types";
+import { useWatchlist } from "@/lib/storage";
 
 function useMonthlyAnalysis(initialMonth = "ALL") {
   const [month, setMonth] = useState(initialMonth);
@@ -929,6 +930,7 @@ function MonthlyAiReportCard() {
 function ListingsView() {
   const { data, loading, error } = useIpoListings();
   const [filter, setFilter] = useState<"ALL" | "DOUBLE" | "LOSS">("ALL");
+  const { has, toggle } = useWatchlist();
 
   if (loading && !data) {
     return (
@@ -1046,6 +1048,40 @@ function ListingsView() {
                   <span>상장예정일: <strong style={{ color: "var(--ink)" }}>{item.listingDate}</strong></span>
                   <span>공모가: <strong style={{ color: "var(--ink)" }}>{item.offerPrice ? `${item.offerPrice.toLocaleString()}원` : "미정"}</strong></span>
                 </div>
+
+                {item.ticker && (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, paddingTop: 6, borderTop: "1px dashed var(--line)" }}>
+                    <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                      티커: <strong style={{ color: "var(--ink)" }}>{item.ticker}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggle({
+                          ticker: item.ticker!,
+                          name: item.name.replace(/\(구\.[^)]+\)/, "").trim(),
+                          market: "KOSDAQ",
+                        })
+                      }
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        padding: "3px 8px",
+                        borderRadius: 6,
+                        border: has(item.ticker) ? "1px solid var(--accent)" : "1px solid var(--line)",
+                        background: has(item.ticker) ? "var(--accent-soft)" : "var(--surface-sunken)",
+                        color: has(item.ticker) ? "var(--accent-dark)" : "var(--ink)",
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 3,
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <span>{has(item.ticker) ? "✓ 관심종목 담김" : "+ 관심종목"}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1172,7 +1208,35 @@ function ListingsView() {
                     }}
                   >
                     <td style={{ padding: "10px 12px" }}>
-                      <div style={{ fontWeight: 600, color: "var(--ink)" }}>{item.name}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontWeight: 600, color: "var(--ink)" }}>{item.name}</span>
+                        {item.ticker && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggle({
+                                ticker: item.ticker!,
+                                name: item.name.replace(/\(구\.[^)]+\)/, "").trim(),
+                                market: "KOSDAQ",
+                              })
+                            }
+                            title={has(item.ticker) ? "관심종목에서 해제" : "관심종목에 추가"}
+                            style={{
+                              border: "none",
+                              background: "transparent",
+                              cursor: "pointer",
+                              padding: "2px 4px",
+                              borderRadius: 4,
+                              fontSize: 13,
+                              color: has(item.ticker) ? "var(--accent)" : "var(--muted)",
+                              lineHeight: 1,
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            {has(item.ticker) ? "★" : "☆"}
+                          </button>
+                        )}
+                      </div>
                       <div className="muted" style={{ fontSize: 10.5, marginTop: 2 }}>{item.listingDate}</div>
                     </td>
                     <td style={{ padding: "10px 10px", textAlign: "right", color: "var(--muted)" }}>

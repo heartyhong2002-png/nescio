@@ -20,10 +20,11 @@ function WatchlistAddContent() {
 
   const [tab, setTab] = useState<"recommend" | "sector">("recommend");
   const [query, setQuery] = useState("");
+  const [newListings, setNewListings] = useState<Stock[]>([]);
   const [allStocks, setAllStocks] = useState<Stock[]>(() => {
     if (typeof window === "undefined") return [];
     try {
-      const cached = window.sessionStorage.getItem("nescio.stocks-cache");
+      const cached = window.sessionStorage.getItem("nescio.stocks-cache-v3");
       return cached ? JSON.parse(cached) : [];
     } catch {
       return [];
@@ -32,15 +33,25 @@ function WatchlistAddContent() {
   const [stocksError, setStocksError] = useState("");
 
   useEffect(() => {
-    if (allStocks.length > 0) return;
     fetch("/api/stocks")
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         setAllStocks(data.stocks);
-        window.sessionStorage.setItem("nescio.stocks-cache", JSON.stringify(data.stocks));
+        if (Array.isArray(data.newListings)) {
+          setNewListings(data.newListings);
+        }
+        try {
+          window.sessionStorage.setItem("nescio.stocks-cache-v3", JSON.stringify(data.stocks));
+        } catch {
+          // ignore
+        }
       })
-      .catch((err) => setStocksError(err instanceof Error ? err.message : "종목 목록을 불러오지 못했습니다."));
+      .catch((err) => {
+        if (allStocks.length === 0) {
+          setStocksError(err instanceof Error ? err.message : "종목 목록을 불러오지 못했습니다.");
+        }
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -112,15 +123,90 @@ function WatchlistAddContent() {
         </div>
       )}
 
-      <div className="search-field" style={{ marginBottom: 20 }}>
+      <div className="search-field" style={{ marginBottom: 16 }}>
         🔍
-        <input placeholder="종목명 · 티커 검색" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <input placeholder="종목명 · 티커 검색 (예: 네오사피엔스, 삼성전자...)" value={query} onChange={(event) => setQuery(event.target.value)} />
         {searching && (
           <button className="btn-ghost" onClick={() => setQuery("")}>
             취소
           </button>
         )}
       </div>
+
+      {/* 오늘 & 최근 신규 상장 공모주 빠른 담기 바 */}
+      {newListings.length > 0 && !searching && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div className="eyebrow" style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}>
+              <span>🚀</span> 오늘 & 최근 신규상장 공모주
+            </div>
+            <Link
+              href="/ipo"
+              style={{
+                fontSize: 11.5,
+                color: "var(--accent-dark)",
+                textDecoration: "none",
+                fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 2,
+              }}
+            >
+              공모주 캘린더 보기 →
+            </Link>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              overflowX: "auto",
+              paddingBottom: 6,
+              scrollbarWidth: "none",
+            }}
+          >
+            {newListings.slice(0, 8).map((stock) => {
+              const added = has(stock.ticker);
+              return (
+                <button
+                  key={stock.ticker}
+                  type="button"
+                  onClick={() => toggle(stock)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 12px",
+                    borderRadius: 20,
+                    background: added ? "var(--accent-soft)" : "var(--surface)",
+                    border: added ? "1.5px solid var(--accent)" : "1px solid var(--line)",
+                    color: added ? "var(--accent-dark)" : "var(--ink)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <span>{stock.name}</span>
+                  <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 500 }}>{stock.ticker}</span>
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      padding: "1px 5px",
+                      borderRadius: 4,
+                      background: added ? "var(--accent)" : "var(--surface-sunken)",
+                      color: added ? "#fff" : "var(--muted)",
+                    }}
+                  >
+                    {added ? "✓ 담김" : "+ 담기"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {searching ? (
         <>

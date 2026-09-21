@@ -1,7 +1,84 @@
-> **참고 (9/18 컨트롤타워 기획 정리):** 아래에 2026-09-18 컨트롤타워 세션이 작성한 **'글로벌 매크로(유가·채권·원자재) + 오픈소스 LLM 시장 영향 코멘터리 + 국제 회의 캘린더'** 개발 세션 작업 지시서가 추가되었습니다.
-> 이 세션은 **컨트롤타워(기획·설계·명세)** 역할을 전담하였으며, 실제 코드 구현 및 검증은 다른 개발 세션에서 이어받아 진행합니다.
+> **참고 (9/21 신규 업데이트):** 오늘(당일) 신규 상장하는 공모주(예: 2026/09/21 상장 종목 네오사피엔스 `0161M0` 등)가 관심종목 검색 및 추가 화면에 즉시 노출되지 않던 문제를 해결했습니다.
+> KRX 일별 거래 실적(전 영업일 기준)에 미반영된 당일 신규상장주를 38커뮤니케이션 실시간 단축코드(6자리 티커)와 결합(`getNewListingStocks`)하여 `/api/stocks`에 자동 병합하고, `/watchlist/add` 화면에 **"🚀 오늘 & 최근 신규상장 공모주"** 빠른 담기 칩을 신설했으며, 공모주 화면(`/ipo`)에서도 상장예정 및 실전 성적표 카드에 **"⭐️ 관심종목 담기"** 버튼을 연동했습니다.
 
-# Handoff notes (2026-09-18) — [개발 세션 작업 지시서] 글로벌 매크로(유가·채권·원자재) Top-Pick + 오픈소스 LLM 시장 영향 코멘터리 + 국제 회의 캘린더
+# Handoff notes (2026-09-21) — 신규 상장 공모주 관심종목 즉시 연동 & 글로벌 매크로·고급차트·보안/MFA
+
+9/21 세션에서 진행된 신규 상장주 연동 버그 해결 및 기능 고도화 내역을 요약합니다.
+다음에 이 프로젝트를 이어받는 AI 어시스턴트는 이 섹션부터 확인하세요.
+
+---
+
+## 1. 무엇을 새로 만들고 고도화했나
+
+### 0) 당일/신규 상장 공모주 관심종목 즉각 연동 파이프라인 (`src/lib/types.ts`, `src/lib/ipo-listings.ts`, `src/app/api/stocks/route.ts`, `src/app/watchlist/add/page.tsx`, `src/app/ipo/page.tsx`, `src/app/api/price-summary/route.ts`)
+- **문제 원인 분석**:
+  - KRX Open API의 `bydd_trd`(일별 거래 실적)는 전 영업일 기준의 거래 종목만 반환하므로, **상장 당일(오늘)** 신규 상장된 종목(예: 네오사피엔스 `0161M0`)은 전 영업일에 거래된 적이 없어 `/api/stocks` 결과에서 완전히 누락됨.
+  - 또한 클라이언트 브라우저 `sessionStorage`의 오래된 캐시로 인해 당일 상장주 검색이 불가능했음.
+- **해결 조치**:
+  1. **신규 상장 종목코드(티커) 자동 추출 (`src/lib/ipo-listings.ts`)**:
+     - 38커뮤니케이션 신규상장(`o=nw`) 데이터에서 차트/상세 링크의 6자리 단축코드(`code=0161M0`, `code=386380` 등)를 정규식으로 파싱하여 `ticker` 필드로 보관.
+     - `getNewListingStocks()` 함수를 신설하여 상장 예정 및 최근 상장된 종목들을 `Stock[]` 형태로 실시간 추출.
+  2. **종목 마스터 API 자동 병합 (`src/app/api/stocks/route.ts`)**:
+     - KRX 전 영업일 거래 종목 목록과 `getNewListingStocks()` 결과를 서버단에서 `Map`으로 Deduplicate & Merge.
+     - KRX API에 아직 안 잡힌 당일 신규상장주도 `/api/stocks`에 100% 즉시 포함되어 검색 매칭 보장.
+  3. **관심종목 담기 화면 (`src/app/watchlist/add/page.tsx`) 전면 개선**:
+     - 캐시 키를 `nescio.stocks-cache-v3`로 갱신하고 백그라운드 최신화 유지.
+     - 검색창 바로 아래에 **"🚀 오늘 & 최근 신규상장 공모주"** 빠른 담기 가로 칩 바 신설 (네오사피엔스 등 오늘 상장주가 최상단에 뜨며 원클릭으로 `+ 담기` 가능).
+     - 검색창에서 "네오", "네오사피엔스" 검색 시 즉시 매칭.
+  4. **공모주 페이지 (`src/app/ipo/page.tsx`) 원클릭 관심종목 연동**:
+     - `ListingsView`의 상장 예정 공모주 카드마다 **"⭐️ 관심종목 담기"** (담긴 경우 "✓ 관심종목 담김") 토글 버튼 추가.
+     - 실전 성적표 테이블 종목명 옆에도 별(★/☆) 아이콘 버튼을 제공하여 공모주를 보며 바로 관심종목 등록 가능.
+  5. **3중 시세 폴백 (`src/app/api/price-summary/route.ts`)**:
+     - KRX `close`가 `null`인 신규상장 당일 종목의 경우, KIS 실시간 시세(`fetchCurrentPrice`) ➔ 38커뮤니케이션 공모가/시초가/현재가(`fetchNewListings`)로 단계적 폴백하여 상세 화면 및 홈 카드에서 시세 에러 없이 정상 노출.
+
+### 1) 글로벌 매크로 대시보드 & 실시간 거시지표 파이프라인 (`src/lib/macro-data.ts`, `src/lib/macro-analyzer.ts`, `src/app/api/macro/route.ts`, `src/app/exchange-rates/page.tsx`)
+- **기획 의도 구현**: 단편적인 환율 조회 화면(`/exchange-rates`)을 주식 시장에 영향을 미치는 **글로벌 매크로 종합 관제탑**으로 전면 개편.
+- **실시간 거시지표 수집 (`src/lib/macro-data.ts`)**:
+  - `yahoo-finance2` v4 인스턴스 초기화 방식으로 Yahoo Finance API 실시간 연동.
+  - **11대 핵심 지표 선별 수집**:
+    - 🛢️ **에너지**: WTI 원유 (`CL=F`)
+    - 🪙 **금속**: 금 (`GC=F`), 구리 (`HG=F`)
+    - 🌽 **농산물**: 옥수수 (`ZC=F`), 밀 (`KE=F`)
+    - 📈 **금리/환율/심리**: 미 국채 10년물 금리 (`^TNX`), 달러 인덱스 (`DX-Y.NYB`), VIX 공포 지수 (`^VIX`)
+    - 📊 **핵심 지수/가상자산**: 필라델피아 반도체 지수 (`^SOX`), 나스닥 100 (`^NDX`), 비트코인 (`BTC-USD`)
+  - 지표별 시세, 전일 대비 등락폭(`change`), 등락률(`changePercent`) 정규화.
+- **다중 LLM 기반 AI 매크로 브리핑 엔진 (`src/lib/macro-analyzer.ts`)**:
+  - 한국수출입은행 주요 통화 환율과 11대 원자재/금리 지표를 통합 분석하여 "오늘 거시경제 환경이 주식 시장에 미치는 영향"을 자연어로 요약.
+  - **다계층 LLM 폴백 파이프라인**:
+    - **1순위**: NVIDIA (`NVIDIA_API_KEY` - Nemotron 등) 또는 Groq LPU (`GROQ_API_KEY` - Llama-3 / GPT-OSS) / Cerebras (`CEREBRAS_API_KEY`)
+    - **2순위**: Gemini (`GEMINI_API_KEY` - Gemini 2.5/3.6 Flash)
+    - **3순위 (안전 폴백)**: 외부 LLM API 장애나 키 미설정 시에도 지표별 등락 상태(유가 급등, 달러 강세, 금리 상승 등)를 조합해 논리적인 분석문을 자동 산출하는 룰베이스 폴백 엔진 무중단 작동.
+- **대시보드 UI 연동 (`src/app/exchange-rates/page.tsx`, `src/components/BottomNav.tsx`)**:
+  - `BottomNav` 3번째 탭을 **"매크로 (`🌍`)"**로 갱신하여 접근성 강화.
+  - 상단 **"AI 글로벌 거시경제 브리핑"** 카드 노출.
+  - 원자재/금리/지수/가상자산 11종 카드 그리드 + 주요국 환율(USD, JPY, EUR 등) 테이블 통합 렌더링.
+
+### 1) 전문 인터랙티브 고급 차트 (`src/components/PriceChart.tsx`)
+- 기존 단순 선형 차트에서 트레이딩 수준의 분석 기능을 갖춘 **인터랙티브 캔들스틱/라인 차트**로 대폭 고도화 (880+ 라인 확장).
+- **지원 기능**:
+  - 캔들스틱(Candlestick) / 라인(Line) 모드 토글.
+  - 이동평균선(MA) 오버레이: 5일(단기), 20일(추세선), 60일(수급선), 120일(경기선) 선택 토글.
+  - 볼린저 밴드(Bollinger Bands) 및 하단 거래량(Volume) 바 차트 연동.
+  - 마우스 호버 시 십자선 커서(Crosshair) 및 해당 시점 시가/고가/저가/종가/거래량 상세 툴팁.
+
+### 2) 계정 보안 & 2단계 인증(MFA) 시스템 (`src/app/my/security/page.tsx`, `src/app/onboarding/...`, `src/lib/require-auth.ts`)
+- **보안 설정 페이지 신설 (`/my/security`)**:
+  - 비밀번호 변경 기능.
+  - **TOTP 기반 2단계 인증(MFA)** 활성화/비활성화 (Google Authenticator 등 OTP 앱 연동 QR 코드/시크릿 키 제공).
+  - 현재 로그인된 활성 세션 정보 확인.
+- **인증 흐름 완비 (`src/app/onboarding/`)**:
+  - `reset-password`: 비밀번호 재설정 이메일 요청.
+  - `update-password`: 이메일 인증 링크 경유 비밀번호 재설정 완료.
+  - `verify-mfa`: MFA가 활성화된 계정의 로그인 시 OTP 6자리 2차 검증 화면.
+- **서버 사이드 라우트 보호 (`src/lib/require-auth.ts`, `src/lib/supabase/middleware.ts`, `src/proxy.ts`)**:
+  - 서버 액션 및 API 라우트에서 세션을 검증하는 `requireAuth()` 및 `requireAdmin()` 헬퍼 도입.
+  - `/api/account/delete` 등 민감 작업에 서버 사이드 실시간 세션 검증 적용.
+
+---
+
+> **참고 (9/18 기획 메모):** 아래는 위 기능의 기반이 된 기획 및 아키텍처 명세입니다.
+
+# [기획 메모] 글로벌 매크로(유가·채권·원자재) Top-Pick + 오픈소스 LLM 시장 영향 코멘터리 + 국제 회의 캘린더
 
 이 문서는 **다른 개발 세션에서 본 기능을 직접 구현할 수 있도록** 기획 요구사항, 데이터 소스, LLM 프롬프트 및 아키텍처 설계를 정리한 실전 구현 가이드입니다.
 작업을 이어받는 AI 어시스턴트는 아래 명세를 기반으로 단계별로 구현 및 검증(`npm run build`)을 진행하세요.

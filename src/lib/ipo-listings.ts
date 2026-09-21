@@ -1,4 +1,4 @@
-import { IpoListingItem, IpoListingsData, IpoMarketStats } from "./types";
+import { IpoListingItem, IpoListingsData, IpoMarketStats, Stock } from "./types";
 
 /**
  * 38커뮤니케이션 신규상장(o=nw) 페이지 크롤러.
@@ -69,7 +69,7 @@ export async function fetchNewListings(): Promise<IpoListingsData> {
           cleanText(m[1]),
         );
         // 컬럼: [기업명, 신규상장일, 현재가, 전일비, 공모가, 공모가대비등락률, 시초가, 시초/공모, 첫날종가]
-        if (tds.length >= 9 && tds[1] && tds[1].startsWith("2026/")) {
+        if (tds.length >= 9 && tds[1] && (tds[1].startsWith("2026/") || tds[1].startsWith("2025/"))) {
           const name = tds[0];
           const listingDate = tds[1];
           const currentPrice = toNumber(tds[2]);
@@ -78,6 +78,10 @@ export async function fetchNewListings(): Promise<IpoListingsData> {
           const openPrice = toNumber(tds[6]);
           const firstDayClose = toNumber(tds[8]);
           const isUpcoming = tds[8] === "예정" || tds[6] === "-" || !firstDayClose;
+
+          // 차트 링크에서 6자리 단축 종목코드(티커) 추출 (예: code=0161M0, code=386380)
+          const codeMatch = tr[1].match(/code=([0-9A-Za-z]{6})/i);
+          const ticker = codeMatch ? codeMatch[1].toUpperCase() : undefined;
 
           // 시초가 대비 공모가 수익률
           let openReturnRate: string | null = null;
@@ -123,6 +127,7 @@ export async function fetchNewListings(): Promise<IpoListingsData> {
             firstDayReturnRate,
             isUpcoming,
             badge,
+            ticker,
           });
         }
       }
@@ -193,5 +198,36 @@ export async function fetchNewListings(): Promise<IpoListingsData> {
         },
       }
     );
+  }
+}
+
+/**
+ * 오늘 및 최근 신규 상장된 공모주들 중 유효한 단축코드(6자리)가 있는 종목들을
+ * Stock 객체 목록으로 변환하여 반환한다.
+ * KRX 일별 거래 실적(전 영업일 기준)에 미처 반영되지 않은 당일 신규상장주를 즉시 보완한다.
+ */
+export async function getNewListingStocks(): Promise<Stock[]> {
+  try {
+    const data = await fetchNewListings();
+    const all = [...data.upcoming, ...data.history];
+    const stocks: Stock[] = [];
+    const seen = new Set<string>();
+
+    for (const item of all) {
+      if (item.ticker && !seen.has(item.ticker)) {
+        seen.add(item.ticker);
+        // 정규화된 종목명 (접두사/접미사 정리)
+        const cleanName = item.name.replace(/\(구\.[^)]+\)/, "").trim();
+        stocks.push({
+          ticker: item.ticker,
+          name: cleanName,
+          market: cleanName.includes("스팩") ? "KOSDAQ" : "KOSDAQ",
+        });
+      }
+    }
+    return stocks;
+  } catch (error) {
+    console.warn("[ipo-listings] getNewListingStocks failed:", error);
+    return [];
   }
 }

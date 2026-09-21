@@ -129,6 +129,8 @@ export type IpoListingItem = {
   firstDayReturnRate: string | null; // 첫날 종가 기준 공모가 대비 수익률 (예: "+300.0%")
   isUpcoming: boolean; // 상장 예정 여부
   badge?: "TRIPLE" | "DOUBLE" | "PROFIT" | "LOSS" | "UPCOMING"; // 성적 뱃지
+  ticker?: string; // 단축 종목코드 6자리 (예: "0161M0", "386380")
+  underwriter?: string; // 주관 증권사
 };
 
 export type IpoMarketStats = {

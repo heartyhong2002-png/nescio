@@ -65,9 +65,15 @@ Settings → Environment Variables에도 동일하게 넣어야 합니다 (다�
 - 세션 갱신은 `src/proxy.ts` → `src/lib/supabase/middleware.ts`가 매 요청마다 `getUser()`로
   처리합니다 (`getSession()`이 아님 — 서버에서는 위조된 쿠키를 걸러내기 위해 반드시 서버
   왕복 검증이 필요하다는 Supabase 공식 권고를 따름).
-- **서버 사이드 라우트 보호(로그인 안 하면 특정 페이지 자체를 못 열게 막는 것)는 아직
-  구현 범위 밖입니다.** 지금은 클라이언트 컴포넌트가 `user`가 없으면 UI로 리다이렉트/안내하는
-  방식만 있습니다.
+- **서버 사이드 라우트/API 보호 (`src/lib/require-auth.ts`)**:
+  - `requireAuth()`: API 라우트 및 서버 액션에서 유효한 로그인 세션을 강제 검증하며, 미인증 요청 시 401 반환.
+  - `requireAdmin()`: 관리자 권한(`service_role`) 및 사용자 세션 검증.
+- **비밀번호 찾기 및 재설정 (`src/app/onboarding/reset-password`, `update-password`)**:
+  - `resetPasswordForEmail`을 통한 재설정 메일 발송 및 토큰 기반 신규 비밀번호 변경 흐름 완비.
+- **TOTP 기반 2단계 인증(MFA) (`src/app/my/security`, `src/app/onboarding/verify-mfa`)**:
+  - Supabase Auth MFA (`auth.mfa.enroll`, `challenge`, `verify`, `unenroll`) 완벽 연동.
+  - 마이페이지 보안 탭(`/my/security`)에서 QR 코드 스캔을 통한 Google Authenticator 등 등록 지원.
+  - MFA가 활성화된 계정은 로그인 직후 `/onboarding/verify-mfa`로 전환되어 6자리 OTP 인증 후 최종 세션 부여.
 
 ## 데이터베이스 스키마
 
