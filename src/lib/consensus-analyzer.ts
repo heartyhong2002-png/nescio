@@ -12,20 +12,28 @@ function getCacheKey(ticker: string, reports: AnalystReport[]): string {
 
 /**
  * 정량적 수치를 바탕으로 투자의견 평점(1~5점)을 산출한다.
+ * (한국 증권사 리포트는 '매수(Buy)' 편향이 강하므로 이를 보정하여 현실적인 점수 부여)
  */
 function calculateConsensusScore(reports: AnalystReport[]): number {
-  if (reports.length === 0) return 3; // 기본 중립
+  if (reports.length === 0) return 3.0; // 기본 중립
   let total = 0;
   let count = 0;
   for (const r of reports) {
     const op = r.opinion.toUpperCase();
-    if (op.includes("BUY") || op.includes("매수")) total += 5;
-    else if (op.includes("HOLD") || op.includes("중립")) total += 3;
-    else if (op.includes("SELL") || op.includes("매도") || op.includes("비중축소")) total += 1;
+    // 강력 매수
+    if (op.includes("STRONG") || op.includes("강력")) total += 5.0;
+    // 일반 매수 / Outperform
+    else if (op.includes("BUY") || op.includes("매수") || op.includes("OUTPERFORM") || op.includes("시장수익률상회")) total += 4.0;
+    // Trading Buy / 단기 매수
+    else if (op.includes("TRADING") || op.includes("단기")) total += 3.5;
+    // 중립 (한국 시장에서 중립은 사실상 부정적 시그널)
+    else if (op.includes("HOLD") || op.includes("중립") || op.includes("MARKET")) total += 2.5;
+    // 비중축소 / 매도
+    else if (op.includes("SELL") || op.includes("매도") || op.includes("축소") || op.includes("UNDER")) total += 1.0;
     else continue;
     count++;
   }
-  if (count === 0) return 3; // 해석 불가능한 의견들뿐이면 중립 처리
+  if (count === 0) return 3.0; // 해석 불가능한 의견들뿐이면 중립 처리
   return Math.round((total / count) * 10) / 10;
 }
 
@@ -115,10 +123,19 @@ async function callGeminiFormat(opts: { apiKey: string; model: string; system: s
 const SYSTEM_PROMPT = `너는 여의도 증권가 리서치 센터의 전문가 뷰를 주식 초보자 친구에게 설명해 주는 친절한 분석가다.
 입력으로 주어진 증권사 리포트 요약본과 목표주가, 투자의견을 종합하여 초보자가 한눈에 이해할 수 있도록 쉽게 풀어서 3줄로 요약해 주어야 한다. 12M Fwd P/E, CAPEX, 컨센서스 상회 등 어려운 전문 용어는 초보자 눈높이에 맞춰 일상적인 표현으로 변경하라.
 
+주의사항 (투자의견 평점 - consensusScore):
+한국 증권사 리포트들은 관행상 대부분 'BUY(매수)'를 외치며 점수 인플레이션이 심하다. 
+따라서 무조건 5.0을 주지 말고 다음 기준을 엄격히 적용하라:
+- 강력 매수(Strong Buy) 또는 엄청난 모멘텀 확신: 5.0
+- 일반적인 매수(Buy) / 긍정적 뷰: 4.0
+- 단기 매수(Trading Buy): 3.5
+- 중립(Hold): 한국 시장에서 Hold는 사실상 부정적 시그널이므로 2.0 ~ 2.5 부여
+- 매도(Sell) / 비중축소: 1.0 ~ 1.5
+
 반드시 아래 JSON 스키마로만 출력해야 한다. (마크다운 백틱 없이 순수 JSON만 반환)
 
 {
-  "consensusScore": number, // (1.0 ~ 5.0) 투자의견 평점 (강력 매수 5.0, 매수 4.0, 중립 3.0, 비중축소/매도 2.0 이하)
+  "consensusScore": number, // (1.0 ~ 5.0) 엄격하게 보정된 투자의견 평점
   "averageTargetPrice": number, // 제시된 리포트들의 목표주가 평균 (정수 원)
   "summary": string, // 전문가들의 시각을 종합한 친절한 3문장 이내의 요약문 (초보자용 톤앤매너)
   "keyDrivers": string[] // 전문가들이 가장 주목하는 2~3가지 핵심 성장 요인 또는 리스크 요인
