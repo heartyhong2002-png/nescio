@@ -112,7 +112,12 @@ export function StockConsensusCard({ ticker }: { ticker: string }) {
                       <span className="text-[10px] text-gray-400">{report.writeDate}</span>
                     </div>
                     <p className="text-sm font-medium text-gray-900 truncate" title={report.title}>{report.title}</p>
-                    <div className="flex items-center gap-2 mt-1">
+                    {report.content && (
+                      <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 leading-relaxed" title={report.content}>
+                        {report.content}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2 mt-1.5">
                       <span className="text-xs text-gray-500">목표가: <strong className="text-gray-700">{report.targetPrice ? report.targetPrice.toLocaleString() + "원" : "N/A"}</strong></span>
                       <span className="text-gray-300">|</span>
                       <span className="text-xs font-medium text-gray-600">{report.opinion}</span>
