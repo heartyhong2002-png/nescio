@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchCurrentPrices } from "@/lib/kis";
+import { fetchNaverStockPrice } from "@/lib/naver-stock";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 
 // 홈 대시보드의 LiveSparkline이 몇 초 간격으로 이 엔드포인트를 두드린다. KIS 쪽 초당
@@ -25,6 +26,20 @@ export async function POST(request: Request) {
     }
     const capped = tickers.filter((ticker) => typeof ticker === "string").slice(0, MAX_TICKERS);
     const prices = await fetchCurrentPrices(capped);
+
+    // KIS에서 시세를 못 가져온 티커(당일 신규상장주 또는 KIS 장애 시)는 네이버 금융 실시간 API로 즉시 보충
+    const missingTickers = capped.filter((t) => !prices.has(t));
+    if (missingTickers.length > 0) {
+      await Promise.allSettled(
+        missingTickers.map(async (t) => {
+          const naver = await fetchNaverStockPrice(t);
+          if (naver && naver.price > 0) {
+            prices.set(t, { price: naver.price, changeRate: naver.changeRate });
+          }
+        }),
+      );
+    }
+
     return NextResponse.json({ prices: Object.fromEntries(prices) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "실시간 시세를 불러오지 못했습니다.";

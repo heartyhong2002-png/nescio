@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPriceForTicker } from "@/lib/krx";
+import { fetchNaverStockPrice } from "@/lib/naver-stock";
 import { fetchCurrentPrice } from "@/lib/kis";
 import { fetchNewListings } from "@/lib/ipo-listings";
 
@@ -18,6 +19,23 @@ export async function GET(request: Request) {
     let price = await getPriceForTicker(ticker);
 
     // KRX Open API(전 영업일 기준)에 아직 반영되지 않은 신규 상장 종목 처리
+    // 1순위: 네이버 금융 실시간 API (상장 당일 장중 09:00 즉시 지원, 키 불필요)
+    if (price.close === null) {
+      try {
+        const naver = await fetchNaverStockPrice(ticker);
+        if (naver && naver.price > 0) {
+          price = {
+            close: naver.price,
+            changeRate: naver.changeRate,
+            marketCap: null,
+          };
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // 2순위: KIS(한국투자증권) 실시간 API
     if (price.close === null) {
       try {
         const kisPrice = await fetchCurrentPrice(ticker);
