@@ -7,6 +7,7 @@ import AppShell from "@/components/AppShell";
 import { CauseCardButton } from "@/components/CauseCard";
 import CauseDetailView from "@/components/CauseDetailView";
 import PriceChart from "@/components/PriceChart";
+import { StockConsensusCard } from "@/components/StockConsensusCard";
 import {
   changeArrow,
   changeEmoji,
@@ -128,6 +129,9 @@ function StockBriefingContent() {
                 </div>
               </div>
             )}
+
+            {/* 전문가 컨센서스 (비동기 로딩) */}
+            <StockConsensusCard ticker={ticker} />
           </div>
 
           <aside className="stock-aside">
