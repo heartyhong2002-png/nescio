@@ -105,13 +105,19 @@ export function StockConsensusCard({ ticker }: { ticker: string }) {
             <h3 className="text-xs font-bold text-gray-500 mb-3 px-1 uppercase tracking-wider">최근 발간된 리포트</h3>
             <div className="space-y-3">
               {reports.map((report) => (
-                <div key={report.nid} className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
+                <a 
+                  key={report.nid} 
+                  href={report.attachUrl || `https://stock.naver.com/research/company/detail/${report.nid}`} 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:bg-gray-50 hover:border-indigo-100 transition-colors cursor-pointer group"
+                >
                   <div className="flex-1 min-w-0 pr-4">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-bold text-gray-700">{report.brokerName}</span>
                       <span className="text-[10px] text-gray-400">{report.writeDate}</span>
                     </div>
-                    <p className="text-sm font-medium text-gray-900 truncate" title={report.title}>{report.title}</p>
+                    <p className="text-sm font-medium text-gray-900 truncate group-hover:text-indigo-600 transition-colors" title={report.title}>{report.title}</p>
                     {report.content && (
                       <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 leading-relaxed" title={report.content}>
                         {report.content}
@@ -123,12 +129,10 @@ export function StockConsensusCard({ ticker }: { ticker: string }) {
                       <span className="text-xs font-medium text-gray-600">{report.opinion}</span>
                     </div>
                   </div>
-                  {report.attachUrl && (
-                    <a href={report.attachUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors shrink-0" title="PDF 원문 보기">
-                      📄
-                    </a>
-                  )}
-                </div>
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-400 group-hover:text-indigo-600 group-hover:border-indigo-300 transition-colors shrink-0" title="리포트 원문 보기">
+                    {report.attachUrl ? "📄" : "🔗"}
+                  </div>
+                </a>
               ))}
             </div>
           </div>
