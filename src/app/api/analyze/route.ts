@@ -210,7 +210,8 @@ function callOpenRouter(system: string, prompt: string, temperature: number): Pr
  * Groq — 오픈소스(오픈 웨이트) 모델을 자체 칩(LPU)으로 서빙하는 회사. 무료 티어 유지가
  * 한시적 프로모션이 아니라 "속도 자랑용 무료 체험"이라는 사업모델 자체라서, Solar Pro 3
  * 때처럼 어느 날 갑자기 끊길 위험이 적다. 2단계(쩐형 재작성)를 "오픈소스 LLM이 쓴다"는
- * 요구사항에 맞춰 1순위 제공자로 쓴다.
+ * 요구사항에 맞춰 1순위 제공자로 쓴다. 분석 화면의 대기 시간을 줄이기 위해
+ * 기본 모델은 Groq에서 저지연으로 제공하는 GPT-OSS로 둔다.
  */
 function callGroq(
   system: string,
@@ -224,12 +225,15 @@ function callGroq(
     label: "Groq",
     url: "https://api.groq.com/openai/v1/chat/completions",
     apiKey,
-    model: serverEnv("GROQ_MODEL") || "llama-3.3-70b-versatile",
+    model: serverEnv("GROQ_MODEL") || "openai/gpt-oss-120b",
     system,
     prompt,
     temperature,
     json: opts?.json,
     maxTokens: opts?.maxTokens,
+    // 구조화된 요약·재작성은 긴 추론 과정을 노출할 필요가 없다. 응답 시작 시간을
+    // 앞당기고 토큰 사용량을 제한하기 위해 추론을 끈다.
+    disableReasoning: true,
   });
 }
 
@@ -384,7 +388,8 @@ async function summarizeHistory(name: string, ticker: string, rows: HistoryRow[]
   if (rows.length === 0) return "";
   try {
     const { system, prompt } = buildHistorySummaryPrompt(name, ticker, rows);
-    return await callOpenRouter(system, prompt, 0.3);
+    // 이력 요약은 보조 정보이므로 느린 OpenRouter 호출 대신 빠른 Groq 경로를 쓴다.
+    return await callGroq(system, prompt, 0.3, { maxTokens: 600 });
   } catch (error) {
     console.warn("[analyze] 이력 요약 생성 실패(컨텍스트 없이 계속 진행):", errMsg(error));
     return "";
@@ -392,7 +397,7 @@ async function summarizeHistory(name: string, ticker: string, rows: HistoryRow[]
 }
 
 // ---------------------------------------------------------------------------
-// 1단계: NVIDIA (폴백 Gemini) — 사실 확인 목적의 원본 분석 (formal한 문체, 캐릭터 없음)
+// 1단계: Groq (폴백 Cerebras·Gemini) — 사실 확인 목적의 원본 분석 (formal한 문체, 캐릭터 없음)
 // ---------------------------------------------------------------------------
 function buildRawAnalysisPrompt(
   name: string,
@@ -457,8 +462,10 @@ async function analyzeRaw(
 ): Promise<string> {
   const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news, fxSummary, intlRateSummary, historySummary);
   return withFallbackChain("1단계 원본 분석", [
-    { name: "OpenRouter", hasKey: !!serverEnv("OPENROUTER_API_KEY"), call: () => callOpenRouter(system, prompt, 0.2) },
-    { name: "NVIDIA", hasKey: !!serverEnv("NVIDIA_API_KEY"), call: () => callNvidia(system, prompt, 0.2) },
+    // 이전에는 OpenRouter(Qwen)와 NVIDIA를 우선 호출해 응답 시간이 길었다. UI에 필요한
+    // 분량으로 제한한 Groq 경로를 우선 사용한다.
+    { name: "Groq", hasKey: !!serverEnv("GROQ_API_KEY"), call: () => callGroq(system, prompt, 0.2, { maxTokens: 1500 }) },
+    { name: "Cerebras", hasKey: !!serverEnv("CEREBRAS_API_KEY"), call: () => callCerebras(system, prompt, 0.2, { maxTokens: 1500 }) },
     { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, { temperature: 0.2 }) },
   ]);
 }
@@ -532,8 +539,8 @@ async function rewritePlain(
   const prompt = buildRewritePrompt(name, ticker, rawAnalysis, news);
 
   const content = await withFallbackChain("2단계 쩐형 재작성", [
-    { name: "Groq", hasKey: !!serverEnv("GROQ_API_KEY"), call: () => callGroq(system, prompt, 0.9, { json: true, maxTokens: 4096 }) },
-    { name: "Cerebras", hasKey: !!serverEnv("CEREBRAS_API_KEY"), call: () => callCerebras(system, prompt, 0.9, { json: true, maxTokens: 4096 }) },
+    { name: "Groq", hasKey: !!serverEnv("GROQ_API_KEY"), call: () => callGroq(system, prompt, 0.9, { json: true, maxTokens: 2200 }) },
+    { name: "Cerebras", hasKey: !!serverEnv("CEREBRAS_API_KEY"), call: () => callCerebras(system, prompt, 0.9, { json: true, maxTokens: 2200 }) },
     { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, { temperature: 0.9, json: true }) },
   ]);
 
