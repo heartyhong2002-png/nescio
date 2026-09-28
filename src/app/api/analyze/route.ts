@@ -112,6 +112,39 @@ function coerceBriefing(raw: unknown, news: NewsItem[]): Briefing {
 
 const errMsg = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
+// Vercel 함수의 최대 실행 시간보다 훨씬 앞에서 외부 호출을 끊어야, 플랫폼이 504로
+// 강제 종료하기 전에 앱이 정상적인 오류 응답이나 다음 제공자 폴백을 돌려줄 수 있다.
+const LLM_REQUEST_TIMEOUT_MS = 10_000;
+const OPTIONAL_INPUT_TIMEOUT_MS = 6_000;
+const PERSISTENT_CACHE_TIMEOUT_MS = 3_000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      console.warn(`[analyze] ${label} ${timeoutMs}ms 초과(기본값으로 계속)`);
+      resolve(fallback);
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        console.warn(`[analyze] ${label} 실패(기본값으로 계속):`, error);
+        resolve(fallback);
+      });
+  });
+}
+
 /** OpenAI 호환 chat/completions (NVIDIA · Groq 공용). */
 async function callOpenAiCompatible(opts: {
   label: string;
@@ -126,43 +159,47 @@ async function callOpenAiCompatible(opts: {
   // Groq GPT-OSS처럼 reasoning_effort를 지원하는 모델에서 추론량을 낮춘다.
   reasoningEffort?: "low" | "medium" | "high";
 }): Promise<string> {
-  const doFetch = () =>
-    fetch(opts.url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${opts.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: opts.model,
-        temperature: opts.temperature,
-        ...(opts.json ? { response_format: { type: "json_object" } } : {}),
-        ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-        ...(opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
-        messages: [
-          { role: "system", content: opts.system },
-          { role: "user", content: opts.prompt },
-        ],
-      }),
+  const doFetch = async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), LLM_REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(opts.url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${opts.apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: opts.model,
+          temperature: opts.temperature,
+          ...(opts.json ? { response_format: { type: "json_object" } } : {}),
+          ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+          ...(opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
+          messages: [
+            { role: "system", content: opts.system },
+            { role: "user", content: opts.prompt },
+          ],
+        }),
       cache: "no-store",
-    });
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`${opts.label} API 오류 (${response.status}): ${await response.text()}`);
+      const payload = await response.json();
+      const choice = payload.choices?.[0];
+      const content = choice?.message?.content as string | undefined;
+      if (!content) throw new Error(`${opts.label} 응답이 비어 있습니다.`);
+      if (choice?.finish_reason === "length") {
+        throw new Error(`${opts.label} 응답이 토큰 한도로 중간에 잘렸습니다(finish_reason=length).`);
+      }
+      return content;
+    } catch (error) {
+      if (controller.signal.aborted) throw new Error(`${opts.label} 응답 대기 시간이 ${LLM_REQUEST_TIMEOUT_MS / 1000}초를 초과했습니다.`);
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
 
-  let response = await doFetch();
-  // 503(일시적 과부하)은 NVIDIA 무료 티어에서 종종 관찰되는, 몇 초 뒤 재시도하면 대부분
-  // 바로 성공하는 패턴이다 — 매번 Gemini 폴백(하루 20회 한도)까지 태우지 않도록 한 번만
-  // 짧게 재시도한다.
-  if (response.status === 503) {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    response = await doFetch();
-  }
-  if (!response.ok) throw new Error(`${opts.label} API 오류 (${response.status}): ${await response.text()}`);
-  const payload = await response.json();
-  const choice = payload.choices?.[0];
-  const content = choice?.message?.content as string | undefined;
-  if (!content) throw new Error(`${opts.label} 응답이 비어 있습니다.`);
-  // finish_reason이 "length"면 토큰 한도 때문에 답변이 문장 중간에 잘린 것 — 이걸 그냥
-  // 돌려주면 "안 끝난 문장"이 화면에 그대로 나가버리니, 에러로 던져서 Gemini 폴백을 타게 한다.
-  if (choice?.finish_reason === "length") {
-    throw new Error(`${opts.label} 응답이 토큰 한도로 중간에 잘렸습니다(finish_reason=length).`);
-  }
-  return content;
+  // 503을 같은 제공자에 재시도하면 최대 실행 시간만 더 소모한다. 이 경로에서는 즉시
+  // 다음 제공자 폴백으로 넘겨 브리핑 응답을 보장한다.
+  return doFetch();
 }
 
 /**
@@ -230,35 +267,45 @@ async function callGemini(
   // Gemini 2.5 Flash는 신규 사용자에게 더 이상 제공되지 않아 최신 Flash 모델을 쓴다.
   const model = serverEnv("GEMINI_MODEL") || "gemini-3.8-flash";
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: "POST",
-    headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: opts.temperature,
-        // 짧은 브리핑에 필요한 범위만 생성해 대기 시간을 제한한다.
-        maxOutputTokens: 2200,
-        ...(opts.json ? { responseMimeType: "application/json" } : {}),
-      },
-    }),
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`Gemini API 오류 (${response.status}): ${await response.text()}`);
-  const payload = await response.json();
-  const finishReason = payload.candidates?.[0]?.finishReason;
-  const content = payload.candidates?.[0]?.content?.parts
-    ?.map((part: { text?: string }) => part.text ?? "")
-    .join("") as string | undefined;
-  if (!content) {
-    const blocked = payload.promptFeedback?.blockReason ?? finishReason;
-    throw new Error(`Gemini 응답이 비어 있습니다${blocked ? ` (${blocked})` : ""}.`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LLM_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: opts.temperature,
+          // 짧은 브리핑에 필요한 범위만 생성해 대기 시간을 제한한다.
+          maxOutputTokens: 2200,
+          ...(opts.json ? { responseMimeType: "application/json" } : {}),
+        },
+      }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Gemini API 오류 (${response.status}): ${await response.text()}`);
+    const payload = await response.json();
+    const finishReason = payload.candidates?.[0]?.finishReason;
+    const content = payload.candidates?.[0]?.content?.parts
+      ?.map((part: { text?: string }) => part.text ?? "")
+      .join("") as string | undefined;
+    if (!content) {
+      const blocked = payload.promptFeedback?.blockReason ?? finishReason;
+      throw new Error(`Gemini 응답이 비어 있습니다${blocked ? ` (${blocked})` : ""}.`);
+    }
+    if (finishReason && finishReason !== "STOP") {
+      throw new Error(`Gemini 응답이 온전하지 않습니다 (${finishReason}).`);
+    }
+    return content;
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`Gemini 응답 대기 시간이 ${LLM_REQUEST_TIMEOUT_MS / 1000}초를 초과했습니다.`);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-  if (finishReason && finishReason !== "STOP") {
-    throw new Error(`Gemini 응답이 온전하지 않습니다 (${finishReason}).`);
-  }
-  return content;
 }
 
 
@@ -524,22 +571,11 @@ async function saveAnalysisForUser(userId: string, ticker: string, name: string,
 
 async function generateAnalysis(userId: string, name: string, ticker: string, tone: Tone): Promise<AnalysisResponseData> {
   const [news, price, fxSummary, intlRateSummary, historySummary] = await Promise.all([
-    getNewsMultiSource(name),
-    getPriceForTicker(ticker),
-    fetchMajorRatesSummary().catch((error) => {
-      console.warn("[analyze] 환율 조회 실패(브리핑은 계속 진행):", error);
-      return "";
-    }),
-    fetchInternationalRatesSummary().catch((error) => {
-      console.warn("[analyze] 국제금리 조회 실패(브리핑은 계속 진행):", error);
-      return "";
-    }),
-    fetchAnalysisHistory(userId, ticker)
-      .then(formatHistoryContext)
-      .catch((error) => {
-        console.warn("[analyze] 이력 컨텍스트 준비 실패(계속 진행):", error);
-        return "";
-      }),
+    withTimeout(getNewsMultiSource(name), OPTIONAL_INPUT_TIMEOUT_MS, "뉴스 수집", [] as NewsItem[]),
+    withTimeout(getPriceForTicker(ticker), OPTIONAL_INPUT_TIMEOUT_MS, "시세 수집", { close: null, changeRate: null, marketCap: null }),
+    withTimeout(fetchMajorRatesSummary(), OPTIONAL_INPUT_TIMEOUT_MS, "환율 수집", ""),
+    withTimeout(fetchInternationalRatesSummary(), OPTIONAL_INPUT_TIMEOUT_MS, "국제금리 수집", ""),
+    withTimeout(fetchAnalysisHistory(userId, ticker).then(formatHistoryContext), OPTIONAL_INPUT_TIMEOUT_MS, "이력 컨텍스트", ""),
   ]);
 
   const briefingNews = news.slice(0, MAX_ANALYSIS_NEWS);
@@ -602,10 +638,12 @@ export async function POST(request: Request) {
 
       // stock_analyses에는 tone 컬럼이 없으므로 현재 UI의 기본 톤만 영속 캐시로 재사용한다.
       if (tone === DEFAULT_TONE && tickerKey) {
-        const persistent = await loadPersistentAnalysis(auth.user.id, tickerKey).catch((error) => {
-          console.warn("[analyze] 영속 캐시 조회 실패(새 분석으로 계속):", error);
-          return null;
-        });
+        const persistent = await withTimeout(
+          loadPersistentAnalysis(auth.user.id, tickerKey),
+          PERSISTENT_CACHE_TIMEOUT_MS,
+          "영속 캐시 조회",
+          null,
+        );
         if (persistent) {
           const ageMs = Date.now() - new Date(persistent.generatedAt).getTime();
           if (ageMs <= ANALYSIS_STALE_TTL_MS) {
