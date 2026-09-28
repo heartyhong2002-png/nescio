@@ -99,7 +99,7 @@ function coerceBriefing(raw: unknown, news: NewsItem[]): Briefing {
 
 const errMsg = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** OpenAI 호환 chat/completions (NVIDIA · OpenRouter 공용). */
+/** OpenAI 호환 chat/completions (NVIDIA · Groq 공용). */
 async function callOpenAiCompatible(opts: {
   label: string;
   url: string;
@@ -110,9 +110,7 @@ async function callOpenAiCompatible(opts: {
   temperature: number;
   json?: boolean;
   maxTokens?: number;
-  // OpenRouter 경유로 추론형 모델을 부를 때, reasoning 토큰이 출력 토큰 예산을 먹어치워서
-  // 정작 눈에 보이는 답변이 문장 중간에 잘리는 걸 막는다("Solar 응답이 문장 중간에 끊긴다"
-  // 버그의 원인) — 재작성처럼 깊은 추론이 필요 없는 작업엔 꺼두는 게 안전하다.
+  // 재작성처럼 깊은 추론이 필요 없는 작업은 추론 토큰을 줄여 응답 시작을 앞당긴다.
   disableReasoning?: boolean;
 }): Promise<string> {
   const doFetch = () =>
@@ -155,11 +153,8 @@ async function callOpenAiCompatible(opts: {
 }
 
 /**
- * NVIDIA(무료 티어, nemotron) — 1단계(원본 사실 분석) 전용. 2단계(쩐형 재작성)는
- * "분석은 NVIDIA, 멘트는 오픈소스 LLM"이라는 요구사항에 따라 아래 callGroq/callCerebras로
- * 넘어갔다 — 자세한 경위는 이 파일 상단 및 2단계 섹션 주석 참고. opts는 과거 2단계에서
- * JSON 응답 + 넉넉한 토큰 한도용으로 쓰던 흔적이라 지금은 안 쓰이지만, 다른 호출부 호환을
- * 위해 시그니처는 그대로 둔다.
+ * NVIDIA Nemotron — 원본 분석과 과거 이력 요약을 담당한다. 사실관계·근거를 정리하는
+ * 단계라서 쩐형 문체 변환과 분리한다.
  */
 function callNvidia(
   system: string,
@@ -179,30 +174,6 @@ function callNvidia(
     temperature,
     json: opts?.json,
     maxTokens: opts?.maxTokens,
-  });
-}
-
-/**
- * OpenRouter — 과거 분석 이력 요약 전용. NVIDIA/xAI(사실 분석·캐릭터 재작성)와는 별도로,
- * 오픈소스 가중치 모델(기본 Qwen)만 이 단계에 쓰기 위해 분리했다. OpenAI 호환 엔드포인트라
- * callOpenAiCompatible을 그대로 재사용한다. 모델을 바꾸고 싶으면 OPENROUTER_MODEL 환경변수만
- * 다른 OpenRouter 모델 슬러그로 바꾸면 된다(https://openrouter.ai/models 참고).
- *
- * notebooks/.env에 이미 `OpenRouter_API_KEY`(파스칼_스네이크 혼용) 표기로 들어있는 경우가 있어
- * 표준 표기(OPENROUTER_API_KEY)를 못 찾으면 그 이름도 한 번 더 시도한다 — 다른 키들처럼
- * .env 쪽을 강제로 통일하기보다, 이미 넣어둔 값을 그대로 쓸 수 있게 코드가 맞춰준다.
- */
-function callOpenRouter(system: string, prompt: string, temperature: number): Promise<string> {
-  const apiKey = serverEnv("OPENROUTER_API_KEY") || serverEnv("OpenRouter_API_KEY");
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY를 .env에 설정하세요. (발급: https://openrouter.ai/keys)");
-  return callOpenAiCompatible({
-    label: "OpenRouter",
-    url: "https://openrouter.ai/api/v1/chat/completions",
-    apiKey,
-    model: serverEnv("OPENROUTER_MODEL") || "qwen/qwen-2.5-72b-instruct",
-    system,
-    prompt,
-    temperature,
   });
 }
 
@@ -237,28 +208,6 @@ function callGroq(
   });
 }
 
-/** Cerebras — Groq와 같은 이유의 2순위 폴백. Groq가 무료 한도에 걸리거나 실패했을 때만 탄다. */
-function callCerebras(
-  system: string,
-  prompt: string,
-  temperature: number,
-  opts?: { json?: boolean; maxTokens?: number },
-): Promise<string> {
-  const apiKey = serverEnv("CEREBRAS_API_KEY");
-  if (!apiKey) throw new Error("CEREBRAS_API_KEY를 .env에 설정하세요. (발급: https://cloud.cerebras.ai)");
-  return callOpenAiCompatible({
-    label: "Cerebras",
-    url: "https://api.cerebras.ai/v1/chat/completions",
-    apiKey,
-    model: serverEnv("CEREBRAS_MODEL") || "gpt-oss-120b",
-    system,
-    prompt,
-    temperature,
-    json: opts?.json,
-    maxTokens: opts?.maxTokens,
-  });
-}
-
 async function callGemini(
   system: string,
   prompt: string,
@@ -266,7 +215,8 @@ async function callGemini(
 ): Promise<string> {
   const apiKey = serverEnv("GEMINI_API_KEY");
   if (!apiKey) throw new Error("GEMINI_API_KEY를 .env에 설정하세요. (발급: https://aistudio.google.com/apikey)");
-  const model = serverEnv("GEMINI_MODEL") || "gemini-3.6-flash";
+  // 2.5 Flash는 현재 브리핑의 짧은 분석·JSON 생성에 맞는 안정적인 기본 폴백이다.
+  const model = serverEnv("GEMINI_MODEL") || "gemini-2.5-flash";
 
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST",
@@ -276,10 +226,8 @@ async function callGemini(
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: opts.temperature,
-        // 재작성·요약 작업이라 깊은 추론이 필요 없다. thinking 토큰이 출력 한도를 잡아먹어
-        // 스키마 JSON이 잘리는 걸 막으려고 thinking을 최소화하고 출력 한도를 넉넉히 잡는다.
-        thinkingConfig: { thinkingLevel: "low" },
-        maxOutputTokens: 16384,
+        // 짧은 브리핑에 필요한 범위만 생성해 대기 시간을 제한한다.
+        maxOutputTokens: 2200,
         ...(opts.json ? { responseMimeType: "application/json" } : {}),
       },
     }),
@@ -326,7 +274,7 @@ async function withFallbackChain(
 }
 
 // ---------------------------------------------------------------------------
-// 0단계: OpenRouter(오픈소스 모델, 기본 Qwen) — 같은 종목의 과거 분석 이력을 짧게 요약해
+// 0단계: NVIDIA Nemotron(폴백 Gemini) — 같은 종목의 과거 분석 이력을 짧게 요약해
 // 1단계 프롬프트에 참고 컨텍스트로 얹는다. 로그인 사용자만 이력이 있으므로, 비로그인이거나
 // 처음 보는 종목이면 rows가 비어 있고 이 단계는 그냥 빈 문자열을 돌려준다(호출 자체를 스킵).
 // 이력 요약은 어디까지나 참고용 부가 컨텍스트라 실패해도 본 분석 파이프라인을 막지 않는다.
@@ -388,8 +336,10 @@ async function summarizeHistory(name: string, ticker: string, rows: HistoryRow[]
   if (rows.length === 0) return "";
   try {
     const { system, prompt } = buildHistorySummaryPrompt(name, ticker, rows);
-    // 이력 요약은 보조 정보이므로 느린 OpenRouter 호출 대신 빠른 Groq 경로를 쓴다.
-    return await callGroq(system, prompt, 0.3, { maxTokens: 600 });
+    return await withFallbackChain("과거 분석 이력 요약", [
+      { name: "NVIDIA", hasKey: !!serverEnv("NVIDIA_API_KEY"), call: () => callNvidia(system, prompt, 0.3, { maxTokens: 600 }) },
+      { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, { temperature: 0.3 }) },
+    ]);
   } catch (error) {
     console.warn("[analyze] 이력 요약 생성 실패(컨텍스트 없이 계속 진행):", errMsg(error));
     return "";
@@ -397,7 +347,7 @@ async function summarizeHistory(name: string, ticker: string, rows: HistoryRow[]
 }
 
 // ---------------------------------------------------------------------------
-// 1단계: Groq (폴백 Cerebras·Gemini) — 사실 확인 목적의 원본 분석 (formal한 문체, 캐릭터 없음)
+// 1단계: NVIDIA Nemotron (폴백 Gemini) — 사실 확인 목적의 원본 분석 (formal한 문체, 캐릭터 없음)
 // ---------------------------------------------------------------------------
 function buildRawAnalysisPrompt(
   name: string,
@@ -462,19 +412,16 @@ async function analyzeRaw(
 ): Promise<string> {
   const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news, fxSummary, intlRateSummary, historySummary);
   return withFallbackChain("1단계 원본 분석", [
-    // 이전에는 OpenRouter(Qwen)와 NVIDIA를 우선 호출해 응답 시간이 길었다. UI에 필요한
-    // 분량으로 제한한 Groq 경로를 우선 사용한다.
-    { name: "Groq", hasKey: !!serverEnv("GROQ_API_KEY"), call: () => callGroq(system, prompt, 0.2, { maxTokens: 1500 }) },
-    { name: "Cerebras", hasKey: !!serverEnv("CEREBRAS_API_KEY"), call: () => callCerebras(system, prompt, 0.2, { maxTokens: 1500 }) },
+    { name: "NVIDIA", hasKey: !!serverEnv("NVIDIA_API_KEY"), call: () => callNvidia(system, prompt, 0.2, { maxTokens: 1500 }) },
     { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, { temperature: 0.2 }) },
   ]);
 }
 
 // ---------------------------------------------------------------------------
-// 2단계: 오픈소스(Groq → Cerebras, 폴백 Gemini) — "쩐형" 캐릭터로 재작성
+// 2단계: Groq GPT-OSS(폴백 Gemini) — "쩐형" 캐릭터로 재작성
 // (1단계 사실은 그대로, 톤만 바꾼다). "NVIDIA가 분석하고 오픈소스가 멘트를 쓴다"는
-// 요구사항에 맞춰 1단계(analyzeRaw)는 NVIDIA, 2단계(여기)는 Groq/Cerebras를 우선 쓰고
-// 둘 다 실패했을 때만 Gemini로 넘어간다.
+// 1단계(analyzeRaw)는 NVIDIA, 2단계는 Groq를 우선 쓰고, 각 단계가 실패했을 때만
+// Gemini로 넘어간다.
 // ---------------------------------------------------------------------------
 type Tone = "mild" | "medium" | "spicy" | "nuclear";
 
@@ -540,7 +487,6 @@ async function rewritePlain(
 
   const content = await withFallbackChain("2단계 쩐형 재작성", [
     { name: "Groq", hasKey: !!serverEnv("GROQ_API_KEY"), call: () => callGroq(system, prompt, 0.9, { json: true, maxTokens: 2200 }) },
-    { name: "Cerebras", hasKey: !!serverEnv("CEREBRAS_API_KEY"), call: () => callCerebras(system, prompt, 0.9, { json: true, maxTokens: 2200 }) },
     { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, { temperature: 0.9, json: true }) },
   ]);
 
