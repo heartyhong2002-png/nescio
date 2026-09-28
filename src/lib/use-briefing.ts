@@ -49,6 +49,21 @@ function subscribe(ticker: string, callback: () => void) {
   return () => set!.delete(callback);
 }
 
+async function readAnalysisResponse(response: Response): Promise<Analysis> {
+  const body = await response.text();
+  let payload: (Analysis & { error?: string }) | null = null;
+  try {
+    payload = JSON.parse(body) as Analysis & { error?: string };
+  } catch {
+    const summary = body.trim().replace(/\s+/g, " ").slice(0, 180);
+    throw new Error(`브리핑 서버 오류 (${response.status}): ${summary || "JSON이 아닌 빈 응답"}`);
+  }
+  if (!response.ok) {
+    throw new Error(payload.error || `브리핑 서버 오류 (${response.status})`);
+  }
+  return payload;
+}
+
 function scheduleFreshPoll(ticker: string, name: string, previousGeneratedAt: string, attempt = 0) {
   if (typeof window === "undefined" || attempt >= 3) return;
   window.setTimeout(async () => {
@@ -58,8 +73,7 @@ function scheduleFreshPoll(ticker: string, name: string, previousGeneratedAt: st
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, ticker }),
       });
-      if (!response.ok) return;
-      const data = (await response.json()) as Analysis;
+      const data = await readAnalysisResponse(response);
       if (data.generatedAt !== previousGeneratedAt) {
         writeSnapshot(ticker, data);
         return;
@@ -80,8 +94,7 @@ async function revalidateCachedBriefing(ticker: string, name: string) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, ticker }),
     });
-    if (!response.ok) return;
-    const data = (await response.json()) as Analysis;
+    const data = await readAnalysisResponse(response);
     writeSnapshot(ticker, data);
     if ((response.headers.get("X-Nescio-Cache") ?? "").includes("stale")) {
       scheduleFreshPoll(ticker, name, data.generatedAt);
@@ -123,8 +136,7 @@ export function useStockBriefing(ticker: string, initialName?: string) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, ticker, refresh: forceRefresh }),
         });
-        const data = (await response.json()) as Analysis & { error?: string };
-        if (!response.ok) throw new Error(data.error || "브리핑을 불러오지 못했습니다.");
+        const data = await readAnalysisResponse(response);
         writeSnapshot(ticker, data);
         if ((response.headers.get("X-Nescio-Cache") ?? "").includes("stale")) {
           scheduleFreshPoll(ticker, name, data.generatedAt);

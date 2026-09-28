@@ -123,8 +123,8 @@ async function callOpenAiCompatible(opts: {
   temperature: number;
   json?: boolean;
   maxTokens?: number;
-  // 재작성처럼 깊은 추론이 필요 없는 작업은 추론 토큰을 줄여 응답 시작을 앞당긴다.
-  disableReasoning?: boolean;
+  // Groq GPT-OSS처럼 reasoning_effort를 지원하는 모델에서 추론량을 낮춘다.
+  reasoningEffort?: "low" | "medium" | "high";
 }): Promise<string> {
   const doFetch = () =>
     fetch(opts.url, {
@@ -135,7 +135,7 @@ async function callOpenAiCompatible(opts: {
         temperature: opts.temperature,
         ...(opts.json ? { response_format: { type: "json_object" } } : {}),
         ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-        ...(opts.disableReasoning ? { reasoning: { effort: "none" } } : {}),
+        ...(opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
         messages: [
           { role: "system", content: opts.system },
           { role: "user", content: opts.prompt },
@@ -215,9 +215,8 @@ function callGroq(
     temperature,
     json: opts?.json,
     maxTokens: opts?.maxTokens,
-    // 구조화된 요약·재작성은 긴 추론 과정을 노출할 필요가 없다. 응답 시작 시간을
-    // 앞당기고 토큰 사용량을 제한하기 위해 추론을 끈다.
-    disableReasoning: true,
+    // 구조화된 재작성은 깊은 추론이 필요 없으므로 Groq가 지원하는 최저 수준으로 둔다.
+    reasoningEffort: "low",
   });
 }
 
