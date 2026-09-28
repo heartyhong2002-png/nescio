@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { memo, useDeferredValue, useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { formatPrice } from "@/lib/format";
 
 export type PricePoint = {
@@ -83,7 +83,7 @@ function calculateVolSMA(data: { volume: number }[], period: number): (number | 
   return result;
 }
 
-export default function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartProps) {
+function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartProps) {
   const [points, setPoints] = useState<PricePoint[] | null>(null);
   const [error, setError] = useState("");
   const [chartType, setChartType] = useState<"candle" | "line">("candle");
@@ -91,9 +91,14 @@ export default function PriceChart({ ticker, range, onRangeChange, height = 370 
   const [showVolume, setShowVolume] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  // 포인터 위치는 즉시 정보 바에 반영하되, 비싼 캔버스 재그리기는 브라우저가 한가할 때
+  // 따라오게 한다. 마우스를 빠르게 움직일 때 입력 처리가 밀리는 것을 막는다.
+  const renderedHoverIndex = useDeferredValue(hoverIndex);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hoverFrameRef = useRef<number | null>(null);
+  const pendingHoverIndexRef = useRef<number | null>(null);
 
   const [prevQuery, setPrevQuery] = useState({ ticker, range });
   if (prevQuery.ticker !== ticker || prevQuery.range !== range) {
@@ -543,9 +548,9 @@ export default function PriceChart({ ticker, range, onRangeChange, height = 370 
     }
 
     // 13. 마우스 호버 / 터치 십자선 (Crosshair)
-    if (hoverIndex !== null && hoverIndex >= 0 && hoverIndex < count) {
-      const hPoint = points[hoverIndex];
-      const hX = Math.round(getX(hoverIndex));
+    if (renderedHoverIndex !== null && renderedHoverIndex >= 0 && renderedHoverIndex < count) {
+      const hPoint = points[renderedHoverIndex];
+      const hX = Math.round(getX(renderedHoverIndex));
       const hY = Math.round(priceToY(hPoint.close));
 
       ctx.save();
@@ -585,7 +590,7 @@ export default function PriceChart({ ticker, range, onRangeChange, height = 370 
       ctx.textBaseline = "middle";
       ctx.fillText(formatPrice(hPoint.close), chartWidth + rightAxisWidth / 2, hY);
     }
-  }, [points, maData, extremes, showMA, showVolume, chartType, hoverIndex]);
+  }, [points, maData, extremes, showMA, showVolume, chartType, renderedHoverIndex]);
 
   // 창 크기 변경 및 데이터 변경 시 다시 그리기
   useEffect(() => {
@@ -598,6 +603,12 @@ export default function PriceChart({ ticker, range, onRangeChange, height = 370 
     return () => window.removeEventListener("resize", handleResize);
   }, [drawChart]);
 
+  useEffect(() => {
+    return () => {
+      if (hoverFrameRef.current !== null) cancelAnimationFrame(hoverFrameRef.current);
+    };
+  }, []);
+
   // 마우스/터치 인터랙션
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current || !points || points.length === 0) return;
@@ -607,18 +618,27 @@ export default function PriceChart({ ticker, range, onRangeChange, height = 370 
     const x = e.clientX - rect.left;
 
     if (x < 0 || x > chartWidth) {
-      setHoverIndex(null);
+      scheduleHoverIndex(null);
       return;
     }
 
     const step = chartWidth / points.length;
     const idx = Math.min(points.length - 1, Math.max(0, Math.floor(x / step)));
-    setHoverIndex(idx);
+    scheduleHoverIndex(idx);
   };
 
   const handlePointerLeave = () => {
-    setHoverIndex(null);
+    scheduleHoverIndex(null);
   };
+
+  function scheduleHoverIndex(nextIndex: number | null) {
+    pendingHoverIndexRef.current = nextIndex;
+    if (hoverFrameRef.current !== null) return;
+    hoverFrameRef.current = requestAnimationFrame(() => {
+      hoverFrameRef.current = null;
+      setHoverIndex((current) => (current === pendingHoverIndexRef.current ? current : pendingHoverIndexRef.current));
+    });
+  }
 
   const activePoint = useMemo(() => {
     if (!points || points.length === 0) return null;
@@ -910,3 +930,5 @@ export default function PriceChart({ ticker, range, onRangeChange, height = 370 
 
   return chartContent;
 }
+
+export default memo(PriceChart);

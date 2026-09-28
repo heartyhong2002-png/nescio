@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { StockConsensus } from "@/lib/consensus-types";
 
-export function StockConsensusCard({ ticker }: { ticker: string }) {
+export const StockConsensusCard = memo(function StockConsensusCard({ ticker }: { ticker: string }) {
   const [data, setData] = useState<StockConsensus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -140,4 +140,4 @@ export function StockConsensusCard({ ticker }: { ticker: string }) {
       )}
     </div>
   );
-}
+});

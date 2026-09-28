@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { memo, Suspense, useCallback, useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { CauseCardButton } from "@/components/CauseCard";
 import CauseDetailView from "@/components/CauseDetailView";
@@ -40,6 +40,10 @@ function StockBriefingContent() {
   const { has, toggle, loading: watchlistLoading } = useWatchlist();
   const [selectedCauseId, setSelectedCauseId] = useState<string | null>(null);
   const [range, setRange] = useState(0);
+  const handleRangeChange = useCallback((newRange: string) => {
+    const index = RANGES.indexOf(newRange);
+    if (index >= 0) setRange(index);
+  }, []);
 
   const displayName = summary?.stock.name ?? analysis?.stock.name ?? name ?? ticker;
   const causes = analysis?.briefing.causes ?? [];
@@ -75,7 +79,7 @@ function StockBriefingContent() {
       {summary && !summaryLoading && (
         <div className="stock-layout">
           <div className="stock-main-column">
-            <StockHeader stock={summary.stock} price={summary.price} oneLiner={analysis?.briefing.oneLiner} range={range} setRange={setRange} />
+            <StockHeader stock={summary.stock} price={summary.price} oneLiner={analysis?.briefing.oneLiner} range={range} onRangeChange={handleRangeChange} />
 
             <div className="stock-section-heading">
               <span>오늘의 변동 요인</span>
@@ -154,18 +158,18 @@ function StockBriefingContent() {
   );
 }
 
-function StockHeader({
+const StockHeader = memo(function StockHeader({
   stock,
   price,
   oneLiner,
   range,
-  setRange,
+  onRangeChange,
 }: {
   stock: Stock;
   price: Price;
   oneLiner?: string;
   range: number;
-  setRange: (index: number) => void;
+  onRangeChange: (range: string) => void;
 }) {
   const direction = changeDirection(price.changeRate);
   return (
@@ -195,10 +199,7 @@ function StockHeader({
           key={`${stock.ticker}-${RANGES[range]}`}
           ticker={stock.ticker}
           range={RANGES[range]}
-          onRangeChange={(newRange) => {
-            const idx = RANGES.indexOf(newRange);
-            if (idx >= 0) setRange(idx);
-          }}
+          onRangeChange={onRangeChange}
           height={400}
         />
       </div>
@@ -213,7 +214,7 @@ function StockHeader({
       )}
     </>
   );
-}
+});
 
 // KIS 레이트리밋(특히 서버리스에서 라우트별로 토큰 캐시가 안 겹치는 문제)은 대부분 몇 초 안에
 // 풀린다. PriceChart와 동일한 패턴으로, retryable 신호를 받으면 바로 포기하지 않고 잠깐 뒤 다시 부른다.
@@ -301,7 +302,7 @@ function useValuationInterpretation(stock: Stock, price: Price, valuation: Valua
   return { interpretation, loading: ready && !settled };
 }
 
-function MetricsRow({ stock, price }: { stock: Stock; price: Price }) {
+const MetricsRow = memo(function MetricsRow({ stock, price }: { stock: Stock; price: Price }) {
   const valuation = useValuation(stock.ticker);
   const { interpretation, loading } = useValuationInterpretation(stock, price, valuation);
 
@@ -360,7 +361,7 @@ function MetricsRow({ stock, price }: { stock: Stock; price: Price }) {
       )}
     </>
   );
-}
+});
 
 export default function StockBriefingPage() {
   return (
