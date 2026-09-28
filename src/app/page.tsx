@@ -77,9 +77,18 @@ function MarketIndexStrip({ indices, comment }: { indices: MarketIndex[] | null;
   // 직접 확인해서 코드를 고쳐야 하니 눈에 보여야 한다).
   const visibleIndices = indices;
   if (visibleIndices.length === 0) return null;
+  const snapshot = visibleIndices[0];
+  const snapshotDate = snapshot?.asOf ? new Date(snapshot.asOf) : null;
+  const basisLabel =
+    snapshot?.source === "KIS" && snapshotDate && !Number.isNaN(snapshotDate.getTime())
+      ? `KIS ${snapshotDate.toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit" })} 기준`
+      : snapshot?.source === "KRX" && snapshot.asOf
+        ? `KRX ${snapshot.asOf.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3")} 종가 기준`
+        : null;
 
   return (
     <div style={{ marginBottom: 20 }}>
+      {basisLabel && <div className="muted" style={{ fontSize: 11, marginBottom: 7, textAlign: "right" }}>{basisLabel}</div>}
       {/* 코스피/코스닥 2개일 땐 꽉 채우고, 해외 지수까지 붙어 4~6개가 되면 한 화면에 다
           욱여넣기보다 가로 스크롤로 넘기는 게 낫다 — 폭이 좁아지면 숫자가 다 안 보인다.
           카드를 세로로(국가·이름 위, 가격·등락 아래) 배치해서 숫자가 안 잘리고 여유 있게 보이게 한다. */}

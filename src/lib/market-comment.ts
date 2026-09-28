@@ -28,10 +28,7 @@ async function callOpenAiCompatible(opts: {
   prompt: string;
   temperature: number;
   maxTokens?: number;
-  // OpenRouter 경유로 추론형 모델을 부를 때 reasoning 토큰이 출력 예산을 먼저 먹어버려서
-  // 눈에 보이는 답변이 문장 중간에 잘리는 걸 막는다 — 한 문장짜리 코멘트엔 추론이 필요
-  // 없으니 꺼둔다.
-  disableReasoning?: boolean;
+  reasoningEffort?: "low" | "medium" | "high";
 }): Promise<string> {
   const doFetch = () =>
     fetch(opts.url, {
@@ -41,7 +38,7 @@ async function callOpenAiCompatible(opts: {
         model: opts.model,
         temperature: opts.temperature,
         ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-        ...(opts.disableReasoning ? { reasoning: { effort: "none" } } : {}),
+        ...(opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
         messages: [
           { role: "system", content: opts.system },
           { role: "user", content: opts.prompt },
@@ -106,6 +103,7 @@ function callGroq(system: string, prompt: string, temperature: number, maxTokens
     prompt,
     temperature,
     maxTokens,
+    reasoningEffort: "low",
   });
 }
 
@@ -214,26 +212,40 @@ function buildAnalystSystem(): string {
 function formatIndexLine(index: MarketIndex): string {
   const rate =
     index.changeRate !== null ? `${index.changeRate > 0 ? "+" : ""}${index.changeRate.toFixed(2)}%` : "등락률 없음";
-  return `${index.name}: ${index.close ?? "데이터 없음"} (${rate})`;
+  const source = index.source === "KIS" ? "KIS 장중 현재지수" : index.source === "KRX" ? "KRX 일별 종가" : "출처 미상";
+  const asOf = index.asOf ? `, 기준 ${index.asOf}` : "";
+  return `${index.name}: ${index.close ?? "데이터 없음"} (${rate}, ${source}${asOf})`;
 }
 
-function buildAnalysisPrompt(indices: MarketIndex[], headlines: string[]): string {
-  const indexText = indices.map(formatIndexLine).join("\n");
-  const newsText = headlines.length ? headlines.map((title, i) => `${i + 1}. ${title}`).join("\n") : "관련 뉴스 없음";
+type MarketHeadline = { title: string; pubDate: string };
 
-  return `[오늘의 지수]
+function buildAnalysisPrompt(indices: MarketIndex[], headlines: MarketHeadline[]): string {
+  const indexText = indices.map(formatIndexLine).join("\n");
+  const newsText = headlines.length
+    ? headlines.map((item, i) => `${i + 1}. ${item.title} (발행 ${item.pubDate || "시각 미상"})`).join("\n")
+    : "관련 뉴스 없음";
+
+  return `[현재 시각]
+${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
+
+[시장 지수]
 ${indexText}
 
 [관련 뉴스 헤드라인]
-${newsText}`;
+${newsText}
+
+지수와 뉴스의 기준 시각을 반드시 비교하라. KRX 일별 종가처럼 오늘 장중 값이 아닌 지수는
+오늘의 실시간 흐름인 것처럼 단정하지 말고, 최신 뉴스와 방향이 충돌하면 그 시점 차이를 명시하라.`;
 }
 
-async function analyzeMarket(indices: MarketIndex[], headlines: string[]): Promise<string> {
+async function analyzeMarket(indices: MarketIndex[], headlines: MarketHeadline[]): Promise<string> {
   const system = buildAnalystSystem();
   const prompt = buildAnalysisPrompt(indices, headlines);
   return withGeminiFallback(
     "1단계 시장 분석",
-    () => callNvidia(system, prompt, 0.2, 500),
+    // Nemotron은 내부 추론도 출력 예산을 사용한다. 500토큰에서는 짧은 시장 분석도
+    // finish_reason=length로 잘리는 것이 실측되어 종목 브리핑과 같은 여유를 둔다.
+    () => callNvidia(system, prompt, 0.2, 2200),
     () => callGemini(system, prompt, 0.2),
   );
 }
@@ -271,14 +283,14 @@ async function writeComment(analysis: string): Promise<string> {
   const system = buildJeonhyungSystem();
   const prompt = buildRewritePrompt(analysis);
   return withFallbackChain("2단계 멘트 작성", [
-    { name: "Groq", hasKey: !!serverEnv("GROQ_API_KEY"), call: () => callGroq(system, prompt, 0.9, 400) },
-    { name: "Cerebras", hasKey: !!serverEnv("CEREBRAS_API_KEY"), call: () => callCerebras(system, prompt, 0.9, 400) },
+    { name: "Groq", hasKey: !!serverEnv("GROQ_API_KEY"), call: () => callGroq(system, prompt, 0.9, 1200) },
+    { name: "Cerebras", hasKey: !!serverEnv("CEREBRAS_API_KEY"), call: () => callCerebras(system, prompt, 0.9, 1200) },
     { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, 0.9) },
   ]);
 }
 
 /** 코스피/코스닥 뉴스를 합치고 제목 기준 중복 제거, 상위 몇 개만 프롬프트에 넣는다. */
-async function collectMarketHeadlines(): Promise<string[]> {
+async function collectMarketHeadlines(): Promise<MarketHeadline[]> {
   const [kospiNews, kosdaqNews] = await Promise.all([
     getNewsMultiSource("코스피").catch(() => []),
     getNewsMultiSource("코스닥").catch(() => []),
@@ -289,7 +301,7 @@ async function collectMarketHeadlines(): Promise<string[]> {
     seen.add(item.title);
     return true;
   });
-  return merged.slice(0, 8).map((item) => item.title);
+  return merged.slice(0, 8).map((item) => ({ title: item.title, pubDate: item.pubDate }));
 }
 
 /**
@@ -303,8 +315,14 @@ export async function getMarketComment(indices: MarketIndex[]): Promise<string |
   try {
     const headlines = await collectMarketHeadlines();
     const analysis = await analyzeMarket(indices, headlines);
-    const comment = await writeComment(analysis);
-    return comment.trim() || null;
+    try {
+      const comment = await writeComment(analysis);
+      return comment.trim() || analysis.trim() || null;
+    } catch (rewriteError) {
+      // 말투 재작성 제공자가 모두 막혀도 NVIDIA의 최신 시장 분석은 화면에 남긴다.
+      console.warn("[market-comment] 2단계 재작성 실패(NVIDIA 원문으로 계속):", errMsg(rewriteError));
+      return analysis.trim() || null;
+    }
   } catch (error) {
     console.warn("[market-comment] 코멘트 생성 실패(코멘트 없이 진행):", errMsg(error));
     return null;

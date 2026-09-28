@@ -232,6 +232,8 @@ export async function getMarketIndex(series: "KOSPI" | "KOSDAQ"): Promise<Market
           name: HEADLINE_INDEX_NAME[series],
           close: Number(String(row.CLSPRC_IDX).replaceAll(",", "")),
           changeRate: row.FLUC_RT ? Number(String(row.FLUC_RT).replaceAll(",", "")) : null,
+          asOf: dateString(offset),
+          source: "KRX",
         };
       }
       if (rows.length > 0) break; // 그날 데이터는 있는데 못 찾은 거면 필드명이 틀린 것 — 더 뒤져봐야 소용없다.

@@ -286,6 +286,38 @@ export async function fetchIntradayHistory(ticker: string): Promise<PricePoint[]
 // 현재가 (홈 카드 LiveSparkline이 몇 초 간격으로 폴링하는 용도)
 // ---------------------------------------------------------------------------
 
+const DOMESTIC_INDEX_CODES: Array<{ name: "코스피" | "코스닥"; code: string }> = [
+  { name: "코스피", code: "0001" },
+  { name: "코스닥", code: "1001" },
+];
+
+/**
+ * 홈의 시장 브리핑에 쓰는 국내 대표지수 현재가.
+ * KRX 일별 API는 장중에 전 거래일 종가만 주므로, KIS 국내업종 현재지수를 우선 사용한다.
+ */
+export async function fetchDomesticIndices(): Promise<MarketIndex[]> {
+  const asOf = new Date().toISOString();
+  const rows = await Promise.all(
+    DOMESTIC_INDEX_CODES.map(async ({ name, code }) => {
+      const data = await kisGet(
+        "/uapi/domestic-stock/v1/quotations/inquire-index-price",
+        "FHPUP02100000",
+        {
+          FID_COND_MRKT_DIV_CODE: "U",
+          FID_INPUT_ISCD: code,
+        },
+      );
+      const close = toNumber(data.output?.bstp_nmix_prpr);
+      const changeRate = toNumber(data.output?.bstp_nmix_prdy_ctrt);
+      if (close === null || changeRate === null) {
+        throw new Error(`KIS ${name} 현재지수 응답에 필수 값이 없습니다.`);
+      }
+      return { name, close, changeRate, asOf, source: "KIS" as const };
+    }),
+  );
+  return rows;
+}
+
 export type CurrentPrice = {
   price: number;
   /** 전일 대비율(%). prdy_ctrt — 이 파일의 다른 changeRate 필드들과 같은 부호 규약. */

@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMarketIndices } from "@/lib/krx";
-import { fetchOverseasIndicesDebug } from "@/lib/kis";
+import { fetchDomesticIndices, fetchOverseasIndicesDebug } from "@/lib/kis";
 import { getMarketComment } from "@/lib/market-comment";
+import { MarketIndex } from "@/lib/types";
 
-// 지수는 실시간 급변을 다루는 화면이 아니라서 서버리스 인스턴스 안에서 30분 정도는
-// 캐시해도 충분하다 — 관심종목 요약(watchlist-summary)만큼 자주 부를 필요가 없다.
-// "쩐형" 시장 분위기 코멘트(comment)도 지수와 같은 주기로만 갱신하면 충분해서 같은
-// 캐시에 얹는다 — LLM 호출은 지수 조회보다 느리고 비용도 있으니 30분에 한 번이면 된다.
+// 장중 시장 방향과 뉴스가 어긋나지 않도록 짧게 캐시한다. 지수와 AI 코멘트를 같은 스냅샷으로
+// 묶어, 화면 숫자와 멘트가 서로 다른 시점을 설명하지 않게 한다.
 type Cache = {
-  data: Awaited<ReturnType<typeof getMarketIndices>>;
+  data: MarketIndex[];
   comment: string | null;
   expiresAt: number;
 };
 let cache: Cache | null = null;
-const CACHE_TTL_MS = 30 * 60_000;
+const CACHE_TTL_MS = 3 * 60_000;
 
 export async function GET(request: NextRequest) {
   // 임시 디버그 통로 — 해외지수(니케이/상해/심천/항셍)가 0/0.00%로 깨지는 원인을 찾으려고
@@ -30,8 +29,16 @@ export async function GET(request: NextRequest) {
   // 이 4개 지수에 대해 모든 필드를 "0.00"으로 반환한다(?debug=1로 실측 확인 완료). 다른
   // 개발자 사례를 보면 이 TR 자체가 미국 지수 전용일 가능성이 있어 코드값을 바꿔도 안 될
   // 수 있다 — 아시아 지수를 다시 켜려면 fetchOverseasIndicesDebug로 실측하면서 제대로 된
-  // 엔드포인트/코드를 찾아야 한다. 코스피/코스닥은 KRX 데이터라 이 이슈와 무관하게 정상.
-  const domestic = await getMarketIndices();
+  // 엔드포인트/코드를 찾아야 한다.
+  // 국내 지수는 KIS 장중 현재지수를 우선하고, KIS 장애 때만 KRX 최근 거래일 종가로 폴백한다.
+  let domestic: MarketIndex[];
+  try {
+    domestic = await fetchDomesticIndices();
+    if (domestic.length !== 2) throw new Error("KIS 국내지수 일부가 비어 있습니다.");
+  } catch (error) {
+    console.warn("[market-indices] KIS 국내지수 실패 → KRX 일별 종가 폴백:", error);
+    domestic = await getMarketIndices();
+  }
   const indices = domestic;
   const comment = await getMarketComment(domestic);
   cache = { data: indices, comment, expiresAt: Date.now() + CACHE_TTL_MS };
