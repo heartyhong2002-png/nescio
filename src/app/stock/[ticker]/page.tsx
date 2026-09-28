@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { memo, Suspense, useCallback, useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
+import BriefingErrorState from "@/components/BriefingErrorState";
 import { CauseCardButton } from "@/components/CauseCard";
 import CauseDetailView from "@/components/CauseDetailView";
 import PriceChart from "@/components/PriceChart";
@@ -93,12 +94,7 @@ function StockBriefingContent() {
                 <div className="skeleton" style={{ height: 96, borderRadius: 14 }} />
               </div>
             ) : briefingError ? (
-              <div className="error-box" style={{ marginBottom: 24 }}>
-                {briefingError}{" "}
-                <button className="btn-ghost" onClick={refresh}>
-                  다시 시도
-                </button>
-              </div>
+              <BriefingErrorState onRetry={refresh} />
             ) : causes.length === 0 ? (
               <div className="note-box" style={{ marginBottom: 24 }}>
                 뚜렷한 원인을 찾지 못했어요.

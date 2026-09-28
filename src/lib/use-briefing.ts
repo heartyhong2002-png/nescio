@@ -179,10 +179,15 @@ export function useStockBriefing(ticker: string, initialName?: string) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker, cached]);
 
-  const refresh = useCallback(() => {
-    const name = initialName ?? cached?.stock.name;
-    if (name) fetchBriefing(name, true);
-  }, [cached?.stock.name, fetchBriefing, initialName]);
+  const refresh = useCallback(async () => {
+    setFetchState({ loading: true, error: "" });
+    const name = initialName ?? cached?.stock.name ?? (await resolveStockName(ticker));
+    if (name) {
+      await fetchBriefing(name, true);
+    } else {
+      setFetchState({ loading: false, error: "종목 정보를 찾을 수 없습니다." });
+    }
+  }, [cached?.stock.name, fetchBriefing, initialName, ticker]);
 
   return {
     analysis: cached,

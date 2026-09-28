@@ -203,6 +203,20 @@ a:hover {
 .stock-intelligence .error-box { background: rgba(177, 51, 63, 0.15); border-color: rgba(246, 194, 199, 0.35); color: #ffc9ce; }
 .stock-intelligence .cause-picker { margin-bottom: 26px; }
 
+.briefing-error-state { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 24px; padding: 18px 20px; border: 1px solid var(--line-strong); border-radius: 13px; background: var(--surface); }
+.briefing-error-state strong { display: block; color: var(--ink); font-size: 13px; }
+.briefing-error-state p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+.briefing-error-state button { flex: none; padding: 9px 14px; border: 1px solid var(--accent); border-radius: 9px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; }
+.briefing-error-state button:hover { background: var(--accent-dark); }
+.briefing-error-state button:focus-visible { outline: 2px solid #f36fba; outline-offset: 3px; }
+.stock-intelligence .briefing-error-state { border-color: #392b3e; background: #211924; }
+.stock-intelligence .briefing-error-state strong { color: #f7eef5; }
+.stock-intelligence .briefing-error-state p { color: #a898a7; }
+@media (max-width: 599px) {
+  .briefing-error-state { align-items: stretch; flex-direction: column; padding: 16px; }
+  .briefing-error-state button { align-self: flex-start; }
+}
+
 /* Stock analysis handoff: factual chart and brokerage research share one dark surface. */
 .stock-price-chart button:focus-visible,
 .stock-consensus-report:focus-visible { outline: 2px solid #f36fba; outline-offset: 2px; }

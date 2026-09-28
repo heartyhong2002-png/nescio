@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import AppShell from "@/components/AppShell";
+import BriefingErrorState from "@/components/BriefingErrorState";
 import CauseDetailView from "@/components/CauseDetailView";
 import { useStockBriefing } from "@/lib/use-briefing";
 
@@ -35,12 +36,7 @@ function CauseBriefingContent() {
       )}
 
       {error && (
-        <div className="error-box">
-          {error}{" "}
-          <button className="btn-ghost" onClick={refresh}>
-            다시 시도
-          </button>
-        </div>
+        <BriefingErrorState onRetry={refresh} />
       )}
 
       {analysis && !loading && !cause && (
