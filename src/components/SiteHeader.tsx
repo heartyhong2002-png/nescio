@@ -8,7 +8,7 @@ const NAV = [
   { href: "/", label: "브리핑" },
   { href: "/watchlist/add", label: "관심종목 담기" },
   { href: "/ipo", label: "공모주" },
-  { href: "/exchange-rates", label: "환율" },
+  { href: "/exchange-rates", label: "글로벌" },
   { href: "/alerts", label: "알림" },
   { href: "/my", label: "마이" },
 ];

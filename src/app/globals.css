@@ -203,6 +203,57 @@ a:hover {
 .stock-intelligence .error-box { background: rgba(177, 51, 63, 0.15); border-color: rgba(246, 194, 199, 0.35); color: #ffc9ce; }
 .stock-intelligence .cause-picker { margin-bottom: 26px; }
 
+/* IPO pages reuse the same dashboard palette while preserving all existing data states. */
+.ipo-intelligence { max-width: 1160px; margin: 0 auto; }
+.ipo-topbar { margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.ipo-eyebrow { color: #f687c2; font-weight: 800; letter-spacing: 0.12em; }
+.ipo-topbar .page-title { margin-top: 7px; font-size: clamp(25px, 3vw, 34px); color: var(--ink); }
+.ipo-tab-switcher { position: sticky; top: var(--header-h); z-index: 20; background: rgba(16, 11, 24, 0.92); backdrop-filter: blur(12px); }
+.ipo-intelligence .card { background: rgba(27, 19, 36, 0.88); box-shadow: none; }
+.ipo-intelligence .placeholder-box { background: rgba(255, 255, 255, 0.035); border-color: var(--line-strong); }
+.ipo-intelligence .note-box { background: rgba(255, 255, 255, 0.04); }
+.ipo-intelligence .stock-icon { color: #ffc1e0; background: linear-gradient(135deg, rgba(249, 89, 172, 0.26), rgba(116, 82, 236, 0.22)); }
+.ipo-intelligence .pill { border-color: rgba(243, 91, 174, 0.44); color: #ffb9da; }
+.ipo-intelligence .pill.filled { background: #d23d91; color: #fff; }
+.ipo-intelligence .error-box { background: rgba(177, 51, 63, 0.15); border-color: rgba(246, 194, 199, 0.35); color: #ffc9ce; }
+
+/* Supporting product screens: actual data remains primary, with the same visual hierarchy. */
+.watchlist-intelligence,
+.alerts-intelligence,
+.my-intelligence { max-width: 760px; margin: 0 auto; }
+.macro-intelligence { max-width: 1160px; margin: 0 auto; }
+.watchlist-topbar,
+.alerts-topbar,
+.my-topbar,
+.macro-topbar { margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.watchlist-topbar .eyebrow,
+.alerts-topbar .eyebrow,
+.my-topbar .eyebrow,
+.macro-topbar .eyebrow { color: #f687c2; }
+.macro-topbar .page-title { margin-top: 7px; font-size: clamp(25px, 3vw, 34px); color: var(--ink); }
+.macro-intelligence .grid-cards { grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); }
+.macro-intelligence .card,
+.watchlist-intelligence .card,
+.my-intelligence .card { background: rgba(27, 19, 36, 0.82); box-shadow: none; }
+.macro-intelligence .list-panel,
+.watchlist-intelligence .list-panel,
+.alerts-intelligence .list-panel { background: rgba(27, 19, 36, 0.72); }
+.macro-briefing { margin: 0 0 26px; padding: 18px; border-color: rgba(243, 91, 174, 0.28); background: linear-gradient(120deg, rgba(82, 35, 82, 0.72), rgba(27, 19, 36, 0.9)) !important; }
+.intelligence-page .placeholder-box,
+.intelligence-page .note-box { background: rgba(255, 255, 255, 0.04); border-color: var(--line-strong); }
+.intelligence-page .error-box { background: rgba(177, 51, 63, 0.15); border-color: rgba(246, 194, 199, 0.35); color: #ffc9ce; }
+.intelligence-page .skeleton { background: linear-gradient(90deg, rgba(255,255,255,0.07) 25%, rgba(255,255,255,0.15) 37%, rgba(255,255,255,0.07) 63%); background-size: 400% 100%; }
+
+@media (max-width: 599px) {
+  .ipo-topbar { padding-bottom: 13px; margin-bottom: 12px; }
+  .ipo-topbar .page-title { font-size: 24px; }
+  .ipo-tab-switcher { top: 0; margin-left: -14px; margin-right: -14px; padding: 10px 14px 8px; overflow-x: auto; }
+  .watchlist-topbar,
+  .alerts-topbar,
+  .my-topbar,
+  .macro-topbar { padding-bottom: 13px; margin-bottom: 13px; }
+}
+
 @media (max-width: 599px) {
   .stock-back-row { margin-bottom: 16px; }
   .stock-price-hero { display: block; padding: 19px; }

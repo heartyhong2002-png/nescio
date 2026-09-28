@@ -146,9 +146,12 @@ export default function SecurityPage() {
   }
 
   return (
-    <AppShell narrow>
+    <AppShell narrow variant="intelligence">
       <div className="topbar">
-        <div className="page-title">보안 설정</div>
+        <div>
+          <div className="eyebrow">ACCOUNT SECURITY</div>
+          <div className="page-title">보안 설정</div>
+        </div>
       </div>
 
       <div className="back-row" style={{ marginBottom: 16 }}>

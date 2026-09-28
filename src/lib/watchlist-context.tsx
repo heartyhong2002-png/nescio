@@ -42,7 +42,9 @@ function writeLocalWatchlist(stocks: Stock[]) {
 export function WatchlistProvider({ children }: { children: ReactNode }) {
   const supabase = useMemo(() => createClient(), []);
   const { user, loading: authLoading } = useAuthContext();
-  const [watchlist, setWatchlist] = useState<Stock[]>(() => readLocalWatchlist());
+  // 서버와 첫 클라이언트 렌더를 동일한 빈 상태로 시작한다. 로컬 캐시를 초기값으로
+  // 읽으면 SSR 결과와 달라져 화면이 다시 그려지고, 관심종목 수가 순간적으로 흔들린다.
+  const [watchlist, setWatchlist] = useState<Stock[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

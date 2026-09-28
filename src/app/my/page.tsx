@@ -43,9 +43,13 @@ export default function MyPage() {
   }
 
   return (
-    <AppShell narrow>
-      <div className="topbar">
-        <div className="page-title">마이</div>
+    <AppShell narrow variant="intelligence">
+      <div className="my-intelligence">
+      <div className="topbar my-topbar">
+        <div>
+          <div className="eyebrow">ACCOUNT</div>
+          <div className="page-title">마이</div>
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: 26 }}>
@@ -149,6 +153,7 @@ export default function MyPage() {
           )}
         </>
       )}
+      </div>
     </AppShell>
   );
 }

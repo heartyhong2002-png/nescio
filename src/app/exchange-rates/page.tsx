@@ -40,6 +40,14 @@ function formatDate(basDd: string) {
   return `${basDd.slice(0, 4)}.${basDd.slice(4, 6)}.${basDd.slice(6, 8)} 매매기준율`;
 }
 
+// API 원문은 보존하되, 화면에서는 초보 투자자에게도 신뢰감 있는 문장으로 보여준다.
+function presentBriefing(briefing: string) {
+  return briefing
+    .replaceAll("미친 듯이", "빠르게")
+    .replaceAll("미친듯이", "빠르게")
+    .replaceAll("존나", "매우");
+}
+
 function IndicatorCard({ indicator }: { indicator: MacroIndicator }) {
   const isUp = indicator.changePercent && indicator.changePercent > 0;
   const isDown = indicator.changePercent && indicator.changePercent < 0;
@@ -89,9 +97,11 @@ export default function MacroPage() {
   })();
 
   return (
-    <AppShell narrow>
-      <div className="topbar" style={{ alignItems: "flex-start" }}>
+    <AppShell variant="intelligence">
+      <div className="macro-intelligence">
+      <div className="topbar macro-topbar" style={{ alignItems: "flex-start" }}>
         <div>
+          <div className="eyebrow">GLOBAL MACRO</div>
           <div className="page-title">글로벌 매크로</div>
           <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>
             원자재, 지수, 국채 및 환율 동향
@@ -110,17 +120,6 @@ export default function MacroPage() {
 
       {!loading && data && (
         <>
-          {data.briefing && (
-            <div className="card" style={{ padding: 16, marginBottom: 24, backgroundColor: "var(--bg-muted)", border: "1px solid var(--border)" }}>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                <span>🤖</span> AI 시장 코멘트
-              </div>
-              <div style={{ fontSize: 14, lineHeight: 1.6, wordBreak: "keep-all" }}>
-                {data.briefing}
-              </div>
-            </div>
-          )}
-
           {data.indicators && data.indicators.length > 0 && (
             <>
               <div className="eyebrow" style={{ marginBottom: 12 }}>
@@ -151,6 +150,17 @@ export default function MacroPage() {
                   <div style={{ fontSize: 20, fontWeight: 700, marginTop: 8 }}>{formatPrice(rate.rate)}원</div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {data.briefing && (
+            <div className="card macro-briefing">
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                <span>✦</span> AI 시장 코멘트
+              </div>
+              <div style={{ fontSize: 14, lineHeight: 1.6, wordBreak: "keep-all" }}>
+                {presentBriefing(data.briefing)}
+              </div>
             </div>
           )}
 
@@ -206,6 +216,7 @@ export default function MacroPage() {
           </div>
         </>
       )}
+      </div>
     </AppShell>
   );
 }

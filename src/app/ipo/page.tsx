@@ -1385,9 +1385,11 @@ export default function IpoPage() {
   const loading = ipos === null && !error;
 
   return (
-    <AppShell narrow>
-      <div className="topbar" style={{ alignItems: "flex-start" }}>
+    <AppShell variant="intelligence">
+      <div className="ipo-intelligence">
+      <div className="topbar ipo-topbar" style={{ alignItems: "flex-start" }}>
         <div>
+          <div className="eyebrow ipo-eyebrow">IPO INTELLIGENCE</div>
           <div className="page-title">공모주 캘린더 & 시장 동향</div>
           <p className="muted" style={{ fontSize: 13, marginTop: 6, lineHeight: 1.5 }}>
             청약 일정·수요예측·AI 진단부터 <strong>상장 예정일 및 2026 신규상장 첫날 실전 성적표</strong>까지 한눈에 확인하세요.
@@ -1397,6 +1399,7 @@ export default function IpoPage() {
 
       {/* 상단 탭 스위처 */}
       <div
+        className="ipo-tab-switcher"
         style={{
           display: "flex",
           gap: 8,
@@ -2018,6 +2021,7 @@ export default function IpoPage() {
       )}
         </>
       )}
+      </div>
     </AppShell>
   );
 }

@@ -29,9 +29,13 @@ export default function AlertsPage() {
   const withNews = (items ?? []).filter((item) => (item.newsCount ?? 0) > 0);
 
   return (
-    <AppShell narrow>
-      <div className="topbar">
-        <div className="page-title">알림함</div>
+    <AppShell narrow variant="intelligence">
+      <div className="alerts-intelligence">
+      <div className="topbar alerts-topbar">
+        <div>
+          <div className="eyebrow">ALERTS</div>
+          <div className="page-title">알림함</div>
+        </div>
       </div>
 
       {loading && <div className="muted" style={{ fontSize: 13 }}>불러오는 중…</div>}
@@ -63,6 +67,7 @@ export default function AlertsPage() {
           ))}
         </div>
       )}
+      </div>
     </AppShell>
   );
 }

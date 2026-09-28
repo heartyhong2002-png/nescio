@@ -83,9 +83,11 @@ function WatchlistAddContent() {
   const searching = query.trim().length > 0;
 
   return (
-    <AppShell narrow bare={fromOnboarding}>
-      <div className="topbar" style={{ alignItems: "flex-start" }}>
+    <AppShell narrow bare={fromOnboarding} variant={fromOnboarding ? "default" : "intelligence"}>
+      <div className="watchlist-intelligence">
+      <div className="topbar watchlist-topbar" style={{ alignItems: "flex-start" }}>
         <div>
+          <div className="eyebrow">WATCHLIST</div>
           <div className="page-title">관심종목 담기</div>
           <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>
             {fromOnboarding ? "고른 섹터에서 먼저 추천했어요." : "종목이나 섹터를 검색해 담아보세요."}
@@ -324,6 +326,7 @@ function WatchlistAddContent() {
           {fromOnboarding ? `${watchlist.length}개 담고 시작하기` : "완료"}
         </button>
         {!fromOnboarding && <Link href="/" className="btn-ghost">← 홈으로</Link>}
+      </div>
       </div>
     </AppShell>
   );
