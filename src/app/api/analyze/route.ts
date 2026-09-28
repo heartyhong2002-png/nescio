@@ -528,6 +528,54 @@ async function rewritePlain(
   return briefing;
 }
 
+function buildRuleBasedRawAnalysis(name: string, price: Price, news: NewsItem[]): string {
+  const changeText =
+    price.changeRate === null ? "등락률 데이터 없음" : `조회된 등락률 ${price.changeRate > 0 ? "+" : ""}${price.changeRate.toFixed(2)}%`;
+  const closeText = price.close === null ? "현재가 데이터 없음" : `조회된 기준 가격 ${price.close.toLocaleString("ko-KR")}원`;
+  const newsText = news.length
+    ? news.slice(0, 5).map((item) => `- ${item.title} (발행: ${item.pubDate || "시각 미상"})`).join("\n")
+    : "관련 뉴스가 수집되지 않았습니다.";
+
+  return `[자동 대체 분석: AI 분석 제공자들이 응답하지 않아 확인된 입력만 정리]
+종목: ${name}
+시세: ${closeText}, ${changeText}.
+확인된 뉴스:
+${newsText}
+주의: 이 정보만으로 뉴스와 주가 사이의 인과관계를 확정할 수 없습니다. 직접 원인은 판단 유보입니다.`;
+}
+
+function buildRuleBasedBriefing(name: string, price: Price, news: NewsItem[]): Briefing {
+  const rate = price.changeRate;
+  const move = rate === null ? "등락 방향을 확인할 시세 데이터가 부족해요" :
+    rate > 0.15 ? `조회된 기준 시세가 ${rate.toFixed(2)}% 올랐어요` :
+      rate < -0.15 ? `조회된 기준 시세가 ${Math.abs(rate).toFixed(2)}% 내렸어요` : "조회된 기준 시세는 보합권이에요";
+  const causes: Cause[] = news.length
+    ? [{
+        id: "cause-1",
+        title: "최근 관련 뉴스",
+        impact: "low",
+        summary: `“${news[0].title}” 기사가 확인됐어요. 다만 이 뉴스가 주가 변동의 직접 원인인지는 자동으로 확인되지 않았어요.`,
+        conclusion: "뉴스는 확인됐지만 주가와의 인과관계는 판단 유보예요.",
+        timeline: [{
+          title: "기사 발행",
+          desc: `${news[0].pubDate || "발행 시각 미상"}: ${news[0].title}`,
+        }],
+        newsIndices: [0],
+        expertOpinions: {
+          bullish: { count: 0, summary: "" },
+          bearish: { count: 0, summary: "" },
+        },
+        similarCase: "",
+      }]
+    : [];
+
+  return {
+    oneLiner: `${name}은(는) ${move}.`,
+    causes,
+    aiComment: `AI 분석 제공자가 응답하지 않아 시세와 수집된 뉴스만 자동 정리했어요. 뉴스와 주가의 직접적인 인과관계는 확인되지 않아 판단을 유보합니다.\n\n${DISCLAIMER}`,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 영속 캐시 — 기존 stock_analyses의 최신 행을 사용자별 캐시로 재사용한다. 10분 이내면 그대로
 // 응답하고, 24시간 이내의 오래된 결과는 즉시 응답한 뒤 after()에서 새 버전을 생성한다.
@@ -579,8 +627,21 @@ async function generateAnalysis(userId: string, name: string, ticker: string, to
   ]);
 
   const briefingNews = news.slice(0, MAX_ANALYSIS_NEWS);
-  const raw = await analyzeRaw(name, ticker, price, briefingNews, fxSummary, intlRateSummary, historySummary);
-  const briefing = await rewritePlain(name, ticker, raw, briefingNews, tone);
+  let raw: string;
+  try {
+    raw = await analyzeRaw(name, ticker, price, briefingNews, fxSummary, intlRateSummary, historySummary);
+  } catch (error) {
+    console.warn("[analyze] 1단계 LLM 전체 실패, 확인된 데이터로 대체 분석:", errMsg(error));
+    raw = buildRuleBasedRawAnalysis(name, price, briefingNews);
+  }
+
+  let briefing: Briefing;
+  try {
+    briefing = await rewritePlain(name, ticker, raw, briefingNews, tone);
+  } catch (error) {
+    console.warn("[analyze] 2단계 LLM 전체 실패, 사실 기반 브리핑으로 대체:", errMsg(error));
+    briefing = buildRuleBasedBriefing(name, price, briefingNews);
+  }
   return {
     stock: { name, ticker },
     price,
