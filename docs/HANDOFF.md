@@ -333,7 +333,7 @@ src/
 - **개별 지표 카드 호버/클릭 시 툴팁 해설**:
   - 각 지표별로 "왜 주식시장에 영향이 가는지" 초보자 친화적인 인과관계 설명 제공.
 - **LLM 추론 엔진 및 폴백 아키텍처**:
-  - **1순위**: `Groq LPU` (`llama-3.3-70b-versatile` 또는 `llama-3.1-8b-instant`) — 이미 프로젝트 `GROQ_API_KEY` 환경변수 지원 체계 구축되어 있음.
+  - **1순위**: `Groq LPU` (`openai/gpt-oss-120b` 또는 `llama-3.2-11b-vision-preview`) — 이미 프로젝트 `GROQ_API_KEY` 환경변수 지원 체계 구축되어 있음.
   - **2순위**: Gemini (`gemini-2.5-flash`)
   - **3순위 (무중단 룰베이스 폴백)**: 외부 LLM API 키 미설정 또는 네트워크 장애 시에도 지표 등락률(유가 급등, 금리 상승 등)에 따른 사전 정의된 논리 룰로 100% 정상 작동하는 폴백 엔진 필수 구현.
 - **캐싱 필수**:
@@ -411,7 +411,7 @@ src/
 - **월별 데이터베이스 & 트렌드 수집 엔진 (`src/lib/ipo-monthly-analyzer.ts`)**:
   - 2026년 3월부터 9월까지의 실제 상장 종목 첫날 성적표, 월별 거시 이슈(미 기준금리 인하 사이클, 8월 글로벌 블랙먼데이, 5월 피지컬 로봇 정책 지원 등), 금융당국 정책(가격제한폭 400%, 허수청약 방지 제재, 주관사 공모가 산정 현실화 등) 팩트 DB 구축.
   - `analyzeMonthlyIpoTrend(month, targetItems)`:
-    - **1순위**: Groq LPU (`llama-3.3-70b-versatile` — 초고속 추론)
+    - **1순위**: Groq LPU (`openai/gpt-oss-120b` — 초고속 추론)
     - **2순위**: Gemini (`gemini-2.5-flash`)
     - **3순위 (안전 폴백)**: 외부 API 키 미설정이나 장애 시에도 100% 정상 작동하는 고정밀 룰베이스 분석 엔진.
     - 인메모리 캐시 (2시간 TTL) 적용.
@@ -497,9 +497,9 @@ src/
 
 ### 7) LLM 기반 데이터 중심 청약 AI 진단 리포트 (`src/lib/ipo-analyzer.ts`, `src/app/api/ipos/analyze/route.ts`)
 - **다중 LLM 파이프라인 + 무중단 룰베이스 폴백**:
-  - **1순위**: Groq LPU (`llama-3.3-70b-versatile` — 0.5초 초고속 응답)
+  - **1순위**: Groq LPU (`openai/gpt-oss-120b` — 0.5초 초고속 응답)
   - **2순위**: Gemini (`gemini-2.5-flash`)
-  - **3순위**: xAI (`grok-4-1-fast-non-reasoning`)
+  - **3순위**: xAI (`qwen/qwen-2.5-72b-instruct`)
   - **안전 폴백 (`generateRuleBasedAnalysis`)**: API 키 미설정이나 장애 시에도 데이터(기관 경쟁률, 의무확약, 공모가 위치, 배정 수량) 기반의 고정밀 룰 엔진이 무중단으로 정확한 분석 결과 산출.
   - 인메모리 캐시(2시간 TTL) 적용으로 동일 종목 중복 호출 방지.
 - **AI 리포트 스키마 (`IpoAiAnalysis`)**:
@@ -656,8 +656,8 @@ reads `process.env` first, then falls back to manually parsing
 expect.
 
 Vars in use: `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET` (news search),
-`XAI_API_KEY`/`XAI_MODEL` (LLM analysis, default model
-`grok-4-1-fast-non-reasoning`), `KRX_AUTH_KEY` (KRX Open API).
+`OPENROUTER_API_KEY`/`OPENROUTER_MODEL` (LLM analysis, default model
+`qwen/qwen-2.5-72b-instruct`), `KRX_AUTH_KEY` (KRX Open API).
 
 **Important KRX API constraint**: the current `KRX_AUTH_KEY` is only
 authorized for the `sto/stk_bydd_trd` endpoint (유가증권/코스닥 일별매매정보 —
@@ -748,3 +748,32 @@ price data — it was just unused. `src/lib/krx.ts` now parses it into
   unofficial scrape) were surfaced as explicit questions rather than assumed
   — keep doing that for judgment calls with real tradeoffs (reliability,
   ToS risk).
+
+
+## Handoff notes (2026-09-28) - Nescio Architecture & Feature Overview
+
+### 1. Role & Project Overview
+- **프로젝트 명**: Nescio (주식 초보자를 위한 주식·공모주·매크로 인텔리전스 웹 서비스)
+- **핵심 목표**: 딱딱한 공시/차트를 넘어 '왜 올랐지? 왜 내렸지?'를 뉴스·거시지표와 엮어 친절히 설명. 공모주(IPO) 올인원 분석 및 글로벌 거시경제 관제탑 제공.
+- **Tech Stack**: Next.js 16 (App Router), TS 5, React 19, Vanilla CSS Variables, Supabase (Auth, TOTP MFA).
+- **Deployment**: Vercel Serverless (maxDuration=60, force-dynamic 필수).
+- **데이터 소스**: KRX (마감), KIS (실시간/차트), 네이버 증권 모바일 API (무인증 0.1초 실시간), 38커뮤니케이션 (IPO 수집), Yahoo Finance (11대 글로벌 매크로), EXIM (환율).
+- **LLM Engine**: Groq, Gemini, NVIDIA, xAI 등 무중단 룰베이스 폴백 탑재.
+
+### 2. 구현 완료 핵심 기능 명세
+1. **공모주(IPO) 올인원 시스템 (/ipo)**
+   - 실시간 청약/수요예측 데이터, 기업 재무 개요, AI 진단 리포트(100점 만점 및 STRONG_APPLY 판정), 월별 시장 트렌드, 2026 실전 성적표.
+2. **당일 신규 상장주 4단계 무중단 시세 아키텍처**
+   - 상장 D-3 티커 확보 -> 장중 네이버 실시간 엔진 즉시 투입 -> 보조 KIS/38커뮤 3중 폴백 -> 관심종목 즉시 매칭.
+3. **글로벌 매크로 대시보드 (/exchange-rates)**
+   - `yahoo-finance2` v4 활용 (WTI, 금, 구리, 미 국채 10년물, VIX, 비트코인 등 11개 핵심 지표 병렬 수집).
+   - **2-step Pipeline**: NVIDIA API(객관적 원인/파급 분석) -> Groq/Gemini('쩐형' 캐릭터 한 줄 요약).
+   - 환율(EXIM) + 매크로 데이터 병합 및 반응형 UI 그리드 처리.
+4. **인터랙티브 차트**: 캔들스틱, 이동평균선(MA), 볼린저 밴드 등.
+5. **계정 보안**: Supabase TOTP MFA 연동.
+
+### 3. 데이터·시세 세션 작업 원칙 (Market Data Engineer Constraints)
+- **Zero-Downtime & Graceful Degradation**: 외부 API 장애(KRX, KIS, Yahoo 등) 및 LLM 장애 발생 시에도 메인 UI 렌더링을 블로킹하지 않으며 룰베이스 폴백 엔진이 대신 작동함.
+- **Concurrency**: 독립적 데이터 소스는 무조건 `Promise.all` 병렬 처리.
+- **Security**: API 키 및 민감 정보는 `serverEnv()` 기반의 `process.env` 통제 및 절대 출력/커밋 금지.
+- **Autonomous Validation**: 자율 즉시 실행 원칙에 따라 코드 반영 후 500 에러, 타임아웃 상황을 방지하고 `npm run build` 검증 후 커밋/푸시를 마무리함.
