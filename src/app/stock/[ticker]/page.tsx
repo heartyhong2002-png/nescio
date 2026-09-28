@@ -194,7 +194,7 @@ const StockHeader = memo(function StockHeader({
       </section>
 
       <div className="stock-chart-shell">
-        <div className="stock-chart-heading"><span>주가 차트</span><small>기간을 바꾸어 흐름을 확인하세요</small></div>
+        <div className="stock-chart-heading"><span>주가와 거래량 흐름</span><small>실제 시세로 가격·거래량·이동평균을 비교해요</small></div>
         <PriceChart
           key={`${stock.ticker}-${RANGES[range]}`}
           ticker={stock.ticker}

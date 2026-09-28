@@ -1,143 +1,90 @@
 "use client";
 
 import { memo, useEffect, useState } from "react";
-import { StockConsensus } from "@/lib/consensus-types";
+import type { StockConsensus } from "@/lib/consensus-types";
+
+type ConsensusState = { ticker: string; data: StockConsensus | null; error: boolean };
+
+function won(value: number) {
+  return `${value.toLocaleString("ko-KR")}원`;
+}
 
 export const StockConsensusCard = memo(function StockConsensusCard({ ticker }: { ticker: string }) {
-  const [data, setData] = useState<StockConsensus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState<ConsensusState>({ ticker: "", data: null, error: false });
 
   useEffect(() => {
-    async function fetchData() {
+    let cancelled = false;
+    async function load() {
       try {
-        const res = await fetch(`/api/stock/${ticker}/consensus`);
-        if (res.ok) {
-          const json = await res.json();
-          setData(json);
-        }
-      } catch (e) {
-        console.error("Failed to fetch consensus", e);
-      } finally {
-        setLoading(false);
+        const response = await fetch(`/api/stock/${encodeURIComponent(ticker)}/consensus`);
+        if (!response.ok) throw new Error("컨센서스를 불러오지 못했습니다.");
+        const data = (await response.json()) as StockConsensus;
+        if (!cancelled) setState({ ticker, data, error: false });
+      } catch {
+        if (!cancelled) setState({ ticker, data: null, error: true });
       }
     }
-    fetchData();
+    void load();
+    return () => { cancelled = true; };
   }, [ticker]);
 
-  if (loading) {
-    return (
-      <div className="animate-pulse bg-white border border-gray-100 rounded-xl p-5 shadow-sm mt-4">
-        <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-        <div className="h-20 bg-gray-100 rounded mb-4"></div>
-        <div className="h-32 bg-gray-50 rounded"></div>
-      </div>
-    );
-  }
-
-  if (!data || !data.aiAnalysis) {
-    return null;
-  }
-
-  const { reports, aiAnalysis } = data;
-  const hasReports = reports.length > 0;
+  const current = state.ticker === ticker ? state : null;
+  const reports = current?.data?.reports ?? [];
+  const analysis = current?.data?.aiAnalysis;
+  const targets = reports.map((report) => report.targetPrice).filter((value): value is number => value !== null && value > 0);
+  const averageTarget = targets.length ? Math.round(targets.reduce((sum, value) => sum + value, 0) / targets.length) : null;
+  const latestDate = reports.map((report) => report.writeDate).sort().at(-1);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mt-6">
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-xl">📊</span>
-        <h2 className="text-lg font-bold text-gray-900">증권사 전문가 컨센서스</h2>
+    <section className="stock-consensus-panel" aria-labelledby="stock-consensus-title">
+      <div className="stock-consensus-head">
+        <div>
+          <h2 id="stock-consensus-title">증권사 리서치 컨센서스</h2>
+          <p>공개된 증권사 리포트의 목표가와 의견을 모았어요</p>
+        </div>
+        {latestDate && <span className="stock-consensus-updated">최근 {latestDate} 발간</span>}
       </div>
 
-      {!hasReports ? (
-        <div className="bg-gray-50 rounded-lg p-4 flex flex-col items-center justify-center text-center">
-          <span className="text-2xl text-gray-400 mb-2">ℹ️</span>
-          <p className="text-sm text-gray-600 font-medium">아직 증권사 공식 리포트가 발간되지 않은 종목이에요.</p>
-          <p className="text-xs text-gray-500 mt-1">상단의 실시간 뉴스 분석을 참고해 보세요!</p>
+      {!current ? (
+        <div className="stock-consensus-loading" role="status" aria-label="증권사 리포트 불러오는 중">
+          <div className="skeleton" /><div className="skeleton" /><div className="skeleton" />
         </div>
+      ) : current.error ? (
+        <div className="stock-consensus-state" role="status">증권사 리포트를 불러오지 못했어요. 잠시 후 다시 확인해 주세요.</div>
+      ) : reports.length === 0 ? (
+        <div className="stock-consensus-state" role="status">아직 확인된 증권사 리포트가 없어요.</div>
       ) : (
-        <div className="space-y-5">
-          {/* 1. 핵심 수치 요약 바 */}
-          <div className="bg-indigo-50/50 rounded-lg p-4 border border-indigo-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <p className="text-xs font-semibold text-indigo-600 mb-1">평균 목표가</p>
-              <div className="flex items-end gap-2">
-                <span className="text-2xl font-bold text-gray-900">{aiAnalysis.averageTargetPrice.toLocaleString()}원</span>
-                <span className={`text-sm font-medium mb-1 ${aiAnalysis.upsidePercent > 0 ? "text-red-500" : aiAnalysis.upsidePercent < 0 ? "text-blue-500" : "text-gray-500"}`}>
-                  ({aiAnalysis.upsidePercent > 0 ? "+" : ""}{aiAnalysis.upsidePercent}%)
-                </span>
-              </div>
-            </div>
-            
-            <div className="flex flex-col items-start sm:items-end">
-              <p className="text-xs font-semibold text-gray-500 mb-1">증권사 의견 평점</p>
-              <div className="flex items-center gap-2">
-                <span className="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-md">
-                  의견 참고
-                </span>
-                <span className="text-lg font-bold text-gray-800">{aiAnalysis.consensusScore.toFixed(1)} / 5.0</span>
-              </div>
-            </div>
+        <>
+          <div className="stock-consensus-summary">
+            <div><span>평균 목표가</span><strong>{averageTarget === null ? "—" : won(averageTarget)}</strong><small>{targets.length}개 목표가 기준</small></div>
+            <div><span>목표가 범위</span><strong>{targets.length ? `${won(Math.min(...targets))}–${won(Math.max(...targets))}` : "—"}</strong><small>최저–최고 목표가</small></div>
+            <div><span>공개 리포트</span><strong>{reports.length}건</strong><small>현재 조회된 리포트</small></div>
+            <div><span>최근 발간일</span><strong>{latestDate ?? "—"}</strong><small>증권사 표기 기준</small></div>
           </div>
 
-          {/* 2. AI 3줄 요약 */}
-          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xl">🤖</span>
-              <h3 className="text-sm font-bold text-gray-800">AI 전문가 뷰 요약</h3>
-            </div>
-            <p className="text-sm text-gray-700 leading-relaxed mb-3">
-              {aiAnalysis.summary}
-            </p>
-            {aiAnalysis.keyDrivers.length > 0 && (
-              <ul className="text-xs text-gray-600 space-y-1 mt-3 pt-3 border-t border-gray-200">
-                {aiAnalysis.keyDrivers.map((driver, idx) => (
-                  <li key={idx} className="flex items-start gap-1.5">
-                    <span className="text-indigo-500 shrink-0 mt-0.5">📌</span>
-                    <span>{driver}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* 3. 최근 리포트 타임라인 */}
-          <div>
-            <h3 className="text-xs font-bold text-gray-500 mb-3 px-1 uppercase tracking-wider">최근 발간된 리포트</h3>
-            <div className="space-y-3">
-              {reports.map((report) => (
-                <a 
-                  key={report.nid} 
-                  href={report.attachUrl || `https://stock.naver.com/research/company/detail/${report.nid}`} 
-                  target="_blank" 
-                  rel="noreferrer" 
-                  className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:bg-gray-50 hover:border-indigo-100 transition-colors cursor-pointer group"
-                >
-                  <div className="flex-1 min-w-0 pr-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-bold text-gray-700">{report.brokerName}</span>
-                      <span className="text-[10px] text-gray-400">{report.writeDate}</span>
-                    </div>
-                    <p className="text-sm font-medium text-gray-900 truncate group-hover:text-indigo-600 transition-colors" title={report.title}>{report.title}</p>
-                    {report.content && (
-                      <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 leading-relaxed" title={report.content}>
-                        {report.content}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className="text-xs text-gray-500">목표가: <strong className="text-gray-700">{report.targetPrice ? report.targetPrice.toLocaleString() + "원" : "N/A"}</strong></span>
-                      <span className="text-gray-300">|</span>
-                      <span className="text-xs font-medium text-gray-600">{report.opinion}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-400 group-hover:text-indigo-600 group-hover:border-indigo-300 transition-colors shrink-0" title="리포트 원문 보기">
-                    {report.attachUrl ? "📄" : "🔗"}
-                  </div>
+          <div className="stock-consensus-reports">
+            {reports.map((report) => {
+              const href = report.attachUrl || `https://stock.naver.com/research/company/detail/${encodeURIComponent(report.nid)}`;
+              return (
+                <a key={report.nid} className="stock-consensus-report" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${report.brokerName} 리포트 ${report.title} 원문 새 창에서 보기`}>
+                  <div className="stock-consensus-firm"><strong>{report.brokerName}</strong><span>{report.writeDate}</span></div>
+                  <div className="stock-consensus-copy"><strong>{report.title}</strong>{report.content && <p>{report.content}</p>}<small>{report.opinion || "의견 미표기"}</small></div>
+                  <div className="stock-consensus-target"><span>목표가</span><strong>{report.targetPrice ? won(report.targetPrice) : "미제시"}</strong>{report.prevTargetPrice && report.targetPrice && <small>이전 {won(report.prevTargetPrice)}</small>}</div>
+                  <span className="stock-consensus-open" aria-hidden="true">↗</span>
                 </a>
-              ))}
-            </div>
+              );
+            })}
           </div>
-        </div>
+
+          {analysis?.summary && (
+            <div className="stock-consensus-context">
+              <span aria-hidden="true">✳</span>
+              <div><strong>리포트 AI 요약</strong><p>{analysis.summary}</p></div>
+            </div>
+          )}
+          <p className="stock-consensus-disclaimer">목표가와 의견은 각 증권사의 전망이며 Nescio의 의견이나 매매 권유가 아닙니다. 세부 가정은 리포트 원문을 확인하세요.</p>
+        </>
       )}
-    </div>
+    </section>
   );
 });

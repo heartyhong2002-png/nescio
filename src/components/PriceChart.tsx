@@ -231,8 +231,8 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
     const volumeHeight = showVolume ? Math.min(80, totalContentHeight * 0.24) : 0;
     const priceHeight = Math.max(10, totalContentHeight - volumeHeight);
 
-    // 1. 배경 클리어 (화이트 테마)
-    ctx.fillStyle = "#ffffff";
+    // 종목 상세의 어두운 차트 표면
+    ctx.fillStyle = "#1a141d";
     ctx.fillRect(0, 0, width, currentHeight);
 
     // 2. 가격 범위 계산
@@ -292,10 +292,10 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
     const step = chartWidth / count;
     const getX = (i: number) => i * step + step / 2;
 
-    // 5. 그리드 라인 & Y축 눈금 (가격) - 라이트 테마
+    // 5. 그리드 라인 & Y축 눈금 (가격)
     ctx.lineWidth = 1;
-    ctx.strokeStyle = "#f1f2f7";
-    ctx.fillStyle = "#8b8fa3";
+    ctx.strokeStyle = "#392b3e";
+    ctx.fillStyle = "#a898a7";
     ctx.font = "10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
@@ -314,19 +314,19 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
 
     // 6. 거래량 그리드 분리선 & 눈금
     if (showVolume) {
-      ctx.strokeStyle = "#e6e4ef";
+      ctx.strokeStyle = "#392b3e";
       ctx.beginPath();
       ctx.moveTo(0, priceHeight);
       ctx.lineTo(width, priceHeight);
       ctx.stroke();
 
-      ctx.fillStyle = "#9ba0b4";
+      ctx.fillStyle = "#a898a7";
       ctx.fillText(formatVolume(maxVolume), chartWidth + 6, priceHeight + 12);
     }
 
     // 7. X축 눈금 및 라벨 (월/일 또는 시간)
-    ctx.strokeStyle = "#f1f2f7";
-    ctx.fillStyle = "#8b8fa3";
+    ctx.strokeStyle = "#392b3e";
+    ctx.fillStyle = "#a898a7";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
 
@@ -437,8 +437,8 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
     // 10. 이동평균선 오버레이 (5, 20, 60, 120)
     if (showMA) {
       const maLines = [
-        { data: maData.ma5, color: "#059669", width: 1.3 }, // 초록
-        { data: maData.ma20, color: "#f43f5e", width: 1.3 }, // 빨강
+        { data: maData.ma5, color: "#a78bfa", width: 1.5 }, // 보라
+        { data: maData.ma20, color: "#f36fba", width: 1.5 }, // 분홍
         { data: maData.ma60, color: "#d97706", width: 1.3 }, // 주황
         { data: maData.ma120, color: "#7c3aed", width: 1.3 }, // 보라
       ];
@@ -657,10 +657,10 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
         data-testid="price-chart"
         style={{
           height,
-          backgroundColor: "#ffffff",
-          color: "#ef4444",
+          backgroundColor: "#1a141d",
+          color: "#ffb5bb",
           borderRadius: 14,
-          border: "1px solid #e6e4ef",
+          border: "1px solid #392b3e",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -678,13 +678,13 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
         data-testid="price-chart"
         style={{
           height,
-          backgroundColor: "#ffffff",
+          backgroundColor: "#1a141d",
           borderRadius: 14,
-          border: "1px solid #e6e4ef",
+          border: "1px solid #392b3e",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#85859a",
+          color: "#a898a7",
           fontSize: 13,
         }}
       >
@@ -700,10 +700,10 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
         data-testid="price-chart"
         style={{
           height,
-          backgroundColor: "#ffffff",
-          color: "#85859a",
+          backgroundColor: "#1a141d",
+          color: "#a898a7",
           borderRadius: 14,
-          border: "1px solid #e6e4ef",
+          border: "1px solid #392b3e",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -721,11 +721,12 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
     <div
       ref={containerRef}
       data-testid="price-chart"
+      className="stock-price-chart"
       style={{
         display: "flex",
         flexDirection: "column",
-        backgroundColor: "#ffffff",
-        color: "#17171f",
+        backgroundColor: "#1a141d",
+        color: "#f7eef5",
         borderRadius: isFullscreen ? 0 : 14,
         overflow: "hidden",
         position: isFullscreen ? "fixed" : "relative",
@@ -736,7 +737,7 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
         width: isFullscreen ? "100vw" : "100%",
         height: isFullscreen ? "100vh" : height,
         zIndex: isFullscreen ? 9999 : 1,
-        border: isFullscreen ? "none" : "1px solid #e6e4ef",
+        border: isFullscreen ? "none" : "1px solid #392b3e",
         boxShadow: isFullscreen ? "none" : "0 2px 10px rgba(0,0,0,0.05)",
         fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}
@@ -748,8 +749,8 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
           alignItems: "center",
           justifyContent: "space-between",
           padding: "8px 12px",
-          borderBottom: "1px solid #ebeaf2",
-          backgroundColor: "#fafafc",
+          borderBottom: "1px solid #392b3e",
+          backgroundColor: "#211924",
           fontSize: 12,
           flexWrap: "wrap",
           gap: 6,
@@ -767,9 +768,9 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
                   padding: "4px 9px",
                   borderRadius: 6,
                   fontWeight: active ? 700 : 500,
-                  backgroundColor: active ? "#ede9fe" : "transparent",
-                  color: active ? "#6d28d9" : "#64748b",
-                  border: active ? "1px solid #ddd6fe" : "1px solid transparent",
+                  backgroundColor: active ? "rgba(139,92,246,.16)" : "transparent",
+                  color: active ? "#c4b5fd" : "#a898a7",
+                  border: active ? "1px solid #8b5cf6" : "1px solid transparent",
                   cursor: "pointer",
                   fontSize: 12,
                   transition: "all 0.15s ease",
@@ -790,9 +791,9 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
             style={{
               padding: "4px 8px",
               borderRadius: 6,
-              backgroundColor: "#f1f3f7",
-              color: "#374151",
-              border: "1px solid #e2e5ec",
+              backgroundColor: "#302435",
+              color: "#d9cde0",
+              border: "1px solid #392b3e",
               fontSize: 11,
               fontWeight: 600,
               display: "flex",
@@ -810,9 +811,9 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
             style={{
               padding: "4px 8px",
               borderRadius: 6,
-              backgroundColor: showMA ? "rgba(16, 185, 129, 0.12)" : "#f1f3f7",
-              border: showMA ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid #e2e5ec",
-              color: showMA ? "#059669" : "#6b7280",
+              backgroundColor: showMA ? "rgba(139,92,246,.16)" : "#302435",
+              border: showMA ? "1px solid #8b5cf6" : "1px solid #392b3e",
+              color: showMA ? "#c4b5fd" : "#a898a7",
               fontSize: 11,
               fontWeight: 600,
             }}
@@ -827,9 +828,9 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
             style={{
               padding: "4px 8px",
               borderRadius: 6,
-              backgroundColor: showVolume ? "rgba(2, 132, 199, 0.12)" : "#f1f3f7",
-              border: showVolume ? "1px solid rgba(2, 132, 199, 0.3)" : "1px solid #e2e5ec",
-              color: showVolume ? "#0284c7" : "#6b7280",
+              backgroundColor: showVolume ? "rgba(139,92,246,.16)" : "#302435",
+              border: showVolume ? "1px solid #8b5cf6" : "1px solid #392b3e",
+              color: showVolume ? "#c4b5fd" : "#a898a7",
               fontSize: 11,
               fontWeight: 600,
             }}
@@ -844,9 +845,9 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
             style={{
               padding: "4px 8px",
               borderRadius: 6,
-              backgroundColor: "#f1f3f7",
-              border: "1px solid #e2e5ec",
-              color: "#374151",
+              backgroundColor: "#302435",
+              border: "1px solid #392b3e",
+              color: "#d9cde0",
               fontSize: 12,
               fontWeight: 700,
             }}
@@ -865,16 +866,16 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
           justifyContent: "space-between",
           flexWrap: "wrap",
           gap: 10,
-          borderBottom: "1px solid #f1f2f7",
-          backgroundColor: "#ffffff",
+          borderBottom: "1px solid #392b3e",
+          backgroundColor: "#1a141d",
           fontSize: 11.5,
         }}
       >
         {/* OHLC 정보 */}
         {activePoint && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span style={{ color: "#85859a" }}>
-              일시: <strong style={{ color: "#17171f" }}>{formatDateLabel(activePoint.date)}</strong>
+            <span style={{ color: "#a898a7" }}>
+              일시: <strong style={{ color: "#f7eef5" }}>{formatDateLabel(activePoint.date)}</strong>
             </span>
             <span>
               시: <strong style={{ color: activeColor }}>{formatPrice(activePoint.open ?? activePoint.close)}</strong>
@@ -889,7 +890,7 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
               종: <strong style={{ color: activeColor }}>{formatPrice(activePoint.close)}</strong>
             </span>
             {showVolume && activePoint.volume !== undefined && (
-              <span style={{ color: "#85859a" }}>
+              <span style={{ color: "#a898a7" }}>
                 거래량: <strong style={{ color: "#0284c7" }}>{formatVolume(activePoint.volume)}</strong>
               </span>
             )}
@@ -899,11 +900,11 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
         {/* 이동평균선 수치 범례 (5: 초록, 20: 빨강, 60: 주황, 120: 보라) */}
         {showMA && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
-            <span style={{ color: "#85859a" }}>이평선</span>
-            <span style={{ color: "#059669", fontWeight: 600 }}>
+            <span style={{ color: "#a898a7" }}>이평선</span>
+            <span style={{ color: "#a78bfa", fontWeight: 600 }}>
               5 {maData.ma5[activeIndex] ? formatPrice(Math.round(maData.ma5[activeIndex]!)) : "-"}
             </span>
-            <span style={{ color: "#f43f5e", fontWeight: 600 }}>
+            <span style={{ color: "#f36fba", fontWeight: 600 }}>
               20 {maData.ma20[activeIndex] ? formatPrice(Math.round(maData.ma20[activeIndex]!)) : "-"}
             </span>
             <span style={{ color: "#d97706", fontWeight: 600 }}>
