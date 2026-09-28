@@ -96,7 +96,7 @@ function callCerebras(system: string, prompt: string, temperature: number, maxTo
 async function callGemini(system: string, prompt: string, temperature: number): Promise<string> {
   const apiKey = serverEnv("GEMINI_API_KEY");
   if (!apiKey) throw new Error("GEMINI_API_KEY를 .env에 설정하세요.");
-  const model = serverEnv("GEMINI_MODEL") || "gemini-3.6-flash";
+  const model = serverEnv("GEMINI_MODEL") || "gemini-3.8-flash";
 
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST",

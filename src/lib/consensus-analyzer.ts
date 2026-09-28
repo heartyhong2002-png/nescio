@@ -198,7 +198,7 @@ export async function analyzeConsensus(
       try {
         aiResultText = await callGeminiFormat({
           apiKey: geminiKey,
-          model: "gemini-2.5-flash",
+          model: "gemini-3.8-flash",
           system: SYSTEM_PROMPT,
           prompt,
         });

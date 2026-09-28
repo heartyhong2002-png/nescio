@@ -27,6 +27,9 @@ const ANALYSIS_CACHE_TTL_MS = 10 * 60 * 1000; // 10분
 // 새 브리핑을 만들 때 같은 종목의 과거 분석(stock_analyses)을 몇 건까지 참고할지.
 // 너무 많으면 이력 요약 프롬프트가 길어지고 비용도 늘어나니 최근 것 위주로 적당히만 본다.
 const HISTORY_LIMIT = 5;
+// 뉴스가 너무 많으면 모델이 읽어야 할 입력량이 급격히 늘어난다. 최신 상위 기사만
+// 원인 분석에 쓰고, 전체 뉴스 목록은 기존처럼 화면 응답에 그대로 보낸다.
+const MAX_ANALYSIS_NEWS = 10;
 
 // 프론트(CauseCard/CauseDetailView 등)가 이미 이 스키마로 렌더링하고 있어서 그대로 유지한다.
 // 2단계(쩐형) 응답도 이 스키마에 맞춰 나오도록 강제한다.
@@ -215,8 +218,8 @@ async function callGemini(
 ): Promise<string> {
   const apiKey = serverEnv("GEMINI_API_KEY");
   if (!apiKey) throw new Error("GEMINI_API_KEY를 .env에 설정하세요. (발급: https://aistudio.google.com/apikey)");
-  // 2.5 Flash는 현재 브리핑의 짧은 분석·JSON 생성에 맞는 안정적인 기본 폴백이다.
-  const model = serverEnv("GEMINI_MODEL") || "gemini-2.5-flash";
+  // Gemini 2.5 Flash는 신규 사용자에게 더 이상 제공되지 않아 최신 Flash 모델을 쓴다.
+  const model = serverEnv("GEMINI_MODEL") || "gemini-3.8-flash";
 
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST",
@@ -274,10 +277,9 @@ async function withFallbackChain(
 }
 
 // ---------------------------------------------------------------------------
-// 0단계: NVIDIA Nemotron(폴백 Gemini) — 같은 종목의 과거 분석 이력을 짧게 요약해
-// 1단계 프롬프트에 참고 컨텍스트로 얹는다. 로그인 사용자만 이력이 있으므로, 비로그인이거나
-// 처음 보는 종목이면 rows가 비어 있고 이 단계는 그냥 빈 문자열을 돌려준다(호출 자체를 스킵).
-// 이력 요약은 어디까지나 참고용 부가 컨텍스트라 실패해도 본 분석 파이프라인을 막지 않는다.
+// 0단계: 과거 분석 이력의 핵심 필드를 짧게 정리해 1단계 프롬프트에 참고 컨텍스트로 얹는다.
+// 별도 LLM 호출 없이 처리해 첫 브리핑 응답 시간을 늘리지 않는다. 로그인 사용자만 이력이 있으므로,
+// 비로그인이거나 처음 보는 종목이면 rows가 비어 있고 이 단계는 그냥 빈 문자열을 돌려준다.
 // ---------------------------------------------------------------------------
 type HistoryRow = { stock_name: string; briefing: Briefing; generated_at: string };
 
@@ -304,46 +306,17 @@ async function fetchAnalysisHistory(ticker: string): Promise<HistoryRow[]> {
   return (data ?? []) as HistoryRow[];
 }
 
-function buildHistorySummaryPrompt(name: string, ticker: string, rows: HistoryRow[]) {
-  // 오래된 것부터 최신 순으로 나열해야 "흐름이 어떻게 바뀌어왔는지"를 모델이 읽기 쉽다.
-  const entries = rows
-    .slice()
+function formatHistoryContext(rows: HistoryRow[]): string {
+  // 보조 맥락에 LLM을 한 번 더 호출하면 첫 화면까지의 시간이 늘고 NVIDIA 요청 한도도
+  // 함께 소모된다. 이미 저장된 핵심 필드를 그대로 압축해 전달한다.
+  return rows
+    .slice(0, 3)
     .reverse()
     .map((row, index) => {
-      const date = new Date(row.generated_at).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
-      const causeTitles = row.briefing.causes.map((cause) => cause.title).join(", ") || "없음";
-      const commentGist = (row.briefing.aiComment || "").split("\n")[0];
-      return `${index + 1}. [${date}] 한줄요약: ${row.briefing.oneLiner}\n   원인: ${causeTitles}\n   코멘트 요지: ${commentGist}`;
+      const causeTitles = row.briefing.causes.slice(0, 2).map((cause) => cause.title).join(", ") || "없음";
+      return `${index + 1}. 한줄요약: ${row.briefing.oneLiner.slice(0, 140)} / 원인: ${causeTitles}`;
     })
-    .join("\n\n");
-
-  const system =
-    "너는 리서치 어시스턴트다. 한 종목에 대한 과거 여러 차례의 분석 기록을 받아서, 다음 분석가가 참고할 " +
-    "핵심만 짧게 정리한다. 새로운 사실을 지어내지 말고 주어진 기록만 근거로 요약해라. 한국어로 답하라.";
-  const prompt = `${name}(${ticker})에 대한 과거 분석 ${rows.length}건이다(오래된 순).
-
-${entries}
-
-위 기록을 보고 다음을 3~4문장으로 정리해라.
-1. 반복적으로 등장하는 원인·테마가 있다면 무엇인지
-2. 최근 분석 흐름이 어떤 방향으로 바뀌어왔는지(있다면)
-3. 오늘 새 분석을 쓸 때 참고하면 좋을 맥락 한 가지
-근거가 부족하면 "특별한 반복 패턴 없음"이라고 써라.`;
-  return { system, prompt };
-}
-
-async function summarizeHistory(name: string, ticker: string, rows: HistoryRow[]): Promise<string> {
-  if (rows.length === 0) return "";
-  try {
-    const { system, prompt } = buildHistorySummaryPrompt(name, ticker, rows);
-    return await withFallbackChain("과거 분석 이력 요약", [
-      { name: "NVIDIA", hasKey: !!serverEnv("NVIDIA_API_KEY"), call: () => callNvidia(system, prompt, 0.3, { maxTokens: 600 }) },
-      { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, { temperature: 0.3 }) },
-    ]);
-  } catch (error) {
-    console.warn("[analyze] 이력 요약 생성 실패(컨텍스트 없이 계속 진행):", errMsg(error));
-    return "";
-  }
+    .join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -360,7 +333,7 @@ function buildRawAnalysisPrompt(
 ) {
   const priceText = `종가: ${price.close ?? "데이터 없음"}, 등락률: ${price.changeRate ?? "데이터 없음"}%, 시가총액: ${price.marketCap ?? "데이터 없음"}`;
   const newsText = news.length
-    ? news.map((item, index) => `${index}. ${item.title} (${item.pubDate})\n${item.description}`).join("\n")
+    ? news.map((item, index) => `${index}. ${item.title} (${item.pubDate})\n${item.description.slice(0, 180)}`).join("\n")
     : "관련 뉴스 없음";
   const fxText = fxSummary || "데이터 없음";
   const intlRateText = intlRateSummary || "데이터 없음";
@@ -397,7 +370,7 @@ ${newsText}
 5. 추가 확인할 리스크와 다음에 관찰할 지표
 과거 분석 이력이 주어졌다면, 이번 분석이 그 흐름과 어떻게 이어지는지(반복되는지, 달라졌는지)도
 간단히 짚어줘라 — 단, 이력 자체를 새로운 사실로 취급하지 말고 어디까지나 오늘 데이터가 우선이다.
-각 항목은 간결한 문단 또는 bullet로 작성하고, 근거가 부족하면 '판단 유보'라고 표시해라.`;
+각 항목은 간결한 bullet로 작성하고, 전체 답변은 1,400자 이내로 끝내라. 근거가 부족하면 '판단 유보'라고 표시해라.`;
   return { system, prompt };
 }
 
@@ -412,7 +385,7 @@ async function analyzeRaw(
 ): Promise<string> {
   const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news, fxSummary, intlRateSummary, historySummary);
   return withFallbackChain("1단계 원본 분석", [
-    { name: "NVIDIA", hasKey: !!serverEnv("NVIDIA_API_KEY"), call: () => callNvidia(system, prompt, 0.2, { maxTokens: 1500 }) },
+    { name: "NVIDIA", hasKey: !!serverEnv("NVIDIA_API_KEY"), call: () => callNvidia(system, prompt, 0.2, { maxTokens: 2200 }) },
     { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, { temperature: 0.2 }) },
   ]);
 }
@@ -460,6 +433,7 @@ ${TONE_RULES[tone]}
 
 아래 [1단계 분석]과 [뉴스 목록]에 있는 사실만 근거로 써라. 새로운 사실을 지어내지 마라.
 사실과 추론을 구분하고, 근거가 부족한 값은 빈 문자열이나 빈 배열로 둔다. JSON 외의 텍스트는 출력하지 않는다.
+원인은 최대 3개, 각 timeline은 최대 2개 단계로 제한하고 모든 문장을 짧게 쓴다.
 
 스키마:
 ${RESPONSE_SCHEMA}`;
@@ -575,15 +549,16 @@ export async function POST(request: Request) {
       // 0단계(이력 요약)도 같이 병렬로 — 뉴스/시세 조회를 기다리는 동안 같이 끝나서 전체
       // 응답 시간이 거의 늘어나지 않는다. 실패해도 빈 문자열이라 아래 흐름은 그대로 간다.
       fetchAnalysisHistory(tickerKey)
-        .then((rows) => summarizeHistory(name, tickerKey, rows))
+        .then(formatHistoryContext)
         .catch((error) => {
           console.warn("[analyze] 이력 컨텍스트 준비 실패(계속 진행):", error);
           return "";
         }),
     ]);
 
-    const raw = await analyzeRaw(name, tickerKey, price, news, fxSummary, intlRateSummary, historySummary);
-    const briefing = await rewritePlain(name, tickerKey, raw, news, tone);
+    const briefingNews = news.slice(0, MAX_ANALYSIS_NEWS);
+    const raw = await analyzeRaw(name, tickerKey, price, briefingNews, fxSummary, intlRateSummary, historySummary);
+    const briefing = await rewritePlain(name, tickerKey, raw, briefingNews, tone);
 
     const responseData = {
       stock: { name, ticker: ticker || "" },
