@@ -6,7 +6,7 @@ let notebookEnv: Record<string, string> | undefined;
 function readNotebookEnv() {
   if (notebookEnv) return notebookEnv;
   notebookEnv = {};
-  const envPath = path.join(process.cwd(), "notebooks", ".env");
+  const envPath = path.join(process.cwd(), "tools", "notebooks", ".env");
   if (!fs.existsSync(envPath)) return notebookEnv;
 
   for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {

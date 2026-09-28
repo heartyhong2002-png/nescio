@@ -13,12 +13,12 @@ const NAV = [
   { href: "/my", label: "마이" },
 ];
 
-export default function SiteHeader() {
+export default function SiteHeader({ variant = "default" }: { variant?: "default" | "intelligence" }) {
   const pathname = usePathname();
   const { user, loading } = useAuth();
 
   return (
-    <header className="site-header">
+    <header className={`site-header${variant === "intelligence" ? " intelligence-header" : ""}`}>
       <div className="site-header-inner">
         <Link href="/" className="site-brand">
           <span className="site-brand-dot" />

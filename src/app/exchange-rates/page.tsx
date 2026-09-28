@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { formatPrice } from "@/lib/format";
 import { ExchangeRate } from "@/lib/types";
@@ -70,24 +70,23 @@ export default function MacroPage() {
   const { data, error, loading } = useMacroData();
   const [query, setQuery] = useState("");
 
-  const majors = useMemo(() => {
-    if (!data?.rates) return [];
+  const rates = data?.rates ?? [];
+  const majors = (() => {
     const seen = new Set<string>();
-    return MAJOR_CURRENCY_CODES_CLIENT.map((code) => data.rates.find((rate) => rate.code === code)).filter(
+    return MAJOR_CURRENCY_CODES_CLIENT.map((code) => rates.find((rate) => rate.code === code)).filter(
       (rate): rate is ExchangeRate => {
         if (!rate || seen.has(rate.code)) return false;
         seen.add(rate.code);
         return true;
       },
     );
-  }, [data?.rates]);
+  })();
 
-  const filteredRates = useMemo(() => {
-    if (!data?.rates) return [];
+  const filteredRates = (() => {
     const trimmed = query.trim();
-    if (!trimmed) return data.rates;
-    return data.rates.filter((rate) => rate.name.includes(trimmed) || rate.code.includes(trimmed.toUpperCase()));
-  }, [data?.rates, query]);
+    if (!trimmed) return rates;
+    return rates.filter((rate) => rate.name.includes(trimmed) || rate.code.includes(trimmed.toUpperCase()));
+  })();
 
   return (
     <AppShell narrow>

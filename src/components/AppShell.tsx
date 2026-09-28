@@ -13,16 +13,19 @@ export default function AppShell({
   children,
   narrow,
   bare,
+  variant = "default",
 }: {
   children: ReactNode;
   narrow?: boolean;
   bare?: boolean;
+  /** 홈의 투자 정보 대시보드처럼 별도 색 체계를 쓰는 화면에만 적용한다. */
+  variant?: "default" | "intelligence";
 }) {
   return (
-    <div className="page">
-      {!bare && <SiteHeader />}
+    <div className={`page${variant === "intelligence" ? " intelligence-page" : ""}`}>
+      {!bare && <SiteHeader variant={variant} />}
       <main className={`app-main${bare ? "" : " with-bottom-nav"}${narrow ? " narrow" : ""}`}>{children}</main>
-      {!bare && <BottomNav />}
+      {!bare && <BottomNav variant={variant} />}
     </div>
   );
 }

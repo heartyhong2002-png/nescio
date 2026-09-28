@@ -63,10 +63,10 @@ function useMarketIndices() {
 function MarketIndexStrip({ indices, comment }: { indices: MarketIndex[] | null; comment: string | null }) {
   if (indices === null) {
     return (
-      <div style={{ marginBottom: 18 }}>
-        <div style={{ display: "flex", gap: 10 }}>
-          <div className="skeleton" style={{ height: 46, borderRadius: 12, flex: 1 }} />
-          <div className="skeleton" style={{ height: 46, borderRadius: 12, flex: 1 }} />
+      <div className="dashboard-index-area">
+        <div className="dashboard-index-strip">
+          <div className="skeleton" style={{ height: 62, borderRadius: 12, flex: 1 }} />
+          <div className="skeleton" style={{ height: 62, borderRadius: 12, flex: 1 }} />
         </div>
       </div>
     );
@@ -87,26 +87,21 @@ function MarketIndexStrip({ indices, comment }: { indices: MarketIndex[] | null;
         : null;
 
   return (
-    <div style={{ marginBottom: 20 }}>
-      {basisLabel && <div className="muted" style={{ fontSize: 11, marginBottom: 7, textAlign: "right" }}>{basisLabel}</div>}
+    <div className="dashboard-index-area">
+      <div className="dashboard-index-heading">
+        <span>국내 시장</span>
+        {basisLabel && <span className="muted">{basisLabel}</span>}
+      </div>
       {/* 코스피/코스닥 2개일 땐 꽉 채우고, 해외 지수까지 붙어 4~6개가 되면 한 화면에 다
           욱여넣기보다 가로 스크롤로 넘기는 게 낫다 — 폭이 좁아지면 숫자가 다 안 보인다.
           카드를 세로로(국가·이름 위, 가격·등락 아래) 배치해서 숫자가 안 잘리고 여유 있게 보이게 한다. */}
-      <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 2 }}>
+      <div className="dashboard-index-strip">
         {visibleIndices.map((index) => {
           const direction = changeDirection(index.changeRate);
           return (
             <div
               key={index.name}
-              className="card"
-              style={{
-                padding: "14px 18px",
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-                flex: "1 1 172px",
-                minWidth: 172,
-              }}
+              className="dashboard-index-card"
             >
               <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap" }}>
                 <span style={{ fontSize: 16 }}>{INDEX_FLAG[index.name] ?? "🌐"}</span>
@@ -123,14 +118,7 @@ function MarketIndexStrip({ indices, comment }: { indices: MarketIndex[] | null;
           );
         })}
       </div>
-      {comment && (
-        <div className="card" style={{ marginTop: 12, padding: "20px 22px" }}>
-          <div className="eyebrow" style={{ marginBottom: 10 }}>
-            오늘 시장 분위기
-          </div>
-          <div style={{ fontSize: 15, lineHeight: 1.75 }}>{comment}</div>
-        </div>
-      )}
+      {comment && <p className="dashboard-market-comment">오늘 시장 분위기 · {comment}</p>}
     </div>
   );
 }
@@ -186,11 +174,14 @@ export default function HomePage() {
   const summaryLoading = items === null && watchlist.length > 0;
 
   return (
-    <AppShell>
-      <div className="topbar">
-        <div className="page-title">오늘의 브리핑</div>
-        <Link href="/alerts" className="muted" style={{ fontSize: 13 }}>
-          🔔 새 소식 {newsAlerts}
+    <AppShell variant="intelligence">
+      <div className="dashboard-topbar">
+        <div>
+          <div className="dashboard-date">MARKET BRIEFING</div>
+          <h1>오늘의 시장 흐름</h1>
+        </div>
+        <Link href="/alerts" className="dashboard-alert-link">
+          알림 <strong>{newsAlerts}</strong>
         </Link>
       </div>
 
@@ -199,42 +190,43 @@ export default function HomePage() {
       <MarketIndexStrip indices={indices} comment={comment} />
 
       {watchlistLoading ? (
-        <div className="skeleton" style={{ height: 96, borderRadius: 18 }} />
+        <div className="dashboard-loading-grid">
+          <div className="skeleton" style={{ height: 210, borderRadius: 18 }} />
+          <div className="skeleton" style={{ height: 210, borderRadius: 18 }} />
+        </div>
       ) : watchlist.length === 0 ? (
         <Link href="/watchlist/add" className="placeholder-box" style={{ padding: 36, fontSize: 14 }}>
           아직 담은 종목이 없어요. 눌러서 관심종목을 담아보세요.
         </Link>
       ) : (
-        <div className="home-grid">
-          <div>
+        <div className="dashboard-grid">
+          <div className="dashboard-primary">
             {mover ? (
               <Link
                 href={`/stock/${mover.ticker}?name=${encodeURIComponent(mover.name)}`}
-                className="hero-card"
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 16px", marginBottom: 18 }}
+                className="dashboard-mover"
               >
-                <div style={{ minWidth: 0 }}>
-                  <div className="eyebrow" style={{ marginBottom: 4, fontSize: 9.5 }}>
-                    가장 크게 움직인 종목
-                  </div>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.4 }}>
-                    {mover.name}(이)가 오늘 가장 크게 움직였어요
-                  </div>
-                  <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.85)", lineHeight: 1.5, marginTop: 3 }}>
-                    {formatPrice(mover.close)}원 · {changeArrow(mover.changeRate)}{" "}
-                    {Math.abs(mover.changeRate ?? 0).toFixed(2)}%{changeEmoji(mover.changeRate)}
-                  </div>
+                <div>
+                  <div className="dashboard-kicker">TODAY&apos;S MOVE</div>
+                  <div className="dashboard-mover-title">{mover.name}의 변동을 먼저 확인하세요</div>
+                  <p>가격과 관련 뉴스를 함께 살펴볼 수 있어요.</p>
                 </div>
-                <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap" }}>브리핑 →</div>
+                <div className="dashboard-mover-price">
+                  <strong>{formatPrice(mover.close)}원</strong>
+                  <span className={`price-${changeDirection(mover.changeRate)}`}>
+                    {changeArrow(mover.changeRate)} {Math.abs(mover.changeRate ?? 0).toFixed(2)}%
+                  </span>
+                </div>
               </Link>
             ) : summaryLoading ? (
               <div className="skeleton" style={{ height: 62, borderRadius: 18, marginBottom: 18 }} />
             ) : null}
 
-            <div className="section-title">
-              관심종목 <span className="muted">{watchlist.length}</span>
+            <div className="dashboard-section-heading">
+              <div><span>관심종목</span><small>내 종목의 시세와 오늘의 뉴스</small></div>
+              <Link href="/watchlist/add">전체 {watchlist.length}개 →</Link>
             </div>
-            <div className="list-panel">
+            <div className="dashboard-watchlist">
               {rows.map((stock) => {
                 const direction = changeDirection(stock.changeRate);
                 // 폴링(live-prices)이 아직 안 왔으면 watchlist-summary의 정적 종가로 대체 —
@@ -245,12 +237,12 @@ export default function HomePage() {
                     ? { price: stock.close, changeRate: stock.changeRate }
                     : null);
                 return (
-                  <div key={stock.ticker} className="list-row">
+                  <div key={stock.ticker} className="dashboard-stock-row">
                     <Link
                       href={`/stock/${stock.ticker}?name=${encodeURIComponent(stock.name)}`}
                       style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0, color: "inherit" }}
                     >
-                      <div className="stock-icon">{stock.name.slice(0, 1)}</div>
+                      <div className="dashboard-stock-icon">{stock.name.slice(0, 1)}</div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 14, fontWeight: 600 }}>{stock.name}</div>
                         <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
@@ -295,11 +287,10 @@ export default function HomePage() {
             </div>
           </div>
 
-          <aside className="home-aside">
-            <div className="card">
-              <div className="eyebrow" style={{ marginBottom: 12 }}>
-                오늘 요약
-              </div>
+          <aside className="dashboard-aside">
+            <div className="dashboard-summary-card">
+              <div className="dashboard-kicker">MARKET SNAPSHOT</div>
+              <h2>오늘의 요약</h2>
               <SummaryStat label="담은 종목" value={`${watchlist.length}개`} />
               <SummaryStat label="뉴스 있는 종목" value={summaryLoading ? "…" : `${newsAlerts}개`} />
               <SummaryStat
@@ -313,7 +304,7 @@ export default function HomePage() {
                 }
                 last
               />
-              <Link href="/watchlist/add" className="btn btn-secondary btn-block btn-sm" style={{ marginTop: 14 }}>
+              <Link href="/watchlist/add" className="dashboard-add-stock">
                 종목 더 담기
               </Link>
             </div>
@@ -321,14 +312,6 @@ export default function HomePage() {
         </div>
       )}
 
-      <style>{`
-        .home-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
-        .home-aside { display: none; }
-        @media (min-width: 1000px) {
-          .home-grid { grid-template-columns: minmax(0,1fr) 300px; }
-          .home-aside { display: block; position: sticky; top: calc(var(--header-h) + 22px); align-self: start; }
-        }
-      `}</style>
     </AppShell>
   );
 }

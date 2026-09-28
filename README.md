@@ -39,12 +39,14 @@ src/                     실제 서비스되는 Next.js 앱 (여기가 진짜)
   app/                   화면(홈/관심종목/종목상세/공모주/매크로/알림/마이페이지)과 API 라우트
   lib/                   KRX/KIS 시세, 매크로 지표, 저장소, 인증, 포맷 등 공통 로직
 public/                  정적 파일
-notebooks/.env           로컬 개발용 서버 API 키 (커밋되지 않음, 아래 환경변수 참고)
 .env.local               NEXT_PUBLIC_* 값 (Supabase 등, 커밋되지 않음, 아래 환경변수 참고)
-data-pipeline/           초기 데이터 파이프라인 실험 (Python, pykrx+네이버+LLM 분석 노트북/스크립트)
-                         — 지금 서비스가 쓰는 코드는 아니고, 프롬프트/파이프라인 설계 실험용
-legacy-ui-mockup/        8/23에 만든 정적 HTML UI 목업 (지금 화면의 이전 버전, 참고용)
-docs/                    지난 세션들의 기술 메모 (HANDOFF.md 등)
+docs/                    운영 문서와 DB 스키마
+tools/                   로컬에서만 쓰는 검증·실험 도구
+  notebooks/.env         서버 전용 API 키 (커밋되지 않음, 아래 환경변수 참고)
+  notebooks/             수동 API 검증 노트북
+  data-pipeline/         초기 데이터 파이프라인 실험 (서비스 런타임에서는 사용하지 않음)
+archive/                 현재 서비스가 사용하지 않는 과거 산출물
+  legacy-ui-mockup/      8/23에 만든 정적 HTML UI 목업
 ```
 
 ## 종목 AI 브리핑 파이프라인과 응답 속도
@@ -85,7 +87,7 @@ npm run dev
 
 두 군데로 나뉜다 — 섞어서 넣으면 (특히 `NEXT_PUBLIC_*`는) 조용히 안 먹으니 주의:
 
-- **`notebooks/.env`**: 서버 전용 API 키. `src/lib/server-env.ts`의 `serverEnv()`가 런타임에 이
+- **`tools/notebooks/.env`**: 서버 전용 API 키. `src/lib/server-env.ts`의 `serverEnv()`가 런타임에 이
   파일을 읽어서 폴백으로 쓴다 — 파일이 없어도 앱은 죽지 않고 해당 기능만 비활성화된다.
 - **`.env.local`(프로젝트 루트, 신규 생성 필요)**: `NEXT_PUBLIC_*`로 시작하는 값 전용. Next.js가
   빌드 시 클라이언트 번들에 정적으로 인라인해야 하는 값이라 `serverEnv()` 폴백(런타임에 파일을
@@ -94,7 +96,7 @@ npm run dev
 둘 다 `.gitignore`의 `.env*` 규칙에 걸려서 커밋되지 않는다. Vercel에 배포할 때는 두 파일 대신
 프로젝트 Settings → Environment Variables에 아래 값을 전부 똑같이 넣어주면 됩니다.
 
-`notebooks/.env`:
+`tools/notebooks/.env`:
 
 | 변수 | 용도 | 필수 |
 |---|---|---|
@@ -109,7 +111,7 @@ npm run dev
 | `CEREBRAS_API_KEY` | 매크로 브리핑 초고속 추론 (Cerebras) | 선택 |
 | `NVIDIA_MODEL` / `GROQ_MODEL` / `GEMINI_MODEL` / `CEREBRAS_MODEL` | 각 LLM 모델명 오버라이드. 종목 브리핑 기본값은 Nemotron 3 Super 120B / GPT-OSS 120B / Gemini 3.8 Flash | 선택 (기본값 있음) |
 | `KIS_BASE_URL` | KIS API 베이스 URL 오버라이드 (기본: 실전 `openapi.koreainvestment.com:9443`) | 선택 |
-| `SUPABASE_SERVICE_ROLE_KEY` | 계정 탈퇴(관리자 권한으로 auth 사용자 삭제) 전용 — Settings → API의 "service_role secret" 키. **RLS를 완전히 우회하는 비밀 키라 절대 `.env.local`(클라이언트 번들)에 넣지 말고 반드시 여기(`notebooks/.env`, 서버 전용)에만 둘 것** | 필수 (계정 탈퇴 기능용) |
+| `SUPABASE_SERVICE_ROLE_KEY` | 계정 탈퇴(관리자 권한으로 auth 사용자 삭제) 전용 — Settings → API의 "service_role secret" 키. **RLS를 완전히 우회하는 비밀 키라 절대 `.env.local`(클라이언트 번들)에 넣지 말고 반드시 여기(`tools/notebooks/.env`, 서버 전용)에만 둘 것** | 필수 (계정 탈퇴 기능용) |
 
 `.env.local`:
 
@@ -128,7 +130,7 @@ npm run dev
    `watchlist_items`, `stock_analyses`, `valuation_interpretations` 테이블과 RLS 정책, 신규가입 시
    프로필 자동 생성 트리거가 만들어진다
 4. Authentication → Providers → Email에서 "Confirm email"을 꺼두는 걸 추천 — 켜두면 회원가입 직후 바로 온보딩으로 넘어가는 지금 흐름이 이메일 인증 전까지 막힌다(대신 이메일 진위 확인은 포기하는 트레이드오프)
-5. Settings → API에서 **service_role secret** 키 확인 → `notebooks/.env`의 `SUPABASE_SERVICE_ROLE_KEY`에 반영 (계정 탈퇴 기능에 필요 — 절대 `.env.local`에 넣지 말 것)
+5. Settings → API에서 **service_role secret** 키 확인 → `tools/notebooks/.env`의 `SUPABASE_SERVICE_ROLE_KEY`에 반영 (계정 탈퇴 기능에 필요 — 절대 `.env.local`에 넣지 말 것)
 
 ## 배포
 

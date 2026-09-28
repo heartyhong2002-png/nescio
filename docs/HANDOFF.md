@@ -43,10 +43,10 @@ Groq GPT-OSS 요청은 `reasoning_effort: "low"`를 사용합니다. 이전의
 - 클라이언트는 응답을 먼저 텍스트로 읽은 뒤 JSON 여부를 확인합니다. 따라서 Vercel 등의
   일반 텍스트 오류가 와도 `Unexpected token ... is not valid JSON` 대신 HTTP 상태와 실제 오류
   메시지를 보여줍니다.
-- `serverEnv()`는 배포 환경의 `process.env` 값을 로컬 `notebooks/.env`보다 우선합니다.
+- `serverEnv()`는 배포 환경의 `process.env` 값을 로컬 `tools/notebooks/.env`보다 우선합니다.
   Groq 키를 재발급했다면 로컬 파일뿐 아니라 Vercel Environment Variables의
   `GROQ_API_KEY`도 교체하고 재배포해야 합니다.
-- `notebooks/.env`는 gitignore 대상이라 Git 푸시에 포함되지 않습니다.
+- `tools/notebooks/.env`는 gitignore 대상이라 Git 푸시에 포함되지 않습니다.
 - 최근 관련 커밋: `29965cf`(모델 파이프라인), `8e62a1f`(생성 지연 단축),
   `e7a57c1`(영속 캐시·백그라운드 갱신), `fe1170a`(Groq 요청·비 JSON 오류 처리).
 
@@ -648,10 +648,10 @@ scratch files described below.
 
 ## Data sources / env vars
 
-Env vars are **not** in a root `.env` — they live in `notebooks/.env` (an
+Env vars are **not** in a root `.env` — they live in `tools/notebooks/.env` (an
 older layout from before the Next.js app existed). `src/lib/server-env.ts`
 reads `process.env` first, then falls back to manually parsing
-`notebooks/.env`. If you add a root `.env`, `server-env.ts` still works
+`tools/notebooks/.env`. If you add a root `.env`, `server-env.ts` still works
 (process.env wins), but don't be surprised the values aren't where you'd
 expect.
 
@@ -675,7 +675,7 @@ scrape** — ask first if you're picking this back up.
 
 **Update (2026-08-27): the two gaps below are now wired via the KIS
 (한국투자증권) Open API — `src/lib/kis.ts`.** `KIS_APP_KEY`/`KIS_APP_SECRET`
-were already in `notebooks/.env`. KIS is an official authenticated API (not
+were already in `tools/notebooks/.env`. KIS is an official authenticated API (not
 the unofficial `data.krx.co.kr` scrape the earlier note warned against), so
 the "ask first" concern doesn't apply.
 

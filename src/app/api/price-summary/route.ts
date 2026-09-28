@@ -55,7 +55,10 @@ export async function GET(request: Request) {
       try {
         const listings = await fetchNewListings();
         const found = [...listings.upcoming, ...listings.history].find((x) => x.ticker === ticker);
-        if (found) {
+        // 상장 예정 종목은 38커뮤니케이션에 공모가만 있어도 현재가는 없다.
+        // 공모가를 시세로 대신 반환하면 상세 화면과 관심종목에서 실제 체결가처럼 보이므로,
+        // 상장이 완료된 종목에 한해서만 이 최종 폴백을 적용한다.
+        if (found && !found.isUpcoming) {
           const fallbackPrice = found.currentPrice ?? found.openPrice ?? found.offerPrice;
           if (fallbackPrice) {
             const rawRate = found.changeRate?.replace("%", "") ?? found.openReturnRate?.replace("%", "") ?? "0";

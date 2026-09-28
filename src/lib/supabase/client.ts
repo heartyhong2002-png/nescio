@@ -9,7 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * 만들어서 재사용한다(호출할 때마다 새로 만들 이유가 없음).
  *
  * NEXT_PUBLIC_ 환경변수는 빌드 시 클라이언트 번들에 정적으로 인라인되기 때문에, 다른 서버
- * 전용 키들과 달리 lib/server-env.ts의 serverEnv() 래퍼(notebooks/.env 런타임 폴백)를 거치지
+ * 전용 키들과 달리 lib/server-env.ts의 serverEnv() 래퍼(tools/notebooks/.env 런타임 폴백)를 거치지
  * 않고 process.env로 직접 읽는다 — 그 래퍼는 클라이언트 번들 코드엔 안 먹힌다.
  *
  * 타입은 `ReturnType<typeof createBrowserClient>`로 뽑지 않고 SupabaseClient를 명시한다 —

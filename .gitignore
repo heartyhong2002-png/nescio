@@ -51,16 +51,17 @@ next-env.d.ts
 
 # python
 __pycache__/
+/.venv/
 
 # local cleanup staging (safe to delete)
-_to_delete/
+/archive/pending-delete/
 
 # Claude Code local settings
 .claude/
 
 # session backup / snapshot artifacts (not source of truth)
 *.bak
-/legacy-ui-mockup/3rd prototype/
+/archive/legacy-ui-mockup/3rd prototype/
 Claude outputs/
 *.bundle
 nul

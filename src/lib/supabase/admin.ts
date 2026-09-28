@@ -11,13 +11,13 @@ import { serverEnv } from "@/lib/server-env";
  * 호출해야 한다.
  *
  * SUPABASE_SERVICE_ROLE_KEY는 NEXT_PUBLIC_* 이 아니라 serverEnv()로 읽는다 — 클라이언트
- * 번들에 절대 인라인되면 안 되는 비밀 키라서 notebooks/.env(서버 전용, gitignore)에 둔다.
+ * 번들에 절대 인라인되면 안 되는 비밀 키라서 tools/notebooks/.env(서버 전용, gitignore)에 둔다.
  */
 export function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = serverEnv("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY가 설정되지 않았어요. notebooks/.env에 추가하세요.");
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY가 설정되지 않았어요. tools/notebooks/.env에 추가하세요.");
   }
   return createSupabaseClient(url, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },

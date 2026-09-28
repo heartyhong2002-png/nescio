@@ -34,7 +34,7 @@
 - Supabase 프로젝트 URL: `https://hlyfkgfqwnrxzjkcjiyv.supabase.co` (`.env.local`의
   `NEXT_PUBLIC_SUPABASE_URL`과 동일 — 이 값 자체는 공개돼도 되는 정보입니다)
 - 이 문서에는 실제 키 값을 적지 않습니다. 필요한 키는 아래 "환경변수" 표를 보고 `.env.local` /
-  `notebooks/.env`에서 확인하세요.
+  `tools/notebooks/.env`에서 확인하세요.
 
 ## 환경변수
 
@@ -42,16 +42,16 @@
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | `.env.local` (gitignore, 공개 가능한 값) | Supabase 프로젝트 URL |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `.env.local` (gitignore, 공개 가능한 값) | 브라우저에서 쓰는 publishable(구 anon) 키 — RLS로 보호됨 |
-| `SUPABASE_SERVICE_ROLE_KEY` | `notebooks/.env` (gitignore, 서버 전용) | RLS 우회하는 관리자 키. **절대 클라이언트 코드에 노출 금지.** 지금은 계정 탈퇴(`auth.admin.deleteUser`) 용도로만 씀 |
+| `SUPABASE_SERVICE_ROLE_KEY` | `tools/notebooks/.env` (gitignore, 서버 전용) | RLS 우회하는 관리자 키. **절대 클라이언트 코드에 노출 금지.** 지금은 계정 탈퇴(`auth.admin.deleteUser`) 용도로만 씀 |
 
 `NEXT_PUBLIC_*`는 빌드 시 클라이언트 번들에 그대로 박히기 때문에 `.env.local`에 둡니다.
 값 자체는 공개 가능하지만 이 프로젝트에서는 `.env.local`을 커밋하지 않습니다.
 `SUPABASE_SERVICE_ROLE_KEY`는 서버에서만 읽어야 해서 다른 서버 전용 키들과 같은 방식
-(`serverEnv()` → `notebooks/.env`)으로 관리합니다.
+(`serverEnv()` → `tools/notebooks/.env`)으로 관리합니다.
 
 Vercel에 배포할 때는 `NEXT_PUBLIC_*` 두 개와 `SUPABASE_SERVICE_ROLE_KEY`를 Vercel 프로젝트
 Settings → Environment Variables에도 동일하게 넣어야 합니다 (다른 API 키들과 같은 이유 —
-`notebooks/.env` 파일은 배포본에 안 올라갑니다). 종목 브리핑용 `NVIDIA_API_KEY`,
+`tools/notebooks/.env` 파일은 배포본에 안 올라갑니다). 종목 브리핑용 `NVIDIA_API_KEY`,
 `GROQ_API_KEY`, `GEMINI_API_KEY`도 Vercel 환경변수에 별도로 등록하고 재배포해야 합니다.
 로컬 파일의 키를 바꾸는 것만으로는 배포 환경이 갱신되지 않습니다.
 

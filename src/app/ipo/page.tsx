@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { formatAmountCompact, formatPrice, formatSharesCompact } from "@/lib/format";
-import { CompanyInfo, IpoInfo, IpoListingsData, IpoMonthlyAnalysis, Stock } from "@/lib/types";
+import { CompanyInfo, IpoInfo, IpoListingsData, IpoMonthlyAnalysis } from "@/lib/types";
 import { useWatchlist } from "@/lib/storage";
 
 function useMonthlyAnalysis(initialMonth = "ALL") {
-  const [month, setMonth] = useState(initialMonth);
+  const [month, setMonthValue] = useState(initialMonth);
   const [analysis, setAnalysis] = useState<IpoMonthlyAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -15,9 +15,6 @@ function useMonthlyAnalysis(initialMonth = "ALL") {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError("");
-
     fetch(`/api/ipos/monthly-analysis?month=${encodeURIComponent(month)}`)
       .then((res) => res.json())
       .then((data) => {
@@ -41,6 +38,13 @@ function useMonthlyAnalysis(initialMonth = "ALL") {
       cancelled = true;
     };
   }, [month]);
+
+  const setMonth = (nextMonth: string) => {
+    if (nextMonth === month) return;
+    setLoading(true);
+    setError("");
+    setMonthValue(nextMonth);
+  };
 
   const refresh = async () => {
     if (refreshing) return;
@@ -839,7 +843,7 @@ function MonthlyAiReportCard() {
             </div>
 
             <div style={{ fontSize: 14, fontWeight: 800, color: "var(--ink)", lineHeight: 1.45, marginBottom: 8 }}>
-              "{analysis.headline}"
+              &quot;{analysis.headline}&quot;
             </div>
 
             <p style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.6, margin: 0 }}>

@@ -54,7 +54,7 @@ export async function fetchNaverStockPrice(ticker: string): Promise<NaverStockPr
       name: json.stockName,
       market: json.stockExchangeName,
     };
-  } catch (error) {
+  } catch {
     // 네트워크 타임아웃 등 예외 시 조용히 null 반환
     return null;
   }

@@ -47,8 +47,9 @@ function StockBriefingContent() {
   const inWatchlist = has(ticker);
 
   return (
-    <AppShell>
-      <div className="back-row">
+    <AppShell variant="intelligence">
+      <div className="stock-intelligence">
+      <div className="back-row stock-back-row">
         <Link href="/">← 브리핑 목록</Link>
         <button
           className={inWatchlist ? undefined : "muted"}
@@ -60,10 +61,10 @@ function StockBriefingContent() {
       </div>
 
       {summaryLoading && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div className="skeleton" style={{ height: 64, width: "50%" }} />
-          <div className="skeleton" style={{ height: 220, borderRadius: 14 }} />
-          <div className="skeleton" style={{ height: 260, borderRadius: 14 }} />
+        <div className="stock-loading-layout">
+          <div className="skeleton" style={{ height: 100, borderRadius: 16 }} />
+          <div className="skeleton" style={{ height: 430, borderRadius: 16 }} />
+          <div className="skeleton" style={{ height: 180, borderRadius: 16 }} />
         </div>
       )}
 
@@ -73,10 +74,13 @@ function StockBriefingContent() {
 
       {summary && !summaryLoading && (
         <div className="stock-layout">
-          <div>
+          <div className="stock-main-column">
             <StockHeader stock={summary.stock} price={summary.price} oneLiner={analysis?.briefing.oneLiner} range={range} setRange={setRange} />
 
-            <div className="section-title">가격이 움직인 이유</div>
+            <div className="stock-section-heading">
+              <span>오늘의 변동 요인</span>
+              <small>뉴스와 시세를 바탕으로 정리했어요</small>
+            </div>
             {briefingLoading ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 26 }}>
                 <div className="muted" style={{ fontSize: 13 }}>
@@ -145,6 +149,7 @@ function StockBriefingContent() {
           </aside>
         </div>
       )}
+      </div>
     </AppShell>
   );
 }
@@ -165,21 +170,27 @@ function StockHeader({
   const direction = changeDirection(price.changeRate);
   return (
     <>
-      <div style={{ marginBottom: 16 }}>
-        <div className="page-title">{stock.name}</div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 8 }}>
-          <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em" }}>
-            {formatPrice(price.close)}
+      <section className="stock-price-hero">
+        <div className="stock-identity">
+          <div className="eyebrow">STOCK ANALYSIS · {stock.ticker}</div>
+          <div className="stock-name-row">
+            <h1>{stock.name}</h1>
+            <span>국내 주식</span>
           </div>
-          <div className={`price-${direction}`} style={{ fontSize: 14, fontWeight: 600 }}>
-            {changeArrow(price.changeRate)}
-            {price.changeRate !== null ? ` ${Math.abs(price.changeRate).toFixed(2)}%` : " 데이터 없음"}
-            {changeEmoji(price.changeRate)}
+          <div className="stock-price-row">
+            <strong>{formatPrice(price.close)}원</strong>
+            <span className={`price-${direction}`}>
+              {changeArrow(price.changeRate)}
+              {price.changeRate !== null ? ` ${Math.abs(price.changeRate).toFixed(2)}%` : " 데이터 없음"}
+              {changeEmoji(price.changeRate)}
+            </span>
           </div>
         </div>
-      </div>
+        <div className="stock-hero-note">실시간 시세와 차트를 먼저 확인한 뒤, 아래에서 움직인 이유를 살펴보세요.</div>
+      </section>
 
-      <div style={{ marginBottom: 16 }}>
+      <div className="stock-chart-shell">
+        <div className="stock-chart-heading"><span>주가 차트</span><small>기간을 바꾸어 흐름을 확인하세요</small></div>
         <PriceChart
           key={`${stock.ticker}-${RANGES[range]}`}
           ticker={stock.ticker}
@@ -188,12 +199,12 @@ function StockHeader({
             const idx = RANGES.indexOf(newRange);
             if (idx >= 0) setRange(idx);
           }}
-          height={380}
+          height={400}
         />
       </div>
 
       {oneLiner && (
-        <div style={{ borderLeft: "3px solid var(--accent)", padding: "4px 0 4px 14px", margin: "18px 0 24px" }}>
+        <div className="stock-oneliner">
           <div className="eyebrow" style={{ marginBottom: 6 }}>
             오늘 한 줄
           </div>
@@ -303,7 +314,10 @@ function MetricsRow({ stock, price }: { stock: Stock; price: Price }) {
 
   return (
     <>
-      <div className="section-title">회사 숫자로 보기</div>
+      <div className="stock-section-heading">
+        <span>핵심 지표</span>
+        <small>회사 규모와 밸류에이션을 한눈에</small>
+      </div>
       <div className="grid-cards cols-4" style={{ gap: 10, marginBottom: interpretation ? 14 : 24 }}>
         {metrics.map(({ label, value }) => (
           <div key={label} className="metric-tile">

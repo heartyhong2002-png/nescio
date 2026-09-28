@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local Python environment and archived assistant output are not application source.
+    ".venv/**",
+    "Claude outputs/**",
   ]),
 ]);
 

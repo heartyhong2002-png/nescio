@@ -69,10 +69,10 @@ export function StockConsensusCard({ ticker }: { ticker: string }) {
             </div>
             
             <div className="flex flex-col items-start sm:items-end">
-              <p className="text-xs font-semibold text-gray-500 mb-1">투자의견 평점</p>
+              <p className="text-xs font-semibold text-gray-500 mb-1">증권사 의견 평점</p>
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-md">
-                  BUY
+                <span className="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-md">
+                  의견 참고
                 </span>
                 <span className="text-lg font-bold text-gray-800">{aiAnalysis.consensusScore.toFixed(1)} / 5.0</span>
               </div>

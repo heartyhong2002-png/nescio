@@ -10,6 +10,20 @@ function cleanString(str: string | undefined | null): string {
   return str.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function numberValue(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 /**
  * 네이버 증권 리서치 V2 JSON API를 호출하여 종목의 최신 애널리스트 리포트를 가져온다.
  */
@@ -39,31 +53,30 @@ export async function scrapeAnalystReports(ticker: string, count: number = 5): P
       return [];
     }
 
-    const data = await res.json();
+    const data: unknown = await res.json();
     // V2 API는 여러 itemCodes를 지원하므로 객체 형태 { "005930": [...] } 또는 배열 형태로 내려옴
     // 구조체 체크
-    let rawList: any[] = [];
-    if (data.items) rawList = data.items;
-    else if (data.researches) rawList = data.researches;
-    else if (data[ticker]) rawList = data[ticker];
+    const payload = isRecord(data) ? data : {};
+    const candidate = payload.items ?? payload.researches ?? payload[ticker];
+    const rawList = Array.isArray(candidate) ? candidate.filter(isRecord) : [];
 
-    if (!Array.isArray(rawList)) {
+    if (rawList.length === 0) {
       return [];
     }
 
-    const reports: AnalystReport[] = rawList.map((item: any) => {
+    const reports: AnalystReport[] = rawList.map((item) => {
       return {
-        nid: item.nid || "",
-        title: item.title || "",
-        content: cleanString(item.content),
-        brokerName: item.brokerName || item.broker || "알수없음",
-        targetPrice: item.goalPrice ? Number(item.goalPrice) : null,
-        prevTargetPrice: item.prevGoalPrice ? Number(item.prevGoalPrice) : null,
-        opinion: item.opinionText || item.opinion || "N/A",
-        writeDate: item.writeDate || item.date || "",
-        attachUrl: item.attachUrl || item.fileUrl || item.pdfUrl || null,
+        nid: stringValue(item.nid),
+        title: stringValue(item.title),
+        content: cleanString(stringValue(item.content)),
+        brokerName: stringValue(item.brokerName) || stringValue(item.broker) || "알수없음",
+        targetPrice: numberValue(item.goalPrice),
+        prevTargetPrice: numberValue(item.prevGoalPrice),
+        opinion: stringValue(item.opinionText) || stringValue(item.opinion) || "N/A",
+        writeDate: stringValue(item.writeDate) || stringValue(item.date),
+        attachUrl: stringValue(item.attachUrl) || stringValue(item.fileUrl) || stringValue(item.pdfUrl) || null,
       };
-    }).filter(r => r.title && r.writeDate);
+    }).filter((report) => report.title && report.writeDate);
 
     // 캐시 저장
     SCRAPER_CACHE.set(ticker, { reports, expiresAt: now + CACHE_TTL_MS });

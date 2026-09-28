@@ -29,7 +29,7 @@ export async function fetchMacroIndicators(): Promise<MacroIndicator[]> {
   const results = await Promise.all(
     TARGETS.map(async (target) => {
       try {
-        const data = (await yahooFinance.quote(target.ticker)) as any;
+        const data = await yahooFinance.quote(target.ticker);
         return {
           ticker: target.ticker,
           name: target.name,

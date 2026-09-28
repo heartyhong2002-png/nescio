@@ -11,11 +11,11 @@ const ITEMS = [
   { href: "/my", label: "마이", icon: "👤" },
 ];
 
-export default function BottomNav() {
+export default function BottomNav({ variant = "default" }: { variant?: "default" | "intelligence" }) {
   const pathname = usePathname();
 
   return (
-    <nav className="bottom-nav">
+    <nav className={`bottom-nav${variant === "intelligence" ? " intelligence-bottom-nav" : ""}`}>
       <div className="bottom-nav-inner">
         {ITEMS.map((item) => {
           const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
