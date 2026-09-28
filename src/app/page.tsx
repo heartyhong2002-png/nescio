@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
+import DashboardIntradayChart from "@/components/DashboardIntradayChart";
 import { LiveSparkline } from "@/components/LiveSparkline";
 import { changeArrow, changeEmoji, changeDirection, formatPrice } from "@/lib/format";
 import { useOnboarded, useWatchlist } from "@/lib/storage";
@@ -205,18 +206,25 @@ export default function HomePage() {
               <Link
                 href={`/stock/${mover.ticker}?name=${encodeURIComponent(mover.name)}`}
                 className="dashboard-mover"
+                aria-label={`${mover.name} 현재 시세와 장중 차트 보기`}
               >
-                <div>
-                  <div className="dashboard-kicker">TODAY&apos;S MOVE</div>
-                  <div className="dashboard-mover-title">{mover.name}의 변동을 먼저 확인하세요</div>
-                  <p>가격과 관련 뉴스를 함께 살펴볼 수 있어요.</p>
+                <div className="dashboard-mover-head">
+                  <div className="dashboard-mover-copy">
+                    <div className="dashboard-kicker">TODAY&apos;S MOVE · 가장 큰 변동</div>
+                    <div className="dashboard-mover-title">{mover.name}</div>
+                    <span>관심종목 중 오늘의 변동 폭이 큰 종목이에요.</span>
+                  </div>
+                  <div className="dashboard-mover-price">
+                    <span>현재가</span>
+                    <strong>{formatPrice(livePrices[mover.ticker]?.price ?? mover.close)}<small>원</small></strong>
+                    <em className={`price-${changeDirection(livePrices[mover.ticker]?.changeRate ?? mover.changeRate)}`}>
+                      {changeArrow(livePrices[mover.ticker]?.changeRate ?? mover.changeRate)}{" "}
+                      {Math.abs(livePrices[mover.ticker]?.changeRate ?? mover.changeRate ?? 0).toFixed(2)}%
+                    </em>
+                  </div>
                 </div>
-                <div className="dashboard-mover-price">
-                  <strong>{formatPrice(mover.close)}원</strong>
-                  <span className={`price-${changeDirection(mover.changeRate)}`}>
-                    {changeArrow(mover.changeRate)} {Math.abs(mover.changeRate ?? 0).toFixed(2)}%
-                  </span>
-                </div>
+                <DashboardIntradayChart ticker={mover.ticker} stockName={mover.name} />
+                <div className="dashboard-mover-foot"><span>장중 주가 흐름 · 실제 시세</span><span>종목 상세 보기 <b aria-hidden="true">→</b></span></div>
               </Link>
             ) : summaryLoading ? (
               <div className="skeleton" style={{ height: 62, borderRadius: 18, marginBottom: 18 }} />
