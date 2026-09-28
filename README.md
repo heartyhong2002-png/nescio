@@ -9,10 +9,11 @@
 2. 홈 화면에서 관심종목의 오늘 등락률과 한 줄 요약을 카드로 확인
 3. 종목을 누르면 "왜 이렇게 움직였는지"를 원인별로 분해해서 보여줌 — 인과관계 타임라인,
    근거가 된 뉴스, 긍정/부정 요인, 과거 비슷한 사례까지
-4. 설명은 두 단계 LLM 호출로 생성됨: 1단계(NVIDIA)가 시세+뉴스를 사실 위주로 분석하고,
-   2단계(xAI Grok)가 그 분석을 캐주얼한 캐릭터 말투로 다시 씀(말투 강도는 4단계로 조절 가능,
-   `src/app/api/analyze/route.ts`의 `TONE_RULES` 참고). 투자 매수·매도 권유는 하지 않고
-   항상 면책 문구가 붙습니다.
+4. 설명은 두 단계 LLM 호출로 생성됨: 1단계 NVIDIA Nemotron 3 Super 120B가 시세+뉴스를
+   사실 위주로 분석하고, 2단계 Groq의 GPT-OSS 120B가 그 분석을 캐주얼한 캐릭터 말투로
+   다시 씀(말투 강도는 4단계로 조절 가능, `src/app/api/analyze/route.ts`의 `TONE_RULES` 참고).
+   각 단계의 주 제공자가 실패하면 Gemini 3.8 Flash로 폴백합니다. 투자 매수·매도 권유는
+   하지 않고 항상 면책 문구가 붙습니다.
 5. 공모주(IPO) 올인원 대시보드:
    - **공모 청약 & AI 진단**: DART 전자공시 및 38커뮤니케이션 데이터를 교차 검증하여 기관 수요예측 경쟁률, 의무보유확약 비율, 복수 주관사별 배정수량 및 청약한도, 최소 청약 단위(증거금), 기업 개요 및 재무 현황을 제공하며, LLM 기반 청약 AI 진단 리포트(추천/신중/패스 판정, 핵심 호재/주의점, 맞춤 청약 전략)를 제공합니다.
    - **상장 예정 현황 & 2026 첫날 실전 성적표**: 상장 대기 종목 일정, 2026년 상장 종목들의 공모가 대비 시초가·종가 수익률 및 따따블(+300%)/따블/손실 통계 대시보드를 제공합니다.
@@ -43,6 +44,31 @@ legacy-ui-mockup/        8/23에 만든 정적 HTML UI 목업 (지금 화면의 
 docs/                    지난 세션들의 기술 메모 (HANDOFF.md 등)
 ```
 
+## 종목 AI 브리핑 파이프라인과 응답 속도
+
+`/api/analyze`의 현재 기본 구성은 다음과 같습니다.
+
+1. 최신 뉴스 중 상위 10건과 시세·환율 정보를 NVIDIA
+   `nvidia/nemotron-3-super-120b-a12b`가 사실 중심으로 분석합니다.
+2. Groq `openai/gpt-oss-120b`가 분석 결과를 선택한 쩐형 말투로 짧게 재작성합니다.
+3. NVIDIA 또는 Groq 호출이 실패하면 해당 단계만 Gemini `gemini-3.8-flash`로 폴백합니다.
+
+응답 속도를 위해 별도의 이력 요약 LLM 호출은 제거했습니다. 최근 저장된 브리핑의 한 줄 요약과
+원인 제목만 코드에서 짧은 문맥으로 구성하며, 각 LLM의 입력·출력 길이도 제한합니다. 종목 브리핑
+경로에서는 OpenRouter/Qwen/xAI를 사용하지 않습니다. 매크로·공모주·밸류에이션처럼 별도의 기능은
+각 기능의 기존 제공자 구성을 사용할 수 있습니다.
+
+로그인 사용자의 `stock_analyses`를 브리핑 이력과 영속 캐시로 함께 사용합니다.
+
+- 브라우저의 `sessionStorage`에 결과가 있으면 화면에 먼저 표시합니다.
+- 서버 메모리 또는 Supabase의 결과가 10분 이내면 즉시 최신 캐시로 응답합니다.
+- 10분 초과 24시간 이내 결과는 우선 응답한 뒤 Next.js `after()`에서 새 브리핑을 생성합니다.
+- 클라이언트는 백그라운드 갱신 뒤 새 `generatedAt`이 생겼는지 짧게 확인해 화면을 교체합니다.
+- 사용자가 직접 새로고침하면 `refresh: true`로 캐시를 우회합니다.
+
+이 구조는 재방문 시 LLM 두 단계를 기다리지 않고 기존 브리핑을 바로 보여주기 위한 것입니다.
+첫 조회, 24시간 넘은 캐시, 수동 새로고침은 새 분석이 끝날 때까지 기다릴 수 있습니다.
+
 ## 시작하기
 
 ```bash
@@ -70,16 +96,15 @@ npm run dev
 | 변수 | 용도 | 필수 |
 |---|---|---|
 | `NVIDIA_API_KEY` | 1단계 사실 분석 및 매크로 브리핑 (NVIDIA) | 필수 |
-| `XAI_API_KEY` | 2단계 캐릭터 톤 재작성 (xAI Grok) | 필수 |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 관련 뉴스 검색 (네이버 뉴스 API) | 필수 |
 | `KRX_AUTH_KEY` | 종목 목록·일별 시세 (KRX Open API) | 필수 |
 | `KIS_APP_KEY` / `KIS_APP_SECRET` | 분봉·기간별 차트, PER/PBR/배당/시가총액 (한국투자증권 Open API) | 필수 |
 | `EXIM_AUTH_KEY` | 매크로/환율 화면 · 브리핑 참고용 환율 (한국수출입은행 Open API, [신청](https://www.koreaexim.go.kr) 무료) | 필수 (환율 기능용) |
 | `DART_API_KEY` | 공모주 화면 — 청약일정·공모가·주관사 (금융감독원 OpenDART, [신청](https://opendart.fss.or.kr) 무료, 이메일 인증만 필요) | 필수 (공모주 기능용) |
-| `GROQ_API_KEY` | 공모주 AI 분석, 매크로 브리핑 및 2단계 톤 고속 생성 (Groq LPU) | 선택 (빠른 응답) |
-| `GEMINI_API_KEY` | 공모주 AI 분석, 매크로 브리핑 및 텍스트 폴백 (Google Gemini) | 선택 |
+| `GROQ_API_KEY` | 종목 브리핑 2단계 GPT-OSS 120B 재작성, 공모주·매크로 분석 (Groq LPU) | 필수 (종목 브리핑) |
+| `GEMINI_API_KEY` | 종목 브리핑 각 단계와 공모주·매크로 분석의 폴백 (Google Gemini) | 권장 |
 | `CEREBRAS_API_KEY` | 매크로 브리핑 초고속 추론 (Cerebras) | 선택 |
-| `NVIDIA_MODEL` / `XAI_MODEL` / `GROQ_MODEL` / `GEMINI_MODEL` / `CEREBRAS_MODEL` | 각 단계 및 LLM 엔진에서 쓸 모델명 오버라이드 | 선택 (기본값 있음) |
+| `NVIDIA_MODEL` / `GROQ_MODEL` / `GEMINI_MODEL` / `CEREBRAS_MODEL` | 각 LLM 모델명 오버라이드. 종목 브리핑 기본값은 Nemotron 3 Super 120B / GPT-OSS 120B / Gemini 3.8 Flash | 선택 (기본값 있음) |
 | `KIS_BASE_URL` | KIS API 베이스 URL 오버라이드 (기본: 실전 `openapi.koreainvestment.com:9443`) | 선택 |
 | `SUPABASE_SERVICE_ROLE_KEY` | 계정 탈퇴(관리자 권한으로 auth 사용자 삭제) 전용 — Settings → API의 "service_role secret" 키. **RLS를 완전히 우회하는 비밀 키라 절대 `.env.local`(클라이언트 번들)에 넣지 말고 반드시 여기(`notebooks/.env`, 서버 전용)에만 둘 것** | 필수 (계정 탈퇴 기능용) |
 
@@ -96,7 +121,9 @@ npm run dev
 
 1. supabase.com에서 새 프로젝트 생성
 2. Settings → API에서 **Project URL**과 **publishable(anon) key** 확인 → 위 환경변수 두 개에 반영
-3. SQL Editor에서 `docs/supabase-schema.sql`(이 저장소에 포함)을 그대로 실행 — `profiles`/`watchlist_items` 테이블과 RLS 정책, 신규가입 시 프로필 자동 생성 트리거가 만들어진다
+3. SQL Editor에서 `docs/supabase-schema.sql`(이 저장소에 포함)을 그대로 실행 — `profiles`,
+   `watchlist_items`, `stock_analyses`, `valuation_interpretations` 테이블과 RLS 정책, 신규가입 시
+   프로필 자동 생성 트리거가 만들어진다
 4. Authentication → Providers → Email에서 "Confirm email"을 꺼두는 걸 추천 — 켜두면 회원가입 직후 바로 온보딩으로 넘어가는 지금 흐름이 이메일 인증 전까지 막힌다(대신 이메일 진위 확인은 포기하는 트레이드오프)
 5. Settings → API에서 **service_role secret** 키 확인 → `notebooks/.env`의 `SUPABASE_SERVICE_ROLE_KEY`에 반영 (계정 탈퇴 기능에 필요 — 절대 `.env.local`에 넣지 말 것)
 
@@ -104,3 +131,20 @@ npm run dev
 
 Vercel에 GitHub 저장소를 연결하면 바로 배포됩니다 (Next.js 앱이라 별도 설정 거의 불필요).
 배포 후 위 환경변수를 Vercel 프로젝트 Settings에 추가하고 Redeploy 해야 반영됩니다.
+
+### 배포 전 확인
+
+```bash
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+세 명령이 모두 통과한 뒤 배포합니다. ESLint는 로컬 Python 가상환경(`.venv`)과 보관용
+출력 폴더(`Claude outputs`)를 검사에서 제외하므로, `npm run lint`가 실제 앱 소스의 품질
+검증 기준입니다.
+
+신규 상장 예정 종목은 공모가와 실제 시세를 구분합니다. 상장 전에는 현재가가 `없음`으로
+표시되는 것이 정상이며, 상장 완료 뒤에만 38커뮤니케이션의 신규상장 데이터가 시세 폴백으로
+사용됩니다. 신규상장 목록은 최대 30분 인메모리 캐시를 사용하므로 상장 상태 전환 직후에는
+최대 30분의 반영 지연이 있을 수 있습니다.

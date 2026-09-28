@@ -1,3 +1,92 @@
+# Handoff notes (2026-09-28) — 종목 AI 브리핑 최신 구성
+
+> 이 섹션이 `/api/analyze`의 현재 기준입니다. 아래 과거 인수인계 메모에 남아 있는 xAI,
+> OpenRouter/Qwen, Gemini 2.5 관련 내용은 당시 설계 기록이며 현재 종목 브리핑에는 적용되지
+> 않습니다. 매크로·공모주·밸류에이션 등 다른 기능의 LLM 구성은 각 기능 설명을 따릅니다.
+
+## 현재 모델 파이프라인
+
+- **1단계 사실 분석**: NVIDIA API의 `nvidia/nemotron-3-super-120b-a12b`
+- **2단계 쩐형 재작성**: Groq API의 `openai/gpt-oss-120b`
+- **단계별 폴백**: Google `gemini-3.8-flash`
+- `NVIDIA_MODEL`, `GROQ_MODEL`, `GEMINI_MODEL`로 기본 모델을 덮어쓸 수 있습니다.
+- 종목 브리핑 경로에서는 OpenRouter/Qwen/xAI/Cerebras를 사용하지 않습니다.
+
+Groq GPT-OSS 요청은 `reasoning_effort: "low"`를 사용합니다. 이전의
+`reasoning: { effort: "none" }` 형식은 Groq가 지원하지 않아 실패했으며 수정되었습니다. Gemini
+2.5 Flash는 신규 사용자에게 404를 반환해 기본값을 Gemini 3.8 Flash로 교체했습니다. Gemini는
+수요 급증 시 503이 날 수 있으므로 주 제공자가 아니라 폴백입니다.
+
+## 속도 개선
+
+- 분석 입력은 최신 뉴스 상위 10건만 사용하고 기사 설명과 모델 출력 길이를 제한합니다.
+- 과거 분석을 다시 LLM으로 요약하던 추가 호출을 제거했습니다. 최근 기록 최대 5건을 읽고,
+  최근 3건의 `oneLiner`와 원인 제목만 코드에서 짧은 문맥으로 구성합니다.
+- 실제 제공자 단독 호출은 점검 당시 NVIDIA 약 1.7초, Groq 약 1.6초였고 두 단계 전체는 약
+  3.3초였습니다. 외부 API 부하와 네트워크에 따라 달라질 수 있습니다.
+- `maxDuration`은 60초이며, 첫 조회 또는 강제 새로고침처럼 실제 생성이 필요한 요청에
+  적용됩니다.
+
+## 영속 캐시와 백그라운드 갱신
+
+- 브라우저 `sessionStorage`에 이전 결과가 있으면 즉시 화면에 표시합니다.
+- 서버 인메모리 캐시와 사용자별 Supabase `stock_analyses`를 함께 사용합니다.
+- 10분 이내 결과는 최신 캐시로 즉시 반환합니다.
+- 10분 초과 24시간 이내 결과는 먼저 반환하고 Next.js `after()`에서 새 버전을 생성·저장합니다.
+- 클라이언트는 8초, 12초, 16초 뒤 새 `generatedAt`을 확인해 갱신 결과로 교체합니다.
+- 수동 새로고침은 `{ refresh: true }`를 전송해 캐시를 우회합니다.
+- 캐시 키에 사용자 ID·종목·말투를 포함합니다. DB에 말투 컬럼이 없어 영속 저장은 기본 말투만
+  하며, 별도 DB 마이그레이션은 필요하지 않습니다.
+
+## 오류 처리와 운영 체크리스트
+
+- 클라이언트는 응답을 먼저 텍스트로 읽은 뒤 JSON 여부를 확인합니다. 따라서 Vercel 등의
+  일반 텍스트 오류가 와도 `Unexpected token ... is not valid JSON` 대신 HTTP 상태와 실제 오류
+  메시지를 보여줍니다.
+- `serverEnv()`는 배포 환경의 `process.env` 값을 로컬 `notebooks/.env`보다 우선합니다.
+  Groq 키를 재발급했다면 로컬 파일뿐 아니라 Vercel Environment Variables의
+  `GROQ_API_KEY`도 교체하고 재배포해야 합니다.
+- `notebooks/.env`는 gitignore 대상이라 Git 푸시에 포함되지 않습니다.
+- 최근 관련 커밋: `29965cf`(모델 파이프라인), `8e62a1f`(생성 지연 단축),
+  `e7a57c1`(영속 캐시·백그라운드 갱신), `fe1170a`(Groq 요청·비 JSON 오류 처리).
+
+---
+
+## Handoff notes (2026-09-28) — 품질 검증 및 신규상장 시세 안전장치
+
+### 빅웨이브로보틱스 상장 전 시세 오표시 수정
+
+- **재현 조건**: 38커뮤니케이션 신규상장 목록에서 상장 예정인 빅웨이브로보틱스
+  (`0035S0`, 상장 예정일 2026-09-29)을 관심종목/상세 조회 경로로 조회.
+- **원인**: `src/app/api/price-summary/route.ts`의 최종 폴백이 상장 예정 종목의 공모가
+  (`18,000원`)를 현재 체결가처럼 `price.close`에 넣고 있었습니다. 상장 전에는 KRX·네이버·KIS의
+  실시간 시세가 없으므로 잘못된 값이었습니다.
+- **수정**: 38커뮤니케이션 폴백은 `!found.isUpcoming`인, 이미 상장된 종목에만 적용합니다.
+  상장 예정 종목은 `close: null`을 반환하므로 UI가 현재가 없음으로 표시합니다.
+- **운영 주의**: 신규상장 목록은 30분 인메모리 캐시입니다. 상장 상태가 바뀐 직후에는 캐시
+  만료 전까지 최대 30분간 이전 상태가 남을 수 있습니다.
+
+### 린트·타입 안정화
+
+- `eslint.config.mjs`에서 앱 코드가 아닌 `.venv/**`, `Claude outputs/**`를 검사 제외했습니다.
+- 환율 화면의 불필요한 수동 메모이제이션, IPO 월별 분석의 이펙트 내부 동기 상태 변경,
+  JSX 따옴표 표기와 미사용 타입/가져오기를 정리했습니다.
+- 네이버 증권 컨센서스 파서의 `any`를 런타임 타입 가드와 안전한 값 변환으로 교체했고,
+  Yahoo Finance 응답의 불필요한 `any` 캐스트 및 네이버 시세 클라이언트의 미사용 예외 변수를
+  제거했습니다.
+- 실데이터 회귀: 삼성전자(`005930`) 컨센서스 API는 HTTP 200 및 리포트 5건을 반환했습니다.
+
+### 2026-09-28 검증 결과
+
+- `npm run lint` 통과 (오류·경고 없음)
+- `npx tsc --noEmit` 통과
+- `npm run build` 통과
+- `git diff --check` 통과
+
+현재 변경분은 배포 가능한 상태입니다. 단, 아직 커밋·푸시는 수행하지 않았습니다.
+
+---
+
 > **참고 (9/21 컨트롤타워 기획):** 아래에 2026-09-21 컨트롤타워 세션이 작성한 **'증권사 리포트 & 전문가 의견 수집 및 초보자용 AI 요약 파이프라인'** 개발 세션 작업 지시서가 추가되었습니다.
 > 이 세션은 **컨트롤타워(기획·설계·명세)** 역할을 전담하였으며, 실제 코드 구현 및 검증은 다른 개발 세션에서 이어받아 진행합니다.
 
@@ -632,11 +721,8 @@ price data — it was just unused. `src/lib/krx.ts` now parses it into
 
 - `npx tsc --noEmit` — type check
 - `npx next build` — full build (also runs TS)
-- `npx eslint src` — lint **only** `src/`; running bare `npx eslint .` also
-  scans `.venv/Lib/site-packages/matplotlib/...` (a Python venv, not
-  gitignored) and reports unrelated errors from vendored JS in there. Not a
-  real problem, just don't let it confuse you — `.venv` isn't excluded from
-  eslint yet.
+- `npm run lint` — 전체 앱 린트. `.venv/**`와 `Claude outputs/**`는 ESLint 설정에서
+  제외돼 있어, 저장소 루트에서 실행해도 벤더/보관 파일의 오탐이 발생하지 않는다.
 
 ## Style/process notes from this session
 

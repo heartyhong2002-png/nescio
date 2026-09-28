@@ -17,18 +17,17 @@
   로그인해야 동작합니다.
 - 로그인 전 브라우저에 남아있던 `localStorage` 데이터(관심종목/온보딩)는 로그인 직후 한 번만
   DB로 자동 이전됩니다(`src/lib/migrate-legacy-storage.ts`).
-- 종목 상세 페이지를 열 때마다 서버가 새로 생성하는 AI 브리핑(원인 분석 + "쩐형" 코멘트)과
-  재무지표 해설도, 로그인한 사용자에 한해 `stock_analyses` / `valuation_interpretations`에
-  버전으로 계속 쌓입니다(`/api/analyze`, `/api/valuation/interpret` 라우트가 응답 직전에
-  서버 사이드에서 저장 — 비로그인 요청은 지금까지처럼 저장 없이 그냥 응답만 나갑니다).
-- `stock_analyses`에 쌓인 이력은 그냥 저장만 되는 게 아니라 다음 분석에 다시 쓰입니다.
-  `/api/analyze`가 브리핑을 새로 만들기 전에, 로그인한 사용자가 같은 종목을 조회했던 과거
-  기록(최근 5건)을 DB에서 불러와 OpenRouter(오픈소스 모델, 기본 Qwen)로 짧게 요약하고, 그
-  요약을 1단계(NVIDIA) 분석 프롬프트에 참고 컨텍스트로 얹습니다 — "반복되는 원인이 뭔지",
-  "최근 흐름이 어떻게 바뀌어왔는지"를 새 분석이 이어받게 하려는 목적입니다. 이 이력 요약
-  단계는 `src/app/api/analyze/route.ts`의 `fetchAnalysisHistory` / `summarizeHistory` /
-  `callOpenRouter` 함수를 보면 됩니다. 실패하거나(과거 기록 없음, API 오류 등) 비로그인
-  요청이면 그냥 빈 컨텍스트로 조용히 넘어가고 본 브리핑 파이프라인은 그대로 동작합니다.
+- AI 브리핑(원인 분석 + "쩐형" 코멘트)과 재무지표 해설은 로그인한 사용자에 한해
+  `stock_analyses` / `valuation_interpretations`에 버전으로 쌓입니다. AI 브리핑 저장은 응답을
+  먼저 보낸 뒤 Next.js `after()`에서 처리하고, 재무지표 해설은 새로 생성된 결과만 해당 요청에서
+  저장합니다.
+- `stock_analyses`는 과거 기록이자 사용자별 영속 캐시입니다. 같은 사용자·종목·말투의 최신
+  결과가 10분 이내면 그대로 응답하고, 10분 초과 24시간 이내면 기존 결과를 먼저 응답한 뒤
+  백그라운드에서 새 버전을 생성합니다. 24시간을 넘었거나 사용자가 수동 새로고침한 경우에는
+  새 분석을 기다립니다.
+- 새 브리핑을 만들 때는 같은 종목의 최근 기록 최대 5건을 조회하고 그중 최근 3건의
+  `oneLiner`와 원인 제목을 짧은 문맥으로 구성해 1단계 NVIDIA 분석에 전달합니다. 별도의
+  OpenRouter/Qwen 이력 요약 호출은 제거되어 API 호출 수와 대기 시간이 줄었습니다.
 
 ## 프로젝트 정보
 
@@ -41,20 +40,20 @@
 
 | 변수 | 어디 | 용도 |
 |---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | `.env.local` (커밋됨, 공개 가능) | Supabase 프로젝트 URL |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `.env.local` (커밋됨, 공개 가능) | 브라우저에서 쓰는 publishable(구 anon) 키 — RLS로 보호됨 |
+| `NEXT_PUBLIC_SUPABASE_URL` | `.env.local` (gitignore, 공개 가능한 값) | Supabase 프로젝트 URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `.env.local` (gitignore, 공개 가능한 값) | 브라우저에서 쓰는 publishable(구 anon) 키 — RLS로 보호됨 |
 | `SUPABASE_SERVICE_ROLE_KEY` | `notebooks/.env` (gitignore, 서버 전용) | RLS 우회하는 관리자 키. **절대 클라이언트 코드에 노출 금지.** 지금은 계정 탈퇴(`auth.admin.deleteUser`) 용도로만 씀 |
-| `OPENROUTER_API_KEY` | `notebooks/.env` (gitignore, 서버 전용) | 과거 분석 이력 요약 전용 LLM 호출 키(발급: https://openrouter.ai/keys). **미설정 시 에러가 아니라 이력 요약을 그냥 건너뜀** — `/api/analyze` 본 파이프라인은 정상 동작 |
-| `OPENROUTER_MODEL` | `notebooks/.env` (선택) | 이력 요약에 쓸 OpenRouter 모델 슬러그. 기본값 `qwen/qwen-2.5-72b-instruct` — 다른 오픈소스 모델(Llama, DeepSeek 등)로 바꾸고 싶으면 이 값만 변경 |
 
-`NEXT_PUBLIC_*`는 빌드 시 클라이언트 번들에 그대로 박히기 때문에 `.env.local`에 두고 커밋
-(공개돼도 되는 값들). `SUPABASE_SERVICE_ROLE_KEY`/`OPENROUTER_API_KEY`는 서버에서만 읽어야
-해서 다른 서버 전용 키들과 같은 방식(`serverEnv()` → `notebooks/.env`)으로 관리합니다.
+`NEXT_PUBLIC_*`는 빌드 시 클라이언트 번들에 그대로 박히기 때문에 `.env.local`에 둡니다.
+값 자체는 공개 가능하지만 이 프로젝트에서는 `.env.local`을 커밋하지 않습니다.
+`SUPABASE_SERVICE_ROLE_KEY`는 서버에서만 읽어야 해서 다른 서버 전용 키들과 같은 방식
+(`serverEnv()` → `notebooks/.env`)으로 관리합니다.
 
 Vercel에 배포할 때는 `NEXT_PUBLIC_*` 두 개와 `SUPABASE_SERVICE_ROLE_KEY`를 Vercel 프로젝트
 Settings → Environment Variables에도 동일하게 넣어야 합니다 (다른 API 키들과 같은 이유 —
-`notebooks/.env` 파일은 배포본에 안 올라갑니다). `OPENROUTER_API_KEY`도 마찬가지로 배포
-환경에 등록해야 이력 요약이 실제로 동작합니다(안 넣으면 에러 없이 그냥 스킵됨).
+`notebooks/.env` 파일은 배포본에 안 올라갑니다). 종목 브리핑용 `NVIDIA_API_KEY`,
+`GROQ_API_KEY`, `GEMINI_API_KEY`도 Vercel 환경변수에 별도로 등록하고 재배포해야 합니다.
+로컬 파일의 키를 바꾸는 것만으로는 배포 환경이 갱신되지 않습니다.
 
 ## 인증(Auth)
 
@@ -85,11 +84,11 @@ Settings → Environment Variables에도 동일하게 넣어야 합니다 (다�
   프로필 생성"을 따로 호출하지 않습니다.
 - **`watchlist_items`**: 사용자별 관심종목. `unique (user_id, ticker)`라서
   `watchlist-context.tsx`의 upsert가 `onConflict: "user_id,ticker"`로 동작합니다.
-- **`stock_analyses`** (신규): 종목 상세 페이지를 열 때마다 생성되는 AI 브리핑(원인 분석 +
-  코멘트)의 히스토리. `watchlist_items`와 달리 "현재 값 하나"가 아니라 매번 새로 생성된
-  스냅샷을 계속 쌓는 구조라 unique 제약이 없고, `(user_id, ticker, created_at desc)`
-  인덱스로 최신순 조회를 지원합니다. `price`/`news`/`briefing` 컬럼은 각각 `Price`/
-  `NewsItem[]`/`Briefing` 타입을 그대로 jsonb로 저장합니다.
+- **`stock_analyses`** (신규): 새로 생성된 AI 브리핑(원인 분석 + 코멘트)의 히스토리이자
+  사용자별 영속 캐시. `watchlist_items`와 달리 "현재 값 하나"가 아니라 생성된 스냅샷을
+  계속 쌓는 구조라 unique 제약이 없고, `(user_id, ticker, created_at desc)` 인덱스로 최신순
+  조회를 지원합니다. `price`/`news`/`briefing` 컬럼은 각각 `Price`/`NewsItem[]`/`Briefing`
+  타입을 그대로 jsonb로 저장합니다.
 - **`valuation_interpretations`** (신규): PER/PBR/배당/시총 해설의 히스토리. 구조는
   `stock_analyses`와 동일한 원칙(버전 쌓기, unique 없음).
 
@@ -123,17 +122,20 @@ alter table public.valuation_interpretations enable row level security;
 | `src/lib/migrate-legacy-storage.ts` | 로그인 직후 구버전 localStorage 데이터를 1회 DB로 이전 |
 | `src/app/api/account/delete/route.ts` | 계정 탈퇴 API (서비스 롤 키 필요) |
 | `src/app/onboarding/login/page.tsx` | 로그인/회원가입 화면 |
-| `src/app/api/analyze/route.ts` | AI 브리핑 생성 + 로그인 시 `stock_analyses`에 저장 |
+| `src/app/api/analyze/route.ts` | AI 브리핑 생성, 영속 캐시 조회, 백그라운드 갱신·저장 |
+| `src/lib/use-briefing.ts` | 브라우저 세션 캐시 표시, 비 JSON 오류 처리, 백그라운드 갱신 확인 |
 | `src/app/api/valuation/interpret/route.ts` | 지표 해설 생성 + 로그인 시 `valuation_interpretations`에 저장 |
 | `docs/supabase-schema.sql` | 실제 마이그레이션 SQL (Studio SQL Editor에 그대로 실행) |
 
 ## 알려진 한계 / 다음에 볼 것
 
-- 서버 사이드 라우트 보호 미구현 (위 참고)
-- `stock_analyses` / `valuation_interpretations`는 저장 로직만 구현된 상태입니다. 저장된
-  과거 버전을 사용자가 화면에서 조회하는 히스토리 UI는 아직 없습니다 — 다음 세션에서 필요하면
+- `stock_analyses`는 현재 브리핑 캐시와 이력 문맥에 사용하지만, 저장된 과거 버전을 사용자가
+  직접 조회하는 히스토리 UI는 아직 없습니다 — 다음 세션에서 필요하면
   추가하세요(예: 종목 페이지에 "과거 분석 보기" 탭, `select ... where user_id = ? and
   ticker = ? order by created_at desc`).
+- `stock_analyses`에는 말투(`tone`) 컬럼이 없습니다. 따라서 기본 말투만 영속 저장하며 다른
+  말투는 서버 메모리·브라우저 세션 범위에서만 캐시합니다. 사용자·종목·말투를 포함한 캐시 키로
+  다른 사용자나 다른 말투의 결과가 섞이지 않게 합니다.
 - 두 테이블 모두 버전을 무한히 쌓기만 하고 정리(retention)하지 않습니다. 사용자가 같은
   종목을 자주 들여다보면 행이 계속 늘어나므로, 필요해지면 오래된 행을 주기적으로 지우는
   것도 고려하세요.
