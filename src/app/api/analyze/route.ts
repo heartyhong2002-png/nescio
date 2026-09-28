@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { serverEnv } from "@/lib/server-env";
 import { getPriceForTicker } from "@/lib/krx";
@@ -7,6 +7,8 @@ import { getNewsMultiSource } from "@/lib/news-sources";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 import { Briefing, Cause, NewsItem, Price } from "@/lib/types";
+
+export const maxDuration = 60;
 
 // 2단계 LLM 호출(NVIDIA + 오픈소스 모델)이라 요청 1건 비용이 크다. IP당 분당 5회로 제한해
 // 스크립트로 캐시를 우회하며 계속 새 종목명을 찔러 API 비용을 태우는 걸 막는다.
@@ -17,12 +19,20 @@ const RATE_LIMIT = { limit: 5, windowMs: 60_000 };
 // 설정으로 처리한다 — 이 프로젝트 전체가 그 설정 하나를 공유하므로 여기서 별도로
 // preferredRegion을 지정할 필요는 없다.
 
-// 같은 종목을 짧은 시간 안에 다시 요청하면(평가 데모 등) 2단계 LLM 파이프라인을 다시 태우지 않고
-// 캐시된 결과를 즉시 돌려준다. 서버리스 인스턴스가 살아있는 동안만 유지되는 best-effort 캐시라
-// 인스턴스가 새로 뜨면 다시 처음부터 호출하지만, 같은 웜 인스턴스가 재사용될 땐 즉시 응답한다.
-type CachedAnalysis = { data: Record<string, unknown>; expiresAt: number };
+// 같은 종목을 짧은 시간 안에 다시 요청하면 2단계 LLM 파이프라인을 다시 태우지 않는다.
+// 메모리 캐시가 없더라도 아래 stock_analyses 영속 캐시에서 최근 결과를 복구한다.
+type AnalysisResponseData = {
+  stock: { name: string; ticker: string };
+  price: Price;
+  news: NewsItem[];
+  briefing: Briefing;
+  generatedAt: string;
+};
+type CachedAnalysis = { data: AnalysisResponseData; expiresAt: number; state: "fresh" | "stale" };
 const ANALYSIS_CACHE = new Map<string, CachedAnalysis>();
 const ANALYSIS_CACHE_TTL_MS = 10 * 60 * 1000; // 10분
+const ANALYSIS_STALE_TTL_MS = 24 * 60 * 60 * 1000; // 24시간까지는 먼저 보여주고 백그라운드 갱신
+const BACKGROUND_REFRESHES = new Map<string, Promise<void>>();
 
 // 새 브리핑을 만들 때 같은 종목의 과거 분석(stock_analyses)을 몇 건까지 참고할지.
 // 너무 많으면 이력 요약 프롬프트가 길어지고 비용도 늘어나니 최근 것 위주로 적당히만 본다.
@@ -283,18 +293,14 @@ async function withFallbackChain(
 // ---------------------------------------------------------------------------
 type HistoryRow = { stock_name: string; briefing: Briefing; generated_at: string };
 
-async function fetchAnalysisHistory(ticker: string): Promise<HistoryRow[]> {
+async function fetchAnalysisHistory(userId: string, ticker: string): Promise<HistoryRow[]> {
   if (!ticker) return [];
   const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return []; // 비로그인 요청은 히스토리 자체가 없다(저장도 안 하므로).
 
   const { data, error } = await supabase
     .from("stock_analyses")
     .select("stock_name, briefing, generated_at")
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .eq("ticker", ticker)
     .order("created_at", { ascending: false })
     .limit(HISTORY_LIMIT);
@@ -477,24 +483,36 @@ async function rewritePlain(
 }
 
 // ---------------------------------------------------------------------------
-// 히스토리 저장 — 로그인한 사용자에 한해, 새로 생성된 브리핑을 stock_analyses에 버전으로 남긴다.
-// 캐시 히트로 응답한 경우엔 이미 이전 호출에서 저장됐을 것이므로 다시 저장하지 않는다(호출부에서
-// isNew일 때만 이 함수를 부른다). 저장은 부가 기능이라 실패해도 브리핑 응답 자체를 막지 않는다 —
-// 그래서 호출부는 이 함수를 항상 .catch로 감싸 에러를 삼킨다.
+// 영속 캐시 — 기존 stock_analyses의 최신 행을 사용자별 캐시로 재사용한다. 10분 이내면 그대로
+// 응답하고, 24시간 이내의 오래된 결과는 즉시 응답한 뒤 after()에서 새 버전을 생성한다.
 // ---------------------------------------------------------------------------
-async function saveAnalysisForUser(
-  ticker: string,
-  name: string,
-  data: { price: Price; news: NewsItem[]; briefing: Briefing; generatedAt: string },
-) {
+async function loadPersistentAnalysis(userId: string, ticker: string): Promise<AnalysisResponseData | null> {
+  if (!ticker) return null;
   const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return; // 비로그인 요청은 지금까지처럼 DB에 남기지 않는다.
+  const { data, error } = await supabase
+    .from("stock_analyses")
+    .select("ticker, stock_name, price, news, briefing, generated_at")
+    .eq("user_id", userId)
+    .eq("ticker", ticker)
+    .order("generated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
+  if (error) throw error;
+  if (!data || !data.generated_at) return null;
+  return {
+    stock: { name: data.stock_name, ticker: data.ticker },
+    price: data.price as Price,
+    news: data.news as NewsItem[],
+    briefing: data.briefing as Briefing,
+    generatedAt: data.generated_at,
+  };
+}
+
+async function saveAnalysisForUser(userId: string, ticker: string, name: string, data: AnalysisResponseData) {
+  const supabase = await createServerSupabaseClient();
   const { error } = await supabase.from("stock_analyses").insert({
-    user_id: user.id,
+    user_id: userId,
     ticker,
     stock_name: name,
     price: data.price,
@@ -505,16 +523,63 @@ async function saveAnalysisForUser(
   if (error) throw error;
 }
 
+async function generateAnalysis(userId: string, name: string, ticker: string, tone: Tone): Promise<AnalysisResponseData> {
+  const [news, price, fxSummary, intlRateSummary, historySummary] = await Promise.all([
+    getNewsMultiSource(name),
+    getPriceForTicker(ticker),
+    fetchMajorRatesSummary().catch((error) => {
+      console.warn("[analyze] 환율 조회 실패(브리핑은 계속 진행):", error);
+      return "";
+    }),
+    fetchInternationalRatesSummary().catch((error) => {
+      console.warn("[analyze] 국제금리 조회 실패(브리핑은 계속 진행):", error);
+      return "";
+    }),
+    fetchAnalysisHistory(userId, ticker)
+      .then(formatHistoryContext)
+      .catch((error) => {
+        console.warn("[analyze] 이력 컨텍스트 준비 실패(계속 진행):", error);
+        return "";
+      }),
+  ]);
+
+  const briefingNews = news.slice(0, MAX_ANALYSIS_NEWS);
+  const raw = await analyzeRaw(name, ticker, price, briefingNews, fxSummary, intlRateSummary, historySummary);
+  const briefing = await rewritePlain(name, ticker, raw, briefingNews, tone);
+  return {
+    stock: { name, ticker },
+    price,
+    news,
+    briefing,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+function refreshInBackground(userId: string, name: string, ticker: string, tone: Tone, cacheKey: string) {
+  const active = BACKGROUND_REFRESHES.get(cacheKey);
+  if (active) return active;
+
+  const refresh = generateAnalysis(userId, name, ticker, tone)
+    .then(async (data) => {
+      ANALYSIS_CACHE.set(cacheKey, { data, expiresAt: Date.now() + ANALYSIS_CACHE_TTL_MS, state: "fresh" });
+      await saveAnalysisForUser(userId, ticker, name, data);
+    })
+    .catch((error) => {
+      console.warn("[analyze] 백그라운드 갱신 실패(기존 캐시 유지):", error);
+    })
+    .finally(() => {
+      BACKGROUND_REFRESHES.delete(cacheKey);
+    });
+  BACKGROUND_REFRESHES.set(cacheKey, refresh);
+  return refresh;
+}
+
+function cachedResponse(data: AnalysisResponseData, status: string) {
+  return NextResponse.json(data, { headers: { "X-Nescio-Cache": status } });
+}
+
 export async function POST(request: Request) {
   try {
-    const { ok, retryAfterMs } = rateLimit(`analyze:${clientIp(request)}`, RATE_LIMIT.limit, RATE_LIMIT.windowMs);
-    if (!ok) {
-      return NextResponse.json(
-        { error: "요청이 너무 잦아요. 잠시 후 다시 시도해 주세요." },
-        { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } },
-      );
-    }
-
     const auth = await requireAuth();
     if (auth.response) return auth.response;
 
@@ -525,58 +590,59 @@ export async function POST(request: Request) {
     const requestedTone = (body as { tone?: unknown }).tone;
     const tone: Tone =
       typeof requestedTone === "string" && requestedTone in TONE_RULES ? (requestedTone as Tone) : DEFAULT_TONE;
-
+    const forceRefresh = (body as { refresh?: unknown }).refresh === true;
     const tickerKey = typeof ticker === "string" ? ticker : "";
-    const cacheKey = `${tickerKey || name}::${tone}`;
-    const cachedEntry = ANALYSIS_CACHE.get(cacheKey);
-    if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
-      return NextResponse.json(cachedEntry.data);
+    const cacheKey = `${auth.user.id}:${tickerKey || name}:${tone}`;
+
+    if (!forceRefresh) {
+      const cachedEntry = ANALYSIS_CACHE.get(cacheKey);
+      if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+        if (cachedEntry.state === "stale") after(() => refreshInBackground(auth.user.id, name, tickerKey, tone, cacheKey));
+        return cachedResponse(cachedEntry.data, `memory-${cachedEntry.state}`);
+      }
+
+      // stock_analyses에는 tone 컬럼이 없으므로 현재 UI의 기본 톤만 영속 캐시로 재사용한다.
+      if (tone === DEFAULT_TONE && tickerKey) {
+        const persistent = await loadPersistentAnalysis(auth.user.id, tickerKey).catch((error) => {
+          console.warn("[analyze] 영속 캐시 조회 실패(새 분석으로 계속):", error);
+          return null;
+        });
+        if (persistent) {
+          const ageMs = Date.now() - new Date(persistent.generatedAt).getTime();
+          if (ageMs <= ANALYSIS_STALE_TTL_MS) {
+            const state = ageMs <= ANALYSIS_CACHE_TTL_MS ? "fresh" : "stale";
+            ANALYSIS_CACHE.set(cacheKey, {
+              data: persistent,
+              expiresAt: Date.now() + (state === "fresh" ? ANALYSIS_CACHE_TTL_MS : 30_000),
+              state,
+            });
+            if (state === "stale") after(() => refreshInBackground(auth.user.id, name, tickerKey, tone, cacheKey));
+            return cachedResponse(persistent, `persistent-${state}`);
+          }
+        }
+      }
     }
 
-    const [news, price, fxSummary, intlRateSummary, historySummary] = await Promise.all([
-      getNewsMultiSource(name),
-      getPriceForTicker(tickerKey),
-      // 환율·국제금리는 참고용 보조 데이터라 실패해도 브리핑 전체를 막지 않는다 — 조용히 빈
-      // 문자열로. 다만 원인 추적을 위해 로그는 남긴다(클라이언트 응답에는 영향 없음).
-      fetchMajorRatesSummary().catch((error) => {
-        console.warn("[analyze] 환율 조회 실패(브리핑은 계속 진행):", error);
-        return "";
-      }),
-      fetchInternationalRatesSummary().catch((error) => {
-        console.warn("[analyze] 국제금리 조회 실패(브리핑은 계속 진행):", error);
-        return "";
-      }),
-      // 0단계(이력 요약)도 같이 병렬로 — 뉴스/시세 조회를 기다리는 동안 같이 끝나서 전체
-      // 응답 시간이 거의 늘어나지 않는다. 실패해도 빈 문자열이라 아래 흐름은 그대로 간다.
-      fetchAnalysisHistory(tickerKey)
-        .then(formatHistoryContext)
-        .catch((error) => {
-          console.warn("[analyze] 이력 컨텍스트 준비 실패(계속 진행):", error);
-          return "";
-        }),
-    ]);
+    const { ok, retryAfterMs } = rateLimit(`analyze:${clientIp(request)}`, RATE_LIMIT.limit, RATE_LIMIT.windowMs);
+    if (!ok) {
+      return NextResponse.json(
+        { error: "요청이 너무 잦아요. 잠시 후 다시 시도해 주세요." },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } },
+      );
+    }
 
-    const briefingNews = news.slice(0, MAX_ANALYSIS_NEWS);
-    const raw = await analyzeRaw(name, tickerKey, price, briefingNews, fxSummary, intlRateSummary, historySummary);
-    const briefing = await rewritePlain(name, tickerKey, raw, briefingNews, tone);
-
-    const responseData = {
-      stock: { name, ticker: ticker || "" },
-      price,
-      news,
-      briefing,
-      generatedAt: new Date().toISOString(),
-    };
-    ANALYSIS_CACHE.set(cacheKey, { data: responseData, expiresAt: Date.now() + ANALYSIS_CACHE_TTL_MS });
-
-    // 새로 생성된 브리핑만 히스토리로 남긴다(캐시 히트 응답은 위에서 이미 return됨).
-    // 응답 이후 서버리스 인스턴스가 곧바로 정리될 수 있어 fire-and-forget 대신 await로 저장을
-    // 기다린 다음 응답한다 — 실패해도 catch로 삼켜서 브리핑 응답 자체는 항상 나가게 한다.
-    await saveAnalysisForUser(tickerKey, name, responseData).catch((error) => {
-      console.warn("[analyze] 히스토리 저장 실패:", error);
+    const responseData = await generateAnalysis(auth.user.id, name, tickerKey, tone);
+    ANALYSIS_CACHE.set(cacheKey, {
+      data: responseData,
+      expiresAt: Date.now() + ANALYSIS_CACHE_TTL_MS,
+      state: "fresh",
     });
-
-    return NextResponse.json(responseData);
+    after(() =>
+      saveAnalysisForUser(auth.user.id, tickerKey, name, responseData).catch((error) => {
+        console.warn("[analyze] 영속 캐시 저장 실패:", error);
+      }),
+    );
+    return cachedResponse(responseData, "generated");
   } catch (error) {
     const message = error instanceof Error ? error.message : "분석 중 오류가 발생했습니다.";
     return NextResponse.json({ error: message }, { status: 500 });
