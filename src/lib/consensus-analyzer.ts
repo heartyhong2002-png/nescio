@@ -5,9 +5,13 @@ import { AnalystReport, ConsensusAiReport } from "./consensus-types";
 const ANALYSIS_CACHE = new Map<string, { analysis: ConsensusAiReport; expiresAt: number }>();
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 
-function getCacheKey(ticker: string, reports: AnalystReport[]): string {
-  // 최신 리포트 nid들의 조합을 해시 대신 사용 (간단한 식별자)
-  return ticker + "|" + reports.map((r) => r.nid).join(",");
+const PROMPT_VERSION = "consensus-v1-20260929";
+
+function getCacheKey(ticker: string, reports: AnalystReport[], currentPrice: number): string {
+  // ticker, 최신 리포트 nid 목록(보고서 식별자), 100원 단위 반올림 현재가, 모델/프롬프트 버전
+  const reportIds = reports.map((r) => r.nid).join(",");
+  const roundedPrice = Math.round(currentPrice / 100) * 100;
+  return `${ticker}|${reportIds}|${roundedPrice}|${PROMPT_VERSION}`;
 }
 
 /**
@@ -152,7 +156,7 @@ export async function analyzeConsensus(
   }
 
   // 2. 캐시 확인
-  const cacheKey = getCacheKey(ticker, reports);
+  const cacheKey = getCacheKey(ticker, reports, currentPrice);
   const cached = ANALYSIS_CACHE.get(cacheKey);
   const now = Date.now();
   if (cached && now < cached.expiresAt) {

@@ -1,11 +1,10 @@
 # Supabase 연동 (인증 + DB)
 
-> 이 문서는 다른 세션(다른 Claude 세션, 또는 나중의 나 자신)이 Supabase Studio에서 이미
-> 만들어진 백엔드를 코드만 보고도 파악할 수 있게 정리한 것입니다. **실제 Supabase 프로젝트에
-> 직접 접속하는 도구(MCP)가 없는 세션에서 코드를 읽고 역추적한 내용**이라, 아래 스키마는
-> "코드가 기대하는 모양"이지 Supabase Studio에 100% 그대로 있다는 보장은 아닙니다. 세션을 새로
-> 시작했는데 이 문서와 실제 동작이 다르면, Studio의 Table Editor / SQL Editor에서 실제 스키마를
-> 다시 확인해서 이 문서를 갱신해주세요.
+> 2026-09-29 실제 프로젝트 점검 결과, 이 문서·`docs/supabase-schema.sql`·실제 DB는 현재
+> 일치하지 않습니다. 특히 `stock_analyses`는 실제 DB에서 `name`, `tone`을 사용하지만 코드와 SQL
+> 문서는 `stock_name`, `created_at`을 전제합니다. 실제 migration history도 0건입니다. 이 문서는
+> 배포 가능한 단일 진실 공급원이 아니며, 수정 전 [PR #2 품질·배포 검증 보고서](./PR-2-QUALITY-DEPLOYMENT-REPORT.md)를
+> 확인하고 versioned migration으로 코드·문서·DB를 함께 맞춰야 합니다.
 
 ## 무엇을 위한 건가
 
@@ -43,6 +42,7 @@
 | `NEXT_PUBLIC_SUPABASE_URL` | `.env.local` (gitignore, 공개 가능한 값) | Supabase 프로젝트 URL |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `.env.local` (gitignore, 공개 가능한 값) | 브라우저에서 쓰는 publishable(구 anon) 키 — RLS로 보호됨 |
 | `SUPABASE_SERVICE_ROLE_KEY` | `tools/notebooks/.env` (gitignore, 서버 전용) | RLS 우회하는 관리자 키. **절대 클라이언트 코드에 노출 금지.** 지금은 계정 탈퇴(`auth.admin.deleteUser`) 용도로만 씀 |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` / `OLLAMA_API_KEY` | 서버 전용 배포 환경변수 | 재무지표 해설 모델의 OpenAI 호환 endpoint·모델·선택 인증값. Vercel에서 기본 `localhost`는 사용할 수 없음 |
 
 `NEXT_PUBLIC_*`는 빌드 시 클라이언트 번들에 그대로 박히기 때문에 `.env.local`에 둡니다.
 값 자체는 공개 가능하지만 이 프로젝트에서는 `.env.local`을 커밋하지 않습니다.
@@ -53,7 +53,8 @@ Vercel에 배포할 때는 `NEXT_PUBLIC_*` 두 개와 `SUPABASE_SERVICE_ROLE_KEY
 Settings → Environment Variables에도 동일하게 넣어야 합니다 (다른 API 키들과 같은 이유 —
 `tools/notebooks/.env` 파일은 배포본에 안 올라갑니다). 종목 브리핑용 `NVIDIA_API_KEY`,
 `GROQ_API_KEY`, `GEMINI_API_KEY`도 Vercel 환경변수에 별도로 등록하고 재배포해야 합니다.
-로컬 파일의 키를 바꾸는 것만으로는 배포 환경이 갱신되지 않습니다.
+로컬 파일의 키를 바꾸는 것만으로는 배포 환경이 갱신되지 않습니다. DB backup 워크플로의
+`SUPABASE_DB_URL`은 Vercel 변수가 아니라 GitHub Actions Secret으로만 등록하며, 값은 어디에도 기록하지 않습니다.
 
 ## 인증(Auth)
 
@@ -125,7 +126,7 @@ alter table public.valuation_interpretations enable row level security;
 | `src/app/api/analyze/route.ts` | AI 브리핑 생성, 영속 캐시 조회, 백그라운드 갱신·저장 |
 | `src/lib/use-briefing.ts` | 브라우저 세션 캐시 표시, 비 JSON 오류 처리, 백그라운드 갱신 확인 |
 | `src/app/api/valuation/interpret/route.ts` | 지표 해설 생성 + 로그인 시 `valuation_interpretations`에 저장 |
-| `docs/supabase-schema.sql` | 실제 마이그레이션 SQL (Studio SQL Editor에 그대로 실행) |
+| `docs/supabase-schema.sql` | 현재 코드가 기대한 과거 스키마 초안. 실제 migration source로 사용 금지 — 정합성 복구 migration을 만든 뒤 갱신 필요 |
 
 ## 알려진 한계 / 다음에 볼 것
 
@@ -133,17 +134,17 @@ alter table public.valuation_interpretations enable row level security;
   직접 조회하는 히스토리 UI는 아직 없습니다 — 다음 세션에서 필요하면
   추가하세요(예: 종목 페이지에 "과거 분석 보기" 탭, `select ... where user_id = ? and
   ticker = ? order by created_at desc`).
-- `stock_analyses`에는 말투(`tone`) 컬럼이 없습니다. 따라서 기본 말투만 영속 저장하며 다른
-  말투는 서버 메모리·브라우저 세션 범위에서만 캐시합니다. 사용자·종목·말투를 포함한 캐시 키로
-  다른 사용자나 다른 말투의 결과가 섞이지 않게 합니다.
+- 실제 `stock_analyses`에는 `tone`이 있지만 문서 SQL과 API가 다른 컬럼명을 사용한다. 이 상태에서는
+  영속 캐시 조회·저장이 실패할 수 있으므로 migration으로 먼저 정합성을 복구해야 한다.
 - 두 테이블 모두 버전을 무한히 쌓기만 하고 정리(retention)하지 않습니다. 사용자가 같은
   종목을 자주 들여다보면 행이 계속 늘어나므로, 필요해지면 오래된 행을 주기적으로 지우는
   것도 고려하세요.
-- `docs/supabase-schema.sql`이 실제 마이그레이션 소스입니다. Studio에 이미 적용된 스키마와
-  이 파일이 어긋나는지 의심되면 아래 쿼리로 실제 컬럼을 확인해서 두 문서를 맞춰주세요:
-  ```sql
-  select table_name, column_name, data_type, is_nullable
-  from information_schema.columns
-  where table_schema = 'public'
-  order by table_name, ordinal_position;
-  ```
+## DB 백업 운영 및 보관 정책 (`.github/workflows/db-backup.yml`)
+
+- **실행 주기 및 기준 시각**: 매일 UTC 18:00 (KST 익일 03:00)에 실행되며, 파일명은 `backups/YYYY-MM-DD.sql` (UTC 날짜 기준) 형식을 따릅니다.
+- **Git 이력 보존 한계**: 워크플로우에서 30일 초과 파일(`-mtime +30`)을 워크트리에서 삭제하고 커밋하지만, **Git 커밋 이력(commit history/packfile)에는 삭제 전 백업 파일 내용이 영구히 남습니다**. 따라서 단순 git prune만으로는 저장소 크기가 계속 증가하며 영구 파기가 되지 않습니다.
+- **민감 데이터 보관 정책 제안**:
+  - `public` 스키마 덤프에는 사용자 계정 ID(UUID), 프로필 설정, 관심종목 리스트 등 서비스 운영 데이터가 평문 SQL로 포함됩니다.
+  - 공개 저장소인 경우 `db-backups` 브랜치가 노출되지 않도록 브랜치 접근 권한을 제한하거나, 별도의 Private 백업 저장소 또는 암호화(KMS/GPG)가 적용된 클라우드 객체 스토리지(AWS S3, GCP Cloud Storage)로 전송하도록 전환하는 것을 강력히 권장합니다.
+  - 완전한 30일 경과 파기가 필요한 경우 Git 기반 백업 대신 S3 Lifecycle Rule(자동 만료 삭제)을 적용해야 합니다.
+

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMarketIndices } from "@/lib/krx";
 import { fetchDomesticIndices, fetchOverseasIndicesDebug } from "@/lib/kis";
 import { getMarketComment } from "@/lib/market-comment";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { MarketIndex } from "@/lib/types";
 
 // 지수는 AI 멘트를 기다리지 않고 먼저 반환한다. 두 단계는 같은 짧은 캐시 스냅샷을
@@ -51,6 +52,14 @@ async function loadComment(indices: MarketIndex[]): Promise<string | null> {
 }
 
 export async function GET(request: NextRequest) {
+  const { ok, retryAfterMs } = rateLimit(`market-indices:${clientIp(request)}`, 30, 60_000);
+  if (!ok) {
+    return NextResponse.json(
+      { error: "요청이 너무 잦아요. 잠시 후 다시 시도해 주세요." },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } },
+    );
+  }
+
   // 기존 디버그 경로와 기본 { indices, comment } 응답은 유지한다.
   if (request.nextUrl.searchParams.get("debug") === "1") {
     const debug = await fetchOverseasIndicesDebug();

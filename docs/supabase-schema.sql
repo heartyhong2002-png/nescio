@@ -15,9 +15,9 @@ create table public.profiles (
 alter table public.profiles enable row level security;
 
 create policy "profiles: select own" on public.profiles
-  for select using (auth.uid() = id);
+  for select using ((select auth.uid()) = id);
 create policy "profiles: update own" on public.profiles
-  for update using (auth.uid() = id);
+  for update using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
 -- insert 정책은 필요 없음 — 아래 트리거가 security definer로 대신 insert하기 때문에
 -- 클라이언트가 직접 profiles에 insert할 일이 없다.
 
@@ -51,17 +51,17 @@ create table public.watchlist_items (
 alter table public.watchlist_items enable row level security;
 
 create policy "watchlist: select own" on public.watchlist_items
-  for select using (auth.uid() = user_id);
+  for select using ((select auth.uid()) = user_id);
 create policy "watchlist: insert own" on public.watchlist_items
-  for insert with check (auth.uid() = user_id);
+  for insert with check ((select auth.uid()) = user_id);
 -- update 정책도 필요하다 — 앱 코드(add/addMany)가 upsert(insert ... on conflict do update)를
 -- 쓰는데, RLS가 걸린 테이블에서 upsert는 insert 정책만으로는 통과하지 않고 update 정책도
 -- 같이 확인한다. 이게 빠지면 이미 담은 종목을 다시 담으려 할 때(on conflict 경로) permission
 -- denied로 조용히 실패하고 롤백된다.
 create policy "watchlist: update own" on public.watchlist_items
-  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 create policy "watchlist: delete own" on public.watchlist_items
-  for delete using (auth.uid() = user_id);
+  for delete using ((select auth.uid()) = user_id);
 
 -- 실행 후 확인해볼 것 (SQL Editor에서):
 --   set role authenticated;
@@ -97,9 +97,9 @@ create index stock_analyses_user_ticker_idx
 alter table public.stock_analyses enable row level security;
 
 create policy "stock_analyses: select own" on public.stock_analyses
-  for select using (auth.uid() = user_id);
+  for select using ((select auth.uid()) = user_id);
 create policy "stock_analyses: insert own" on public.stock_analyses
-  for insert with check (auth.uid() = user_id);
+  for insert with check ((select auth.uid()) = user_id);
 -- update/delete 정책 없음 — 히스토리는 쌓이기만 하고 수정하지 않는다(필요해지면 그때 추가).
 
 create table public.valuation_interpretations (
@@ -107,7 +107,7 @@ create table public.valuation_interpretations (
   user_id uuid not null references auth.users(id) on delete cascade,
   ticker text not null,
   stock_name text not null,
-  metrics jsonb not null,         -- 해설을 만들 때 입력한 {per, pbr, dividend, marketCap}
+  metrics jsonb not null,         -- 해설을 만들 때 입력한 {per, pbr, dividend, marketCap, currentPrice}
   interpretation jsonb not null,  -- ValuationInterpretation 타입 전체
   created_at timestamptz not null default now()
 );
@@ -118,6 +118,6 @@ create index valuation_interpretations_user_ticker_idx
 alter table public.valuation_interpretations enable row level security;
 
 create policy "valuation_interpretations: select own" on public.valuation_interpretations
-  for select using (auth.uid() = user_id);
+  for select using ((select auth.uid()) = user_id);
 create policy "valuation_interpretations: insert own" on public.valuation_interpretations
-  for insert with check (auth.uid() = user_id);
+  for insert with check ((select auth.uid()) = user_id);

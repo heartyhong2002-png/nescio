@@ -49,7 +49,8 @@
 - 국내 시장의 코스피·코스닥 지수는 AI 시장 코멘트 생성과 분리해 먼저 표시합니다. AI 코멘트는
   별도 영역에 뒤이어 표시하며, 실패해도 지수는 그대로 볼 수 있습니다.
 - 종목 상세 차트는 실제 캔들·거래량·이동평균 데이터를 어두운 보라/분홍 테마로 표시하고,
-  기간 선택·캔들/라인 전환·지표 토글을 유지합니다. 시안의 예시 가격이나 수급 수치는 사용하지 않습니다.
+  실제 가격 기반의 4칸 요약 통계(수익률, 최고가, 최저가, 평균 거래량)와 하단 범례,
+  기간 선택·캔들/라인 전환·지표 토글을 유지합니다. 시안의 가짜 예시 가격이나 수급 수치는 사용하지 않습니다.
 - 종목 및 원인 상세의 AI 브리핑이 실패하면 기술적인 오류 원인 대신 사과·재실행 안내와 별도
   `다시 시도` 버튼을 보여줍니다. 서버가 정상 응답으로 보낸 AI 제공자 실패 대체 문구도
   실패 상태로 처리하며, 종목명이 없는 경우에도 재조회 후 재시도합니다.
@@ -144,6 +145,7 @@ npm run dev
 | `NVIDIA_MODEL` / `GROQ_MODEL` / `GEMINI_MODEL` / `CEREBRAS_MODEL` | 각 LLM 모델명 오버라이드. 종목 브리핑 기본값은 Nemotron 3 Super 120B / GPT-OSS 120B / Gemini 3.8 Flash | 선택 (기본값 있음) |
 | `KIS_BASE_URL` | KIS API 베이스 URL 오버라이드 (기본: 실전 `openapi.koreainvestment.com:9443`) | 선택 |
 | `SUPABASE_SERVICE_ROLE_KEY` | 계정 탈퇴(관리자 권한으로 auth 사용자 삭제) 전용 — Settings → API의 "service_role secret" 키. **RLS를 완전히 우회하는 비밀 키라 절대 `.env.local`(클라이언트 번들)에 넣지 말고 반드시 여기(`tools/notebooks/.env`, 서버 전용)에만 둘 것** | 필수 (계정 탈퇴 기능용) |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` / `OLLAMA_API_KEY` | 재무지표 해설 API의 OpenAI 호환 모델 엔드포인트·모델·선택 인증값. 배포 환경에서 설정하지 않으면 기본 `localhost`로 연결을 시도하므로 Vercel에서는 외부 접근 가능한 엔드포인트를 명시해야 함 | 재무지표 해설 기능용 |
 
 `.env.local`:
 
@@ -151,6 +153,12 @@ npm run dev
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase 프로젝트 URL (계정/관심종목 DB) — Settings → API의 "Project URL" (`https://xxxxx.supabase.co`, `/rest/v1/` 같은 경로 없이) | 필수 |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase 퍼블리셔블(anon) 키 | 필수 |
+
+GitHub Actions Secret(로컬 `.env`나 Vercel 변수와 별도):
+
+| 변수 | 용도 | 필수 |
+|---|---|---|
+| `SUPABASE_DB_URL` | `.github/workflows/db-backup.yml`의 public schema 덤프용 DB 연결 문자열. Actions Secret에만 등록하고 값은 문서·로그·커밋에 남기지 않음 (UTC 기준 일별 백업. Git 커밋 이력에 덤프가 남으므로 민감 데이터 보호를 위해 브랜치 접근 제한 또는 암호화 스토리지 이관 권장 — 상세는 `docs/SUPABASE.md` 참고) | DB 백업 워크플로용 |
 
 ## 계정 · 관심종목 DB (Supabase)
 
@@ -168,6 +176,10 @@ npm run dev
 
 Vercel에 GitHub 저장소를 연결하면 바로 배포됩니다 (Next.js 앱이라 별도 설정 거의 불필요).
 배포 후 위 환경변수를 Vercel 프로젝트 Settings에 추가하고 Redeploy 해야 반영됩니다.
+
+PR #2의 현재 품질·배포 게이트는 통과하지 못했습니다. 머지 또는 배포 전
+[PR #2 품질·배포 검증 보고서](docs/PR-2-QUALITY-DEPLOYMENT-REPORT.md)의 P0/P1 항목을 해결하고
+재검증해야 합니다.
 
 최근 화면 개선 변경은 2026-09-29 `main` 커밋 `6467d83`으로 푸시했고, Vercel 배포 완료 상태를 확인했습니다. 국내 지수 우선 표시와 AI 브리핑 오류·재시도 흐름의 배포 브라우저 검증은 아직 남아 있습니다.
 

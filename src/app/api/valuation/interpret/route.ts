@@ -107,8 +107,12 @@ type CacheEntry = { promise: Promise<ValuationInterpretation>; expiresAt: number
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 10 * 60_000;
 
-function cacheKey(ticker: string, m: MetricsInput) {
-  return [ticker, m.per, m.pbr, m.dividend, m.marketCap].join("|");
+function cacheKey(ticker: string, name: string, m: MetricsInput, close: number | null, changeRate: number | null) {
+  const model = serverEnv("OLLAMA_MODEL") || "qwen2.5:7b-instruct";
+  // close를 100원 단위로 반올림 — 미세한 가격 변동으로 캐시를 깨뜨리지 않으면서도,
+  // 의미 있게 다른 가격에서는 다른 해설을 생성한다.
+  const roundedClose = close !== null ? Math.round(close / 100) * 100 : "null";
+  return [ticker, name.trim().toLowerCase(), m.per, m.pbr, m.dividend, m.marketCap, roundedClose, changeRate, model].join("|");
 }
 
 async function generate(
@@ -159,6 +163,8 @@ async function saveInterpretationForUser(
   name: string,
   metrics: MetricsInput,
   interpretation: ValuationInterpretation,
+  close: number | null,
+  changeRate: number | null,
 ) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -170,7 +176,9 @@ async function saveInterpretationForUser(
     user_id: user.id,
     ticker,
     stock_name: name,
-    metrics,
+    // metrics jsonb에 입력 지표 + 요청 시점의 현재가·등락률을 함께 저장한다.
+    // 나중에 "어떤 가격 기준으로 이 해설이 만들어졌는지" 추적할 수 있다.
+    metrics: { ...metrics, currentPrice: { close, changeRate } },
     interpretation,
   });
   if (error) throw error;
@@ -210,7 +218,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const key = cacheKey(ticker || name, metrics);
+    const key = cacheKey(ticker || name, name, metrics, close, changeRate);
     const hit = cache.get(key);
     let promise: Promise<ValuationInterpretation>;
     let isNew = false;
@@ -228,7 +236,7 @@ export async function POST(request: Request) {
 
     // 새로 생성된 해설만 히스토리로 남긴다(캐시 히트는 이미 저장된 것).
     if (isNew) {
-      await saveInterpretationForUser(ticker, name, metrics, interpretation).catch((error) => {
+      await saveInterpretationForUser(ticker, name, metrics, interpretation, close, changeRate).catch((error) => {
         console.warn("[valuation/interpret] 히스토리 저장 실패:", error);
       });
     }

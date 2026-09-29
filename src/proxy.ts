@@ -24,6 +24,22 @@ function isGuestOnly(pathname: string) {
   return GUEST_ONLY_PAGES.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
 }
 
+/**
+ * updateSession()이 설정한 Set-Cookie 헤더 및 Cache-Control 등 관련 헤더를 redirect 응답에도 복사한다.
+ * Supabase SSR의 세션 갱신(refresh) 쿠키가 redirect 때 유실되면,
+ * 리다이렉트 직후 세션이 풀려서 다시 로그인 화면으로 돌아가는 루프가 생긴다.
+ */
+function copySessionHeaders(from: NextResponse, to: NextResponse): NextResponse {
+  from.headers.getSetCookie().forEach((cookie) => {
+    to.headers.append("set-cookie", cookie);
+  });
+  const cacheControl = from.headers.get("cache-control");
+  if (cacheControl) {
+    to.headers.set("cache-control", cacheControl);
+  }
+  return to;
+}
+
 export default async function proxy(request: NextRequest) {
   const { response, user } = await updateSession(request);
   const { pathname } = request.nextUrl;
@@ -32,14 +48,14 @@ export default async function proxy(request: NextRequest) {
   if (!user && isProtected(pathname)) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/onboarding/login";
-    return NextResponse.redirect(loginUrl);
+    return copySessionHeaders(response, NextResponse.redirect(loginUrl));
   }
 
   // 게스트 전용 경로: 이미 로그인됐으면 홈으로
   if (user && isGuestOnly(pathname)) {
     const homeUrl = request.nextUrl.clone();
     homeUrl.pathname = "/";
-    return NextResponse.redirect(homeUrl);
+    return copySessionHeaders(response, NextResponse.redirect(homeUrl));
   }
 
   return response;

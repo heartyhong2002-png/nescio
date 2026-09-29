@@ -203,6 +203,31 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
     };
   }, [points]);
 
+  // 기간 요약 통계 (Handoff 시안 준수: 기간 수익률, 기간 최고가, 기간 최저가, 평균 거래량)
+  const summaryStats = useMemo(() => {
+    if (!points || points.length === 0) return null;
+    const firstClose = points[0].close;
+    const lastClose = points[points.length - 1].close;
+    const returnRate = firstClose > 0 ? ((lastClose - firstClose) / firstClose) * 100 : 0;
+    let high = -Infinity;
+    let low = Infinity;
+    let totalVol = 0;
+    for (const p of points) {
+      const h = p.high ?? p.close;
+      const l = p.low ?? p.close;
+      if (h > high) high = h;
+      if (l < low) low = l;
+      totalVol += (p.volume ?? 0);
+    }
+    const avgVolume = points.length > 0 ? Math.round(totalVol / points.length) : 0;
+    return {
+      returnRate,
+      high: high === -Infinity ? lastClose : high,
+      low: low === Infinity ? lastClose : low,
+      avgVolume,
+    };
+  }, [points]);
+
   // 차트 렌더링 함수
   const drawChart = useCallback(() => {
     const canvas = canvasRef.current;
@@ -354,7 +379,7 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
         const barH = totalContentHeight - y;
         const isUp = (p.close ?? 0) >= (p.open ?? p.close);
 
-        ctx.fillStyle = isUp ? "#f04452" : "#3182f6";
+        ctx.fillStyle = isUp ? "#e55755" : "#3976e8";
         ctx.fillRect(x - barWidth / 2, y, barWidth, barH);
       }
 
@@ -394,7 +419,7 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
         const yHigh = priceToY(high);
         const yLow = priceToY(low);
 
-        const color = isUp ? "#f04452" : "#3182f6";
+        const color = isUp ? "#e55755" : "#3976e8";
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
 
@@ -413,7 +438,7 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
     } else {
       // 라인 차트 렌더링
       ctx.lineWidth = 2;
-      ctx.strokeStyle = "#3182f6";
+      ctx.strokeStyle = "#3976e8";
       ctx.beginPath();
       for (let i = 0; i < count; i++) {
         const x = getX(i);
@@ -425,8 +450,8 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
 
       // 그라데이션 영역 채우기
       const grad = ctx.createLinearGradient(0, 0, 0, priceHeight);
-      grad.addColorStop(0, "rgba(49, 130, 246, 0.16)");
-      grad.addColorStop(1, "rgba(49, 130, 246, 0.0)");
+      grad.addColorStop(0, "rgba(57, 118, 232, 0.2)");
+      grad.addColorStop(1, "rgba(57, 118, 232, 0.0)");
       ctx.fillStyle = grad;
       ctx.lineTo(getX(count - 1), priceHeight);
       ctx.lineTo(getX(0), priceHeight);
@@ -471,8 +496,8 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
       const maxY = priceToY(extremes.maxVal);
       const maxText = `${formatPrice(extremes.maxVal)}원 (${extremes.maxChangePercent > 0 ? "+" : ""}${extremes.maxChangePercent.toFixed(2)}%, ${extremes.maxDate})`;
 
-      ctx.fillStyle = "#f04452";
-      ctx.strokeStyle = "#f04452";
+      ctx.fillStyle = "#e55755";
+      ctx.strokeStyle = "#e55755";
       ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, sans-serif";
       ctx.textAlign = maxX > chartWidth * 0.75 ? "right" : maxX < chartWidth * 0.25 ? "left" : "center";
       ctx.textBaseline = "bottom";
@@ -490,8 +515,8 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
       const minY = priceToY(extremes.minVal);
       const minText = `${formatPrice(extremes.minVal)}원 (${extremes.minChangePercent > 0 ? "+" : ""}${extremes.minChangePercent.toFixed(2)}%, ${extremes.minDate})`;
 
-      ctx.fillStyle = "#3182f6";
-      ctx.strokeStyle = "#3182f6";
+      ctx.fillStyle = "#3976e8";
+      ctx.strokeStyle = "#3976e8";
       ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, sans-serif";
       ctx.textAlign = minX > chartWidth * 0.75 ? "right" : minX < chartWidth * 0.25 ? "left" : "center";
       ctx.textBaseline = "top";
@@ -510,7 +535,7 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
     const currentPrice = latestPoint.close;
     const currentY = Math.round(priceToY(currentPrice));
     const isCurrentUp = currentPrice >= (latestPoint.open ?? currentPrice);
-    const badgeColor = isCurrentUp ? "#f04452" : "#3182f6";
+    const badgeColor = isCurrentUp ? "#e55755" : "#3976e8";
 
     // 가로 점선
     ctx.save();
@@ -715,7 +740,7 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
   }
 
   const activeUp = activePoint ? activePoint.close >= (activePoint.open ?? activePoint.close) : true;
-  const activeColor = activeUp ? "#f04452" : "#3182f6";
+  const activeColor = activeUp ? "#e55755" : "#3976e8";
 
   const chartContent = (
     <div
@@ -857,7 +882,41 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
         </div>
       </div>
 
-      {/* 2. 상단 정보 바 (시작, 고가, 저가, 종가, 거래량, 이동평균선 범례) */}
+      {/* 2. 요약 통계 4칸 스트립 (Handoff 시안 준수) */}
+      {summaryStats && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+            margin: "10px 12px 6px",
+            border: "1px solid #392b3e",
+            borderRadius: 8,
+            backgroundColor: "#211924",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ display: "grid", gap: 3, padding: "8px 12px", borderRight: "1px solid #392b3e" }}>
+            <span style={{ color: "#a898a7", fontSize: 10 }}>기간 수익률</span>
+            <strong style={{ fontSize: 12, color: summaryStats.returnRate >= 0 ? "#e55755" : "#3976e8", fontWeight: 700 }}>
+              {summaryStats.returnRate >= 0 ? "+" : ""}{summaryStats.returnRate.toFixed(2)}%
+            </strong>
+          </div>
+          <div style={{ display: "grid", gap: 3, padding: "8px 12px", borderRight: "1px solid #392b3e" }}>
+            <span style={{ color: "#a898a7", fontSize: 10 }}>기간 최고가</span>
+            <strong style={{ fontSize: 12, color: "#f7eef5", fontWeight: 700 }}>{formatPrice(summaryStats.high)}원</strong>
+          </div>
+          <div style={{ display: "grid", gap: 3, padding: "8px 12px", borderRight: "1px solid #392b3e" }}>
+            <span style={{ color: "#a898a7", fontSize: 10 }}>기간 최저가</span>
+            <strong style={{ fontSize: 12, color: "#f7eef5", fontWeight: 700 }}>{formatPrice(summaryStats.low)}원</strong>
+          </div>
+          <div style={{ display: "grid", gap: 3, padding: "8px 12px" }}>
+            <span style={{ color: "#a898a7", fontSize: 10 }}>평균 거래량</span>
+            <strong style={{ fontSize: 12, color: "#f7eef5", fontWeight: 700 }}>{formatVolume(summaryStats.avgVolume)}</strong>
+          </div>
+        </div>
+      )}
+
+      {/* 3. 상단 정보 바 (시작, 고가, 저가, 종가, 거래량, 이동평균선 범례) */}
       <div
         style={{
           padding: "6px 14px",
@@ -897,7 +956,7 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
           </div>
         )}
 
-        {/* 이동평균선 수치 범례 (5: 초록, 20: 빨강, 60: 주황, 120: 보라) */}
+        {/* 이동평균선 수치 범례 (5: 보라, 20: 분홍, 60: 주황, 120: 보라) */}
         {showMA && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
             <span style={{ color: "#a898a7" }}>이평선</span>
@@ -917,7 +976,7 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
         )}
       </div>
 
-      {/* 3. 캔버스 영역 */}
+      {/* 4. 캔버스 영역 */}
       <div style={{ flex: 1, position: "relative", minHeight: 0, overflow: "hidden" }}>
         <canvas
           ref={canvasRef}
@@ -925,6 +984,33 @@ function PriceChart({ ticker, range, onRangeChange, height = 370 }: PriceChartPr
           onPointerMove={handlePointerMove}
           onPointerLeave={handlePointerLeave}
         />
+      </div>
+
+      {/* 5. 하단 범례 (Handoff 시안 준수) */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          gap: 16,
+          padding: "8px 14px 10px",
+          color: "#a898a7",
+          fontSize: 10,
+          borderTop: "1px solid #392b3e",
+          backgroundColor: "#1a141d",
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <i style={{ display: "inline-block", width: 14, height: 2, background: "#a78bfa", borderRadius: 1 }} />
+          5일 이동평균
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <i style={{ display: "inline-block", width: 14, height: 2, background: "#f36fba", borderRadius: 1 }} />
+          20일 이동평균
+        </span>
+        <em style={{ color: activeUp ? "#e55755" : "#3976e8", fontStyle: "normal", fontWeight: 800 }}>
+          현재가 {formatPrice(activePoint?.close ?? 0)}원
+        </em>
       </div>
     </div>
   );

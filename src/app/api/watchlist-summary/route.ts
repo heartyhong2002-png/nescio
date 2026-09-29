@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { serverEnv } from "@/lib/server-env";
 import { getPricesForTickers } from "@/lib/krx";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { Stock } from "@/lib/types";
 
 const NAVER_URL = "https://openapi.naver.com/v1/search/news.json";
@@ -27,6 +28,14 @@ const MAX_WATCHLIST_ITEMS = 50;
 
 export async function POST(request: Request) {
   try {
+    const { ok, retryAfterMs } = rateLimit(`watchlist-summary:${clientIp(request)}`, 15, 60_000);
+    if (!ok) {
+      return NextResponse.json(
+        { error: "요청이 너무 잦아요. 잠시 후 다시 시도해 주세요." },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } },
+      );
+    }
+
     const auth = await requireAuth();
     if (auth.response) return auth.response;
 

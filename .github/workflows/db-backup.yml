@@ -13,12 +13,28 @@ name: DB Backup
 #    Direct connection은 무료 플랜에서 IPv6만 지원하고, Transaction pooler(6543)는 pg_dump가
 #    쓰는 prepared statement를 지원 안 해서 실패한다.)
 # 2. db-backups 브랜치가 미리 존재해야 함(최초 1회 orphan 브랜치로 만들어둠).
+#
+# 시간 기준: 모든 날짜·파일명은 UTC 기준이다. (예: backups/2026-09-29.sql)
+#   cron "0 18 * * *" = UTC 18:00 = KST 03:00(다음날) — 트래픽 적은 새벽.
+#
+# 보존 한계:
+# - backups/ 폴더에서 30일 초과 SQL 파일은 워크트리에서 삭제·커밋되지만,
+#   Git 이력(pack/reflog)에는 삭제 전 파일 내용이 남는다. 완전 제거가 필요하면
+#   git filter-repo 또는 BFG를 별도로 실행해야 하며, 이 워크플로우에서는 처리하지 않는다.
+# - pg_dump로 내보내는 public 스키마에는 사용자 관심종목·프로필 데이터가 포함된다.
+#   db-backups 브랜치의 접근 권한을 제한하거나, 별도 private repo에 push하는 것을 권장한다.
 
 on:
   schedule:
-    # UTC 18:00 = KST 03:00(다음날) — 트래픽 적은 새벽 시간대
     - cron: "0 18 * * *"
   workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
 
 jobs:
   backup:
@@ -36,6 +52,7 @@ jobs:
       # APT 저장소(apt.postgresql.org)를 추가해서 17번대 클라이언트를 설치한다.
       - name: Install postgresql-client 17
         run: |
+          set -euo pipefail
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail \
             https://www.postgresql.org/media/keys/ACCC4CF8.asc
@@ -49,9 +66,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p backups
-          # 이름(pg_dump)으로 부르면 러너에 미리 깔려있는 16 버전이 잡힐 수 있어서(alternatives가
-          # 17로 안 바뀐 상태), 방금 설치한 17 바이너리 경로를 직접 지정한다.
-          /usr/lib/postgresql/17/bin/pg_dump "$DATABASE_URL" --schema=public --no-owner --no-acl -f "backups/$(date -u +%F).sql"
+          /usr/lib/postgresql/17/bin/pg_dump "$DATABASE_URL" \
+            --schema=public --no-owner --no-acl \
+            -f "backups/$(date -u +%F).sql"
 
       - name: Prune backups older than 30 days
-        run: find
+        run: |
+          set -euo pipefail
+          find backups -name "*.sql" -mtime +30 -delete
+
+      - name: Commit and push backup
+        run: |
+          set -euo pipefail
+          git config user.name "db-backup-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add backups/
+          git diff --staged --quiet || git commit -m "backup: $(date -u +%F) public schema (UTC)"
+          git push origin db-backups
