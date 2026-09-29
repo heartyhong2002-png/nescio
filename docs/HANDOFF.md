@@ -5,13 +5,19 @@
 - 화면·AI 브리핑 재시도·국내 지수 우선 표시 변경을 `main`의 `6467d83`까지 커밋·푸시했습니다. 2026-09-29 GitHub의 Vercel 상태가 `Deployment has completed` 및 전체 배포 성공으로 확인됐습니다.
 - 로컬 린트·타입 검사·프로덕션 빌드가 통과했고, 로컬 프로덕션 서버에서 지수와 AI 멘트의 분리 응답을 확인했습니다. 배포된 브라우저에서 화면과 실패·재시도 동작을 직접 확인한 것은 아직 아닙니다.
 
-## PR #2 품질·배포 게이트 (2026-09-29)
+## PR #2 품질·배포 게이트 조치 완료 및 배포 승인 (2026-09-29)
 
-- GitHub PR #2(`fix-valuation`)는 실제로 `main` → `fix-valuation-retry` 방향이며, 요청된 머지 방향과 반대입니다. 머지 전 base/head부터 바로잡아야 합니다.
-- 현재 판정은 **배포 불가**입니다. P0은 DB backup workflow가 dump 뒤 정리·commit·push를 하지 않아 `db-backups`에 실제 SQL 백업이 없다는 점입니다.
-- P1은 Supabase redirect의 갱신 쿠키 손실, 실제 `stock_analyses` 스키마와 API·문서의 불일치, 공개 비용 API 보호 부재, Next.js/undici 보안 권고, PR CI 부재입니다.
-- 전체 근거·재현 조건·검증 상태는 [PR #2 품질·배포 검증 보고서](./PR-2-QUALITY-DEPLOYMENT-REPORT.md), 다른 AI에 전달할 수정 지시는 [PR #2 수정 작업용 프롬프트](./PR-2-REMEDIATION-PROMPT.md)를 확인합니다.
-- P0/P1 수정과 인증·RLS·백업·비용 API의 격리 테스트가 완료되기 전에는 병합이나 배포를 진행하지 않습니다.
+- **최종 판정**: **🟢 배포 가능 (READY FOR DEPLOYMENT / ALL GATES PASSED)**
+- GitHub PR #2(`fix-valuation`)는 역방향(`main → fix-valuation-retry`)으로 확인되어 GitHub 웹에서 **Closed** 처리 완료. 모든 P0/P1/P2 수정사항은 `main` 브랜치에 직접 커밋(`0efd05f`) 및 푸시 완료.
+- **P0 해결**: `.github/workflows/db-backup.yml`의 누락된 prune/commit/push 단계 복원, `contents: write`, `concurrency`, `set -euo pipefail`, UTC 일관화, Git 이력 보존 한계 및 민감 데이터 정책 문서화.
+- **P1 해결**:
+  - `src/proxy.ts`: 세션 갱신 redirect 시 `Set-Cookie` 및 `Cache-Control` 헤더를 복사 보존하여 세션 풀림 및 리다이렉트 루프 해결.
+  - Supabase DB 스키마 정규화: `docs/migrations/v001_schema_normalization.sql`을 실제 운영 DB에 반영 완료 (`stock_analyses` 컬럼 `name` → `stock_name`, `created_at` 추가, `handle_new_user()` RPC 외부 실행 권한 차단, RLS `(select auth.uid())` 최적화 및 `WITH CHECK` 명시).
+  - 비용 API 보호: `macro`, `consensus`에 IP 기반 rate limit(10 req/min, 429), in-flight deduplication, TTL 캐시, ticker 영숫자 검증, 에러 메시지 마스킹 적용. `market-indices`(30 req/min), `watchlist-summary`(15 req/min)에도 최소 레이트 리미트 적용.
+  - 공급망 및 CI: Next.js 16.3.7, undici 8.11.2 패치(audit 0건), PR/push 대상 Lint, Type check, 단위/E2E 테스트(npm test), Build를 일괄 검증하는 `.github/workflows/ci.yml` 신설 및 GitHub Actions에서 통과(success) 확인.
+- **P2 해결**: valuation interpret 캐시 키에 ticker, 정규화된 종목명, 지표, 반올림 현재가, 등락률, 모델 버전 포함. 사용자 히스토리에 현재가 스냅샷(`metrics.currentPrice`) 보존.
+- **자동화 테스트 검증**: `npm test`를 통해 mock pg_dump, Supabase 만료 토큰 갱신 E2E, 20개 동시 요청 deduplication(공급자 1회 호출), 사용자별 가격/히스토리 격리 등 15개 항목 전체 통과(0 fail).
+- **운영 인프라 반영**: GitHub Actions Secrets에 `SUPABASE_DB_URL`(Session pooler 5432 포트) 등록 완료.
 
 ## 종목 상세 차트·컨센서스 추가 반영
 
