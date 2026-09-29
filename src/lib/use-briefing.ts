@@ -8,11 +8,19 @@ function cacheKey(ticker: string) {
   return `nescio.briefing.${ticker}`;
 }
 
+// 제공자 전체 실패 시 API가 200으로 돌려주는 사실 기반 대체 문구는 AI 브리핑 성공으로
+// 취급하지 않는다. 예전에 세션에 저장된 대체 결과도 다시 보여주지 않는다.
+function isUnavailableBriefing(analysis: Analysis): boolean {
+  return analysis.briefing?.aiComment?.startsWith("AI 분석 제공자가 응답하지 않아") ?? false;
+}
+
 function readSession(ticker: string): Analysis | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.sessionStorage.getItem(cacheKey(ticker));
-    return raw ? (JSON.parse(raw) as Analysis) : null;
+    if (!raw) return null;
+    const analysis = JSON.parse(raw) as Analysis;
+    return isUnavailableBriefing(analysis) ? null : analysis;
   } catch {
     return null;
   }
@@ -30,6 +38,8 @@ const LOADING_STAGES = [
 
 function primeSnapshot(ticker: string) {
   if (!snapshotCache.has(ticker)) snapshotCache.set(ticker, readSession(ticker));
+  const existing = snapshotCache.get(ticker);
+  if (existing && isUnavailableBriefing(existing)) snapshotCache.set(ticker, null);
   return snapshotCache.get(ticker) ?? null;
 }
 
@@ -60,6 +70,9 @@ async function readAnalysisResponse(response: Response): Promise<Analysis> {
   }
   if (!response.ok) {
     throw new Error(payload.error || `브리핑 서버 오류 (${response.status})`);
+  }
+  if (isUnavailableBriefing(payload)) {
+    throw new Error("AI 분석 제공자가 응답하지 않았습니다.");
   }
   return payload;
 }

@@ -29,28 +29,35 @@ function referenceFromChangeRate(price: number, changeRate: number) {
   return price / (1 + changeRate / 100);
 }
 
-// 코스피/코스닥 대표지수 — 관심종목과 별개로 오늘 시장 전체 분위기를 한눈에 보여준다.
-// comment는 "왜" 오르고 내렸는지를 쩐형 캐릭터 톤으로 설명하는 한 줄(부가 기능이라 없을 수도
-// 있음). KRX 지수 API 필드명을 확신 못 해 얻지 못할 수도 있어서(krx.ts 주석 참고) 실패하면
-// 빈 배열로 조용히 접는다.
+// 코스피/코스닥 숫자를 먼저 보여주고 AI 코멘트는 별도 요청으로 뒤에 채운다.
 function useMarketIndices() {
   const [indices, setIndices] = useState<MarketIndex[] | null>(null);
   const [comment, setComment] = useState<string | null>(null);
+  const [commentLoading, setCommentLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/market-indices")
+    fetch("/api/market-indices?phase=indices")
       .then(async (response) => {
         const data = await response.json();
-        if (!cancelled) {
-          setIndices(response.ok ? (data.indices ?? []) : []);
-          setComment(response.ok ? (data.comment ?? null) : null);
+        if (cancelled) return;
+        const nextIndices: MarketIndex[] = response.ok && Array.isArray(data.indices) ? data.indices : [];
+        setIndices(nextIndices);
+        if (nextIndices.length === 0) { setCommentLoading(false); return; }
+        try {
+          const commentResponse = await fetch("/api/market-indices?phase=comment");
+          const commentData = await commentResponse.json();
+          if (!cancelled) setComment(commentResponse.ok ? (commentData.comment ?? null) : null);
+        } catch {
+          if (!cancelled) setComment(null);
+        } finally {
+          if (!cancelled) setCommentLoading(false);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setIndices([]);
-          setComment(null);
+          setCommentLoading(false);
         }
       });
     return () => {
@@ -58,10 +65,10 @@ function useMarketIndices() {
     };
   }, []);
 
-  return { indices, comment };
+  return { indices, comment, commentLoading };
 }
 
-function MarketIndexStrip({ indices, comment }: { indices: MarketIndex[] | null; comment: string | null }) {
+function MarketIndexStrip({ indices }: { indices: MarketIndex[] | null }) {
   if (indices === null) {
     return (
       <div className="dashboard-index-area">
@@ -72,12 +79,8 @@ function MarketIndexStrip({ indices, comment }: { indices: MarketIndex[] | null;
       </div>
     );
   }
-  // KIS 해외지수 코드(kis.ts의 OVERSEAS_INDEX_CODES)가 아직 실측 검증 전이라 니케이225·
-  // 상해종합·심천종합·항셍지수가 close/changeRate 둘 다 0으로 깨져 올 수 있다 — 이건 알고
-  // 있는 문제이고, 코드값을 실제로 고치기 전까지는 숨기지 않고 그대로 보여준다(사용자가
-  // 직접 확인해서 코드를 고쳐야 하니 눈에 보여야 한다).
   const visibleIndices = indices;
-  if (visibleIndices.length === 0) return null;
+  if (visibleIndices.length === 0) return <div className="dashboard-index-empty" role="status">국내 시장 지수를 불러오지 못했어요.</div>;
   const snapshot = visibleIndices[0];
   const snapshotDate = snapshot?.asOf ? new Date(snapshot.asOf) : null;
   const basisLabel =
@@ -119,8 +122,20 @@ function MarketIndexStrip({ indices, comment }: { indices: MarketIndex[] | null;
           );
         })}
       </div>
-      {comment && <p className="dashboard-market-comment">오늘 시장 분위기 · {comment}</p>}
     </div>
+  );
+}
+
+function MarketAiComment({ comment, loading }: { comment: string | null; loading: boolean }) {
+  return (
+    <section className="dashboard-market-ai" aria-label="AI 시장 코멘트">
+      <span className="dashboard-market-ai-label">AI 시장 코멘트</span>
+      {loading ? (
+        <div className="skeleton" role="status" aria-label="AI 시장 코멘트 준비 중" />
+      ) : (
+        <p>{comment || "지금은 AI 시장 코멘트를 불러오지 못했어요. 위 지수는 계속 확인할 수 있습니다."}</p>
+      )}
+    </section>
   );
 }
 
@@ -130,7 +145,7 @@ export default function HomePage() {
   const { watchlist, remove, loading: watchlistLoading } = useWatchlist();
   const [items, setItems] = useState<SummaryItem[] | null>(null);
   const [error, setError] = useState("");
-  const { indices, comment } = useMarketIndices();
+  const { indices, comment, commentLoading } = useMarketIndices();
   const liveTickers = watchlist.map((stock) => stock.ticker);
   const livePrices = useLiveWatchlistPrices(liveTickers);
 
@@ -188,7 +203,8 @@ export default function HomePage() {
 
       {error && <div className="error-box" style={{ marginBottom: 16 }}>{error}</div>}
 
-      <MarketIndexStrip indices={indices} comment={comment} />
+      <MarketIndexStrip indices={indices} />
+      {indices !== null && indices.length > 0 && <MarketAiComment comment={comment} loading={commentLoading} />}
 
       {watchlistLoading ? (
         <div className="dashboard-loading-grid">

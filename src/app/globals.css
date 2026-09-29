@@ -121,12 +121,16 @@ a:hover {
 .dashboard-alert-link { color: var(--ink-soft); font-size: 13px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 999px; }
 .dashboard-alert-link strong { color: #ff81bf; margin-left: 4px; }
 
-.dashboard-index-area { margin-bottom: 22px; }
+.dashboard-index-area { margin-bottom: 10px; }
 .dashboard-index-heading { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; font-size: 12px; font-weight: 700; }
 .dashboard-index-heading .muted { font-size: 11px; font-weight: 500; }
 .dashboard-index-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); gap: 1px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--line); }
 .dashboard-index-card { min-width: 150px; padding: 13px 15px; background: rgba(27, 19, 36, 0.92); display: flex; flex-direction: column; gap: 7px; }
-.dashboard-market-comment { margin: 9px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.dashboard-index-empty { margin-bottom: 22px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); font-size: 12px; }
+.dashboard-market-ai { margin-bottom: 22px; padding: 13px 16px; border: 1px solid rgba(167,139,250,.24); border-radius: 12px; background: rgba(32,23,43,.76); }
+.dashboard-market-ai-label { display: block; margin-bottom: 6px; color: #d6b7f7; font-size: 10px; font-weight: 800; letter-spacing: .06em; }
+.dashboard-market-ai p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.dashboard-market-ai .skeleton { width: min(540px, 85%); height: 15px; }
 
 .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
 .dashboard-mover { display: flex; align-items: center; justify-content: space-between; gap: 28px; min-height: 148px; padding: 25px; margin-bottom: 22px; color: #fff; border: 1px solid rgba(255, 117, 189, 0.3); border-radius: 18px; overflow: hidden; background: linear-gradient(115deg, rgba(87, 36, 91, 0.72), rgba(38, 24, 59, 0.92)); position: relative; }
