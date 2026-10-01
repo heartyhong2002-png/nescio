@@ -207,12 +207,12 @@ export type ValuationInterpretation = {
 
 // 코스피/코스닥/해외 대표지수 — 종목이 아니라 시장 전체 흐름을 보여주는 용도.
 export type MarketIndex = {
-  name: "코스피" | "코스닥" | "니케이225" | "상해종합" | "심천종합" | "항셍지수";
+  name: "코스피" | "코스닥" | "니케이225" | "상해종합" | "심천종합" | "대만가권" | "항셍지수";
   close: number | null; // 지수 포인트
   changeRate: number | null; // %
   /** KIS는 조회 시각(ISO), KRX 일별 폴백은 기준 거래일(YYYYMMDD). */
   asOf?: string;
-  source?: "KIS" | "KRX";
+  source?: "KIS" | "KRX" | "Yahoo";
 };
 
 export type Analysis = {
