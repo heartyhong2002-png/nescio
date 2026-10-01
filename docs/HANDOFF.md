@@ -1,5 +1,14 @@
 # Handoff notes (2026-09-29) — 화면 경험 정비
 
+## Figma Make 시장 지수 UI 통합 (2026-10-01)
+
+- `C:\Users\홍준기\Downloads\근본ui\src\App.tsx`의 `MarketOverview`, `MarketSection`, `MarketIndexCard`, `MarketSkeletonCard` 구조를 현재 Next.js 홈(`src/app/page.tsx`)에 맞게 옮겼습니다.
+- 국내/아시아 시장을 별도 섹션으로 나누고, 국가·시장 식별자·현재가·등락률·출처·기준 시각을 카드에 표시합니다. 모바일에서는 기존 가로 스크롤 스트립을 유지합니다.
+- 서버가 아시아 지수를 반환하면 고정 순서(니케이225 → 상해종합 → 심천종합 → 대만가권)로 표시하고, 부분 성공 시 수신된 카드만 유지합니다. 아직 아시아 응답이 없으면 임의 수치 대신 짧은 빈 상태 안내를 보여줍니다.
+- 실제 데이터 응답과 AI 코멘트 요청 순서는 유지했고, API 응답 형식이나 서버 로직은 변경하지 않았습니다.
+- 시장 카드별 로딩 스켈레톤, 부분 데이터 표시, 전체 빈 상태, 키보드 포커스, 스크린리더 레이블을 반영했습니다.
+- `npm run lint`, `npx tsc --noEmit`, `npm run build`, `git diff --check` 통과.
+
 ## 최신 배포 상태
 
 - 화면·AI 브리핑 재시도·국내 지수 우선 표시 변경을 `main`의 `6467d83`까지 커밋·푸시했습니다. 2026-09-29 GitHub의 Vercel 상태가 `Deployment has completed` 및 전체 배포 성공으로 확인됐습니다.
@@ -18,6 +27,14 @@
 - **P2 해결**: valuation interpret 캐시 키에 ticker, 정규화된 종목명, 지표, 반올림 현재가, 등락률, 모델 버전 포함. 사용자 히스토리에 현재가 스냅샷(`metrics.currentPrice`) 보존.
 - **자동화 테스트 검증**: `npm test`를 통해 mock pg_dump, Supabase 만료 토큰 갱신 E2E, 20개 동시 요청 deduplication(공급자 1회 호출), 사용자별 가격/히스토리 격리 등 15개 항목 전체 통과(0 fail).
 - **운영 인프라 반영**: GitHub Actions Secrets에 `SUPABASE_DB_URL`(Session pooler 5432 포트) 등록 완료.
+
+### 후속 운영 검증 필요 (2026-09-29)
+
+- 코드·CI 검증은 통과했지만 `db-backups` 브랜치에 아직 SQL 산출물이 없다. workflow_dispatch 실제 실행과 당일 UTC 파일의 commit/push 성공을 확인해야 한다.
+- 실제 Supabase Advisor에서 leaked password protection 비활성 경고가 남아 있다. Dashboard에서 활성화가 필요하다.
+- `stock_analyses: 본인만` 중복 RLS ALL 정책은 운영 DB에서 제거했고 [v002 migration](./migrations/v002_remove_legacy_stock_analyses_policy.sql)에 기록했다. 실제 정책에는 소유자 select/insert만 남았고 관련 Advisor 경고도 해소됐다.
+- Supabase migration history에는 v002만 기록돼 있다. v001은 직접 SQL 적용 이력이므로 이후 변경은 표준 migration history와 저장소 파일을 함께 관리한다.
+- 다음 담당자는 [배포 전 운영 상태 마무리 프롬프트](./POST-DEPLOYMENT-HARDENING-PROMPT.md)를 사용한다. 위 항목이 끝나기 전에는 "ALL GATES PASSED"로 표현하지 않는다.
 
 ## 종목 상세 차트·컨센서스 추가 반영
 
@@ -42,6 +59,14 @@
 - 홈은 `/api/market-indices?phase=indices`에서 코스피·코스닥을 먼저 받고, 별도 `phase=comment` 요청으로 AI 멘트를 나중에 채웁니다. 기존 기본 `{ indices, comment }` 응답은 유지합니다.
 - AI 멘트의 로딩·성공·실패 상태를 지수 카드와 분리해 표시하며, 멘트가 지연되거나 실패해도 지수는 남습니다. 두 요청은 같은 3분 지수 스냅샷을 사용합니다.
 - 로컬 프로덕션 서버에서 지수 2개가 약 1.3초, AI 멘트가 추가 약 9.6초에 각각 응답한 것을 확인했습니다(외부 API 상황에 따라 달라짐). `npm run lint`, `npx tsc --noEmit`, `npm run build` 통과. 브라우저 시각·실패 상태 검증은 아직 남아 있습니다.
+
+## 1차 아시아 시장 지수 추가 (2026-10-01)
+
+- 홈의 `/api/market-indices?phase=indices`가 기존 국내 코스피·코스닥에 더해 일본 니케이225, 중국 상해종합·심천종합, 대만 가권을 반환합니다. 기본 `{ indices, comment }` 응답과 `phase=comment` 계약은 유지됩니다.
+- 해외 지수는 KIS의 해외지수 TR이 아시아 지수에 0을 반환하는 문제 때문에 Yahoo Finance를 사용합니다. 지수별 요청은 병렬 처리하고, 각 요청은 4.5초 뒤 실패 처리합니다. 한 지수의 실패·빈 값은 다른 지수와 국내 지수를 막지 않습니다.
+- 해외 데이터는 3분 동안 캐시하며, 새 조회가 실패하면 최대 15분 동안 최근 정상 스냅샷을 사용합니다. 첫 조회부터 전부 실패하면 국내 지수만 반환합니다.
+- `MarketIndex.name`에 `대만가권`, `MarketIndex.source`에 `Yahoo`가 추가됐습니다. UI는 알 수 없는 이름/출처가 와도 깨지지 않게 처리하고, 누락된 시장을 0 또는 임의의 값으로 표시하면 안 됩니다.
+- 구현 파일은 `src/lib/overseas-indices.ts`, `src/app/api/market-indices/route.ts`, `src/app/page.tsx`, `src/lib/types.ts`입니다. `npm run lint`, `npm test`(15개), `npm run build`를 통과했습니다. 화면 담당 작업은 [아시아 시장 UI 작업 프롬프트](ASIA-MARKETS-UI-PROMPT.md)를 사용합니다.
 
 ## 이번 UI 반영 범위
 

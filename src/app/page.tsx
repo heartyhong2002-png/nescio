@@ -13,20 +13,27 @@ import { useLiveWatchlistPrices } from "@/lib/use-live-prices";
 
 type SummaryItem = Stock & { close: number | null; changeRate: number | null; newsCount: number | null };
 
-// 지수 이름 -> 국기 이모지. 코스피/코스닥은 국내라 같은 국기를 쓴다.
-const INDEX_FLAG: Record<string, string> = {
-  코스피: "🇰🇷",
-  코스닥: "🇰🇷",
-  니케이225: "🇯🇵",
-  상해종합: "🇨🇳",
-  심천종합: "🇨🇳",
-  항셍지수: "🇭🇰",
-};
-
 // LiveSparkline은 (현재가, 기준값) 쌍을 받는데 우리가 들고 있는 건 (현재가, 등락률%)이라
 // 기준값을 역산해서 넘긴다 — 등락률은 항상 전일 종가 대비라는 이 앱의 기존 규약과 맞춘다.
 function referenceFromChangeRate(price: number, changeRate: number) {
   return price / (1 + changeRate / 100);
+}
+
+type MarketUiIndex = MarketIndex & { country: string; shortLabel: string; flag?: string };
+
+const ASIA_ORDER = ["니케이225", "상해종합", "심천종합", "대만가권"] as const;
+
+function marketSourceLabel(source: MarketIndex["source"] | undefined) {
+  if (source === "Yahoo") return "Yahoo Finance";
+  return source ?? "데이터 연결 대기";
+}
+
+function marketBasisLabel(index: MarketIndex) {
+  if (!index.asOf) return marketSourceLabel(index.source);
+  if (/^\d{8}$/.test(index.asOf)) return `${marketSourceLabel(index.source)} · ${index.asOf.slice(0, 4)}-${index.asOf.slice(4, 6)}-${index.asOf.slice(6)} 기준`;
+  const date = new Date(index.asOf);
+  if (Number.isNaN(date.getTime())) return marketSourceLabel(index.source);
+  return `${marketSourceLabel(index.source)} · ${date.toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit" })} 기준`;
 }
 
 // 코스피/코스닥 숫자를 먼저 보여주고 AI 코멘트는 별도 요청으로 뒤에 채운다.
@@ -68,62 +75,47 @@ function useMarketIndices() {
   return { indices, comment, commentLoading };
 }
 
-function MarketIndexStrip({ indices }: { indices: MarketIndex[] | null }) {
+function MarketSkeletonCards({ count }: { count: number }) {
+  return <div className="dashboard-index-strip" aria-hidden="true">{Array.from({ length: count }, (_, index) => <div className="dashboard-index-card dashboard-index-skeleton" key={index}><span /><strong /><small /></div>)}</div>;
+}
+
+function MarketIndexCard({ index }: { index: MarketUiIndex }) {
+  const direction = changeDirection(index.changeRate);
+  return (
+    <article className="dashboard-index-card" tabIndex={0} aria-label={`${index.country} ${index.name} 지수`}>
+      <div className="dashboard-index-card-head">
+        <span className="dashboard-index-identity"><i aria-hidden="true">{index.flag ?? "🇰🇷"}</i><span><strong>{index.name}</strong><small>{index.country} · {index.shortLabel}</small></span></span>
+        <span className="dashboard-index-source">{marketSourceLabel(index.source)}</span>
+      </div>
+      <div className="dashboard-index-quote"><strong>{formatPrice(index.close)}</strong><span className={`price-${direction}`}><span aria-hidden="true">{changeArrow(index.changeRate)}</span> {index.changeRate === null ? "—" : `${Math.abs(index.changeRate).toFixed(2)}%`}<span className="sr-only">{direction === "up" ? "상승" : direction === "down" ? "하락" : "변동 없음"}</span></span></div>
+      <small className="dashboard-index-meta">{marketBasisLabel(index)}</small>
+    </article>
+  );
+}
+
+function MarketSection({ title, description, items, loading, emptyMessage, skeletonCount }: { title: string; description: string; items: MarketUiIndex[]; loading: boolean; emptyMessage: string; skeletonCount: number }) {
+  const id = title === "국내 시장" ? "dashboard-domestic-market" : "dashboard-asia-market";
+  return <section className="dashboard-market-group" aria-labelledby={id} aria-busy={loading}>
+    <div className="dashboard-market-group-head"><div><h2 id={id}>{title}</h2><p>{description}</p></div>{loading && <span role="status">불러오는 중</span>}</div>
+    {loading ? <MarketSkeletonCards count={skeletonCount} /> : items.length > 0 ? <div className="dashboard-index-strip">{items.map((item) => <MarketIndexCard index={item} key={item.name} />)}</div> : <div className="dashboard-index-empty" role="status">{emptyMessage}</div>}
+  </section>;
+}
+
+function MarketIndexOverview({ indices }: { indices: MarketIndex[] | null }) {
   if (indices === null) {
     return (
-      <div className="dashboard-index-area">
-        <div className="dashboard-index-strip">
-          <div className="skeleton" style={{ height: 62, borderRadius: 12, flex: 1 }} />
-          <div className="skeleton" style={{ height: 62, borderRadius: 12, flex: 1 }} />
-        </div>
-      </div>
+      <section className="dashboard-index-area" aria-label="시장 지수 로딩 중"><MarketSection title="국내 시장" description="코스피 · 코스닥" items={[]} loading skeletonCount={2} emptyMessage="국내 시장 정보가 없어요." /><MarketSection title="아시아 시장" description="일본 · 중국 · 대만" items={[]} loading skeletonCount={4} emptyMessage="아시아 시장 정보가 없어요." /></section>
     );
   }
-  const visibleIndices = indices;
-  if (visibleIndices.length === 0) return <div className="dashboard-index-empty" role="status">국내 시장 지수를 불러오지 못했어요.</div>;
-  const snapshot = visibleIndices[0];
-  const snapshotDate = snapshot?.asOf ? new Date(snapshot.asOf) : null;
-  const basisLabel =
-    snapshot?.source === "KIS" && snapshotDate && !Number.isNaN(snapshotDate.getTime())
-      ? `KIS ${snapshotDate.toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit" })} 기준`
-      : snapshot?.source === "KRX" && snapshot.asOf
-        ? `KRX ${snapshot.asOf.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3")} 종가 기준`
-        : null;
-
-  return (
-    <div className="dashboard-index-area">
-      <div className="dashboard-index-heading">
-        <span>국내 시장</span>
-        {basisLabel && <span className="muted">{basisLabel}</span>}
-      </div>
-      {/* 코스피/코스닥 2개일 땐 꽉 채우고, 해외 지수까지 붙어 4~6개가 되면 한 화면에 다
-          욱여넣기보다 가로 스크롤로 넘기는 게 낫다 — 폭이 좁아지면 숫자가 다 안 보인다.
-          카드를 세로로(국가·이름 위, 가격·등락 아래) 배치해서 숫자가 안 잘리고 여유 있게 보이게 한다. */}
-      <div className="dashboard-index-strip">
-        {visibleIndices.map((index) => {
-          const direction = changeDirection(index.changeRate);
-          return (
-            <div
-              key={index.name}
-              className="dashboard-index-card"
-            >
-              <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap" }}>
-                <span style={{ fontSize: 16 }}>{INDEX_FLAG[index.name] ?? "🌐"}</span>
-                {index.name}
-              </span>
-              <span style={{ display: "flex", alignItems: "baseline", gap: 8, whiteSpace: "nowrap" }}>
-                <span style={{ fontSize: 17, fontWeight: 700 }}>{formatPrice(index.close)}</span>
-                <span className={`price-${direction}`} style={{ fontSize: 13.5, fontWeight: 600 }}>
-                  {changeArrow(index.changeRate)}{" "}
-                  {index.changeRate !== null ? `${Math.abs(index.changeRate).toFixed(2)}%` : "—"}
-                </span>
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+  const domestic = indices.filter((index) => index.name === "코스피" || index.name === "코스닥").map((index) => ({ ...index, country: "대한민국", shortLabel: index.name === "코스피" ? "KOSPI" : "KOSDAQ", flag: "🇰🇷" }));
+  const asiaByName = new Map(indices.filter((index) => ASIA_ORDER.includes(index.name as (typeof ASIA_ORDER)[number])).map((index) => [index.name, index]));
+  const asia = ASIA_ORDER.map((name) => asiaByName.get(name)).filter((item): item is MarketIndex => Boolean(item)).map((item) => ({
+    ...item,
+    country: item.name === "니케이225" ? "일본" : item.name === "대만가권" ? "대만" : "중국",
+    shortLabel: item.name === "니케이225" ? "NIKKEI 225" : item.name === "상해종합" ? "SSE" : item.name === "심천종합" ? "SZSE" : "TAIEX",
+    flag: item.name === "니케이225" ? "🇯🇵" : item.name === "대만가권" ? "🇹🇼" : "🇨🇳",
+  }));
+  return <section className="dashboard-index-area" aria-label="시장 지수"><MarketSection title="국내 시장" description="코스피 · 코스닥" items={domestic} loading={false} skeletonCount={2} emptyMessage="국내 시장 지수를 불러오지 못했어요." /><MarketSection title="아시아 시장" description="일본 · 중국 · 대만" items={asia} loading={false} skeletonCount={4} emptyMessage="아시아 지수 데이터를 아직 받지 못했습니다. 잠시 후 다시 확인해 주세요." /></section>;
 }
 
 function MarketAiComment({ comment, loading }: { comment: string | null; loading: boolean }) {
@@ -203,7 +195,7 @@ export default function HomePage() {
 
       {error && <div className="error-box" style={{ marginBottom: 16 }}>{error}</div>}
 
-      <MarketIndexStrip indices={indices} />
+      <MarketIndexOverview indices={indices} />
       {indices !== null && indices.length > 0 && <MarketAiComment comment={comment} loading={commentLoading} />}
 
       {watchlistLoading ? (
