@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMarketIndices } from "@/lib/krx";
 import { fetchDomesticIndices, fetchOverseasIndicesDebug } from "@/lib/kis";
 import { getMarketComment } from "@/lib/market-comment";
+import { fetchAsiaIndices } from "@/lib/overseas-indices";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { MarketIndex } from "@/lib/types";
 
@@ -19,22 +20,25 @@ async function loadIndices(): Promise<MarketIndex[]> {
   if (indexCache && indexCache.expiresAt > Date.now()) return indexCache.data;
   if (indexRequest) return indexRequest;
   indexRequest = (async () => {
-  // 해외지수(니케이/상해/심천/항셍)는 당분간 뺀다 — KIS의 FHKST03030200(지수분봉조회)가
-  // 이 4개 지수에 대해 모든 필드를 "0.00"으로 반환한다(?debug=1로 실측 확인 완료). 다른
-  // 개발자 사례를 보면 이 TR 자체가 미국 지수 전용일 가능성이 있어 코드값을 바꿔도 안 될
-  // 수 있다 — 아시아 지수를 다시 켜려면 fetchOverseasIndicesDebug로 실측하면서 제대로 된
-  // 엔드포인트/코드를 찾아야 한다.
-  // 국내 지수는 KIS 장중 현재지수를 우선하고, KIS 장애 때만 KRX 최근 거래일 종가로 폴백한다.
-    let domestic: MarketIndex[];
-    try {
-      domestic = await fetchDomesticIndices();
-      if (domestic.length !== 2) throw new Error("KIS 국내지수 일부가 비어 있습니다.");
-    } catch (error) {
-      console.warn("[market-indices] KIS 국내지수 실패 → KRX 일별 종가 폴백:", error);
-      domestic = await getMarketIndices();
-    }
-    indexCache = { data: domestic, expiresAt: Date.now() + CACHE_TTL_MS };
-    return domestic;
+    // KIS 해외지수 TR은 아시아 지수에 0을 반환해 실제 서비스 공급원으로 쓰지 않는다.
+    // 국내·해외 조회는 독립적이므로 병렬로 시작하고, 해외 실패는 국내 카드에 영향을 주지 않는다.
+    const domesticPromise = fetchDomesticIndices()
+      .then((data) => {
+        if (data.length !== 2) throw new Error("KIS 국내지수 일부가 비어 있습니다.");
+        return data;
+      })
+      .catch(async (error) => {
+        console.warn("[market-indices] KIS 국내지수 실패 → KRX 일별 종가 폴백:", error);
+        return getMarketIndices();
+      });
+    const asiaPromise = fetchAsiaIndices().catch((error) => {
+      console.warn("[market-indices] 아시아 지수 실패, 국내 지수만 반환:", error);
+      return [] as MarketIndex[];
+    });
+    const [domestic, asia] = await Promise.all([domesticPromise, asiaPromise]);
+    const data = [...domestic, ...asia];
+    indexCache = { data, expiresAt: Date.now() + CACHE_TTL_MS };
+    return data;
   })().finally(() => { indexRequest = null; });
   return indexRequest;
 }

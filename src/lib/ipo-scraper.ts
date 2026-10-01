@@ -419,9 +419,13 @@ export async function fetch38IpoData(): Promise<Map<string, ScrapedIpoData>> {
       }
     }
 
-    // 3. 최근 20개 종목에 대해 상세 페이지 병렬 조회 (한 번에 5개씩 배치 처리)
+    // 3. 일정 상위 20개는 상세 조회하되, 수요예측 결과가 이미 발표된 종목은 목록 순서와
+    //    무관하게 반드시 포함한다. 공모청약 일정은 먼 미래 종목부터 정렬될 수 있어서 단순히
+    //    상위 20개만 자르면 멜콘처럼 청약 진행 중이고 결과가 공개된 종목도 누락될 수 있다.
+    //    결과가 발표된 종목은 아래 forecastMap만으로도 핵심 지표를 채울 수 있지만, 상세
+    //    배정·기업 정보도 함께 보강하기 위해 같은 처리 경로에 넣는다.
     const resultMap = new Map<string, ScrapedIpoData>();
-    const targets = rawItems.slice(0, 20);
+    const targets = rawItems.filter((item, index) => index < 20 || forecastMap.has(item.name));
 
     const batchSize = 5;
     for (let i = 0; i < targets.length; i += batchSize) {
