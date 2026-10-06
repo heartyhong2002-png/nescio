@@ -471,7 +471,7 @@ function IpoAiReportCard({
       {analysis.businessSummary && (
         <div
           style={{
-            background: "rgba(255, 255, 255, 0.75)",
+            background: "var(--surface)",
             border: "1px solid var(--line)",
             borderRadius: 8,
             padding: "10px 14px",
@@ -510,7 +510,7 @@ function IpoAiReportCard({
         {analysis.strengths && analysis.strengths.length > 0 && (
           <div
             style={{
-              background: "rgba(255,255,255,0.7)",
+              background: "var(--surface)",
               borderRadius: 8,
               padding: "10px 12px",
               border: "1px solid var(--line)",
@@ -548,7 +548,7 @@ function IpoAiReportCard({
         {analysis.cautions && analysis.cautions.length > 0 && (
           <div
             style={{
-              background: "rgba(255,255,255,0.7)",
+              background: "var(--surface)",
               borderRadius: 8,
               padding: "10px 12px",
               border: "1px solid var(--line)",
