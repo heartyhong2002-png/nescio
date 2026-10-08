@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import AppShell from "@/components/AppShell";
 import { formatAmountCompact, formatPrice, formatSharesCompact } from "@/lib/format";
 import { IpoInfo } from "@/lib/types";
+import CompanyLogo from "@/components/CompanyLogo";
 
 function Value({ label, value }: { label: string; value: ReactNode }) {
   return <div className="ipo-detail-value"><span>{label}</span><strong>{value === null || value === undefined || value === "" ? "자료 준비 중" : value}</strong></div>;
@@ -30,7 +31,7 @@ export default function IpoDetailPage({ params }: { params: Promise<{ corpCode: 
     {!loading && error && <div className="error-box">{error}</div>}
     {!loading && ipo && <>
       <header className="ipo-detail-hero">
-        <div><div className="eyebrow ipo-eyebrow">IPO DETAIL</div><h1>{ipo.corpName}</h1><p>{ipo.companyInfo?.sector ?? "업종 정보 준비 중"} · {ipo.leadUnderwriter ?? "대표 주관사 정보 준비 중"}</p></div>
+        <div className="ipo-detail-title"><CompanyLogo name={ipo.corpName} homepage={ipo.companyInfo?.homepage} size={58} /><div><div className="eyebrow ipo-eyebrow">IPO DETAIL</div><h1>{ipo.corpName}</h1><p>{ipo.companyInfo?.sector ?? "업종 정보 준비 중"} · {ipo.leadUnderwriter ?? "대표 주관사 정보 준비 중"}</p></div></div>
         {ipo.aiAnalysis && <span className="pill filled">🤖 {ipo.aiAnalysis.verdictLabel} · {ipo.aiAnalysis.score}점</span>}
       </header>
 

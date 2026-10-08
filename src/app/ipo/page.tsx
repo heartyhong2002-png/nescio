@@ -6,6 +6,7 @@ import AppShell from "@/components/AppShell";
 import { formatAmountCompact, formatPrice, formatSharesCompact } from "@/lib/format";
 import { CompanyInfo, IpoInfo, IpoListingsData, IpoMonthlyAnalysis } from "@/lib/types";
 import { useWatchlist } from "@/lib/storage";
+import CompanyLogo from "@/components/CompanyLogo";
 
 function useMonthlyAnalysis(initialMonth = "ALL") {
   const [month, setMonthValue] = useState(initialMonth);
@@ -1511,9 +1512,7 @@ export default function IpoPage() {
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                        <div className="stock-icon" style={{ flexShrink: 0 }}>
-                          {ipo.corpName.slice(0, 1)}
-                        </div>
+                        <CompanyLogo name={ipo.corpName} homepage={ipo.companyInfo?.homepage} />
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                             <span>{ipo.corpName}</span>
