@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- favicon URLs are user-provided domains and cannot use next/image remote config. */
 
 import { useState } from "react";
 
@@ -16,6 +17,6 @@ export default function CompanyLogo({ name, homepage, size = 42 }: { name: strin
   const [failed, setFailed] = useState(false);
   const src = faviconUrl(homepage);
   return <span className="company-logo" style={{ width: size, height: size }} aria-label={`${name} 로고`}>
-    {src && !failed ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={src} alt="" width={size - 14} height={size - 14} onError={() => setFailed(true)} /> : <strong>{name.slice(0, 1)}</strong>}
+    {src && !failed ? <img src={src} alt="" width={size - 14} height={size - 14} onError={() => setFailed(true)} /> : <strong>{name.slice(0, 1)}</strong>}
   </span>;
 }
