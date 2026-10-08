@@ -63,6 +63,11 @@ function cleanText(text: string): string {
   return text.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function firstHref(html: string): string | null {
+  const match = html.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>/i);
+  return match?.[1]?.trim() || null;
+}
+
 /**
  * 종목명 정규화:
  * "덕산넵코어스(구.넵코어스)" -> "덕산넵코어스"
@@ -190,8 +195,10 @@ async function scrape38Detail(no: string): Promise<{
       }
 
       if (tds[0] === "홈페이지") {
-        if (tds[1] && tds[1] !== "-" && tds[1] !== "") {
-          let hp = tds[1];
+        const homepageCell = [...tr[1].matchAll(/<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/gi)][1]?.[1] ?? tr[1];
+        const homepageHref = firstHref(homepageCell);
+        if ((tds[1] && tds[1] !== "-" && tds[1] !== "") || homepageHref) {
+          let hp = homepageHref ?? tds[1];
           if (!hp.startsWith("http://") && !hp.startsWith("https://")) {
             hp = `https://${hp}`;
           }
