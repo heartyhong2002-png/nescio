@@ -20,7 +20,7 @@ public/         브라우저에 그대로 제공하는 정적 파일
 | 찾는 대상 | 파일 |
 | --- | --- |
 | 주가·차트·밸류에이션 | `kis.ts`, `krx.ts`, `naver-stock.ts` |
-| 공모주 | `dart.ts`, `ipo-*.ts` |
+| 공모주 | `src/app/ipo/page.tsx`, `src/app/ipo/[corpCode]/page.tsx`, `dart.ts`, `ipo-*.ts` |
 | 환율·매크로 | `exim.ts`, `macro-*.ts`, `market-comment.ts` |
 | 증권사 리포트·컨센서스 | `consensus-*.ts` |
 | 인증·사용자 데이터 | `supabase/`, `*-context.tsx`, `storage.ts`, `require-auth.ts` |
