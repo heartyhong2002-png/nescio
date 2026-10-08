@@ -331,6 +331,11 @@ a:hover {
 .ipo-detail-section h2 { margin: 0 0 13px; font-size: 16px; }
 .ipo-detail-section h3 { margin: 0 0 8px; color: var(--accent); font-size: 12px; }
 .ipo-detail-lead, .ipo-detail-summary { margin: 0 0 14px; color: var(--ink-soft); font-size: 13px; line-height: 1.65; }
+.ipo-detail-summary strong { color: var(--ink); font-size: 12px; }
+.ipo-detail-summary p { margin: 5px 0 0; }
+.ipo-financial-list { display: grid; gap: 8px; color: var(--ink-soft); font-size: 12px; }
+.ipo-financial-list > div { display: grid; grid-template-columns: 1fr repeat(3, 1.2fr); gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); }
+.ipo-financial-list strong { color: var(--ink); }
 .ipo-detail-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-bottom: 14px; }
 .ipo-detail-columns ul { margin: 0; padding-left: 17px; color: var(--ink-soft); font-size: 12px; line-height: 1.7; }
 .ipo-underwriter-list { display: grid; gap: 8px; }

@@ -77,6 +77,11 @@ export type CompanyInfo = {
   revenue?: string | null; // 최근 매출액 (예: "46,644 (백만원)")
   profit?: string | null; // 최근 순이익 또는 세전이익 (예: "5,157 (백만원)")
   capital?: string | null; // 자본금 (예: "876 (백만원)")
+  products?: string | null; // 주력 상품·서비스
+  financialHistory?: Array<{ year: string; revenue: string | null; operatingProfit: string | null; netProfit: string | null }>;
+  executiveHoldings?: Array<{ name: string; role: string | null; shares: string | null; ownershipRate: string | null }>;
+  offeringUse?: string | null; // 공모자금 사용처
+  correctionNotice?: string | null; // 최근 정정 공시
 };
 
 export type IpoAiAnalysis = {
