@@ -312,6 +312,27 @@ a:hover {
 .ipo-intelligence .pill { border-color: rgba(243, 91, 174, 0.44); color: #ffb9da; }
 .ipo-intelligence .pill.filled { background: #d23d91; color: #fff; }
 .ipo-intelligence .error-box { background: rgba(177, 51, 63, 0.15); border-color: rgba(246, 194, 199, 0.35); color: #ffc9ce; }
+.ipo-detail-page { max-width: 900px; }
+.ipo-detail-back { display: inline-block; margin-bottom: 18px; color: var(--ink-soft); font-size: 13px; }
+.ipo-detail-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.ipo-detail-hero h1 { margin: 6px 0 5px; font-size: clamp(27px, 4vw, 38px); letter-spacing: -0.04em; }
+.ipo-detail-hero p { margin: 0; color: var(--muted); font-size: 13px; }
+.ipo-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; }
+.ipo-detail-primary { margin-bottom: 16px; }
+.ipo-detail-value { display: flex; flex-direction: column; gap: 6px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.ipo-detail-value span { color: var(--muted); font-size: 11px; }
+.ipo-detail-value strong { color: var(--ink); font-size: 13px; line-height: 1.45; }
+.ipo-detail-value a { color: var(--accent); }
+.ipo-detail-section { margin-bottom: 16px; padding: 18px; }
+.ipo-detail-section h2 { margin: 0 0 13px; font-size: 16px; }
+.ipo-detail-section h3 { margin: 0 0 8px; color: var(--accent); font-size: 12px; }
+.ipo-detail-lead, .ipo-detail-summary { margin: 0 0 14px; color: var(--ink-soft); font-size: 13px; line-height: 1.65; }
+.ipo-detail-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-bottom: 14px; }
+.ipo-detail-columns ul { margin: 0; padding-left: 17px; color: var(--ink-soft); font-size: 12px; line-height: 1.7; }
+.ipo-underwriter-list { display: grid; gap: 8px; }
+.ipo-underwriter-list > div { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1.5fr 1fr; gap: 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 11px; }
+.ipo-underwriter-list strong { color: var(--ink); font-size: 12px; }
+@media (max-width: 650px) { .ipo-detail-hero { display: block; } .ipo-detail-hero .pill { display: inline-block; margin-top: 12px; } .ipo-detail-columns { grid-template-columns: 1fr; } .ipo-underwriter-list > div { grid-template-columns: 1fr 1fr; } }
 
 /* Supporting product screens: actual data remains primary, with the same visual hierarchy. */
 .watchlist-intelligence,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { formatAmountCompact, formatPrice, formatSharesCompact } from "@/lib/format";
 import { CompanyInfo, IpoInfo, IpoListingsData, IpoMonthlyAnalysis } from "@/lib/types";
@@ -1195,7 +1196,7 @@ function ListingsView() {
                 <th style={{ padding: "9px 10px", textAlign: "right" }}>공모가</th>
                 <th style={{ padding: "9px 10px", textAlign: "right" }}>시초가 (수익률)</th>
                 <th style={{ padding: "9px 10px", textAlign: "right" }}>첫날 종가 (최종 수익률)</th>
-                <th style={{ padding: "9px 12px", textAlign: "center" }}>첫날 성적</th>
+                <th style={{ padding: "9px 12px", textAlign: "center" }}>첫날 성적 (종가 기준)</th>
               </tr>
             </thead>
             <tbody>
@@ -1350,9 +1351,10 @@ function ListingsView() {
 }
 
 export default function IpoPage() {
+  const router = useRouter();
   const { ipos, setIpos, error } = useIpos();
   const [activeTab, setActiveTab] = useState<"subscription" | "listings">("subscription");
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanded] = useState<string | null>(null);
   const [refreshingCorp, setRefreshingCorp] = useState<string | null>(null);
 
   const handleRefreshAnalysis = async (targetIpo: IpoInfo) => {
@@ -1504,8 +1506,8 @@ export default function IpoPage() {
                       background: isOpen ? "var(--surface-sunken)" : "var(--surface)",
                       transition: "background 0.15s ease",
                     }}
-                    onClick={() => setExpanded(isOpen ? null : ipo.corpCode)}
-                    aria-expanded={isOpen}
+                    onClick={() => router.push(`/ipo/${encodeURIComponent(ipo.corpCode)}`)}
+                    aria-label={`${ipo.corpName} 상세 페이지 열기`}
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
