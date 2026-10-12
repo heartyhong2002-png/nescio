@@ -20,9 +20,15 @@ function useMacroData() {
     let cancelled = false;
     fetch("/api/macro")
       .then(async (response) => {
-        const json = await response.json();
+        const body = await response.text();
+        let json: { error?: string; rates?: ExchangeRate[]; indicators?: MacroIndicator[]; briefing?: string | null; date?: string };
+        try {
+          json = JSON.parse(body);
+        } catch {
+          throw new Error(response.ok ? "매크로 응답을 읽지 못했습니다." : `매크로 서버 오류 (${response.status})`);
+        }
         if (!response.ok) throw new Error(json.error || "매크로 정보를 불러오지 못했습니다.");
-        if (!cancelled) setData(json);
+        if (!cancelled) setData({ rates: json.rates ?? [], indicators: json.indicators ?? [], briefing: json.briefing ?? null, date: json.date ?? "" });
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "매크로 정보를 불러오지 못했습니다.");

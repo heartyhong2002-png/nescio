@@ -4,6 +4,8 @@ import { fetchMacroIndicators } from "@/lib/macro-data";
 import { getMacroBriefing } from "@/lib/macro-analyzer";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 
+export const maxDuration = 60;
+
 // Note: In-memory caching and rate limiting doesn't share across serverless instances.
 const cache = new Map<string, { data: Record<string, unknown>; expiry: number }>();
 const inFlightPromises = new Map<string, Promise<Record<string, unknown>>>();
@@ -50,7 +52,12 @@ export async function GET(request: Request) {
         ]);
 
         const sortedRates = [...eximData.rates].sort((a, b) => a.name.localeCompare(b.name, "ko"));
-        const briefing = await getMacroBriefing(macroIndicators, sortedRates);
+        let briefing: string | null = null;
+        try {
+          briefing = await getMacroBriefing(macroIndicators, sortedRates);
+        } catch (error) {
+          console.error("Failed to generate macro briefing; returning market data without AI comment", error);
+        }
 
         const data = {
           date: eximData.date,
