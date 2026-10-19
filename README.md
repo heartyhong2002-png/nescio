@@ -27,6 +27,8 @@
      지수 하나의 지연·실패·빈 값은 나머지 시장 표시를 막지 않습니다. 3분 캐시와 최대 15분의
      최근 정상값 폴백을 적용합니다. 지수는 AI 멘트 생성과 분리해 먼저 보여주므로, 멘트가
      늦거나 실패해도 지수 카드는 유지합니다.
+   - 종목 뉴스는 네이버·다음(Daum 검색)·Google News RSS와 국내 언론 RSS를 병렬 집계합니다.
+     한 소스의 키 누락, 장애, 쿼터 초과는 다른 소스에 영향을 주지 않습니다.
 7. 전문 인터랙티브 차트 & 계정 보안(MFA):
    - **고급 차트 분석**: 캔들스틱/라인 모드 전환, 5/20/60/120일 이동평균선(MA), 거래량 오버레이 및 십자선 커서/툴팁 지원.
    - **계정 보안 관리**: 비밀번호 재설정/변경 및 TOTP 기반 2단계 인증(MFA, Google Authenticator 등), 활성 세션 관리.
@@ -141,7 +143,8 @@ npm run dev
 | 변수 | 용도 | 필수 |
 |---|---|---|
 | `NVIDIA_API_KEY` | 1단계 사실 분석 및 매크로 브리핑 (NVIDIA) | 필수 |
-| `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 관련 뉴스 검색 (네이버 뉴스 API) | 필수 |
+| `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 관련 뉴스 검색 (네이버 뉴스 API) | 권장 (네이버 소스용) |
+| `KAKAO_REST_API_KEY` | Daum 뉴스 문서 검색 (`dapi.kakao.com`, `site:v.daum.net`) | 선택 (다음 소스용) |
 | `KRX_AUTH_KEY` | 종목 목록·일별 시세 (KRX Open API) | 필수 |
 | `KIS_APP_KEY` / `KIS_APP_SECRET` | 분봉·기간별 차트, PER/PBR/배당/시가총액 (한국투자증권 Open API) | 필수 |
 | 별도 키 없음 | 일본·중국·대만 대표지수 (Yahoo Finance, 3분 캐시·최근 정상값 폴백) | 기본 제공 |

@@ -396,7 +396,7 @@ function buildRawAnalysisPrompt(
   const system =
     "너는 한국 주식 리서치 애널리스트다. 제공된 데이터만 근거로 분석하고, 확인된 사실과 해석을 구분하라. " +
     "투자 매수·매도 권유나 확정적인 미래 예측은 하지 말라.";
-  const prompt = `다음은 ${name}(${ticker})의 최근 시세와 네이버 뉴스, 오늘의 주요 환율·국제금리다.
+  const prompt = `다음은 ${name}(${ticker})의 최근 시세와 여러 뉴스 소스(네이버·다음·Google News·국내 언론 RSS), 오늘의 주요 환율·국제금리다.
 
 [시세 데이터]
 ${priceText}
@@ -619,7 +619,7 @@ async function saveAnalysisForUser(userId: string, ticker: string, name: string,
 
 async function generateAnalysis(userId: string, name: string, ticker: string, tone: Tone): Promise<AnalysisResponseData> {
   const [news, price, fxSummary, intlRateSummary, historySummary] = await Promise.all([
-    withTimeout(getNewsMultiSource(name), OPTIONAL_INPUT_TIMEOUT_MS, "뉴스 수집", [] as NewsItem[]),
+    withTimeout(getNewsMultiSource(name, ticker), OPTIONAL_INPUT_TIMEOUT_MS, "뉴스 수집", [] as NewsItem[]),
     withTimeout(getPriceForTicker(ticker), OPTIONAL_INPUT_TIMEOUT_MS, "시세 수집", { close: null, changeRate: null, marketCap: null }),
     withTimeout(fetchMajorRatesSummary(), OPTIONAL_INPUT_TIMEOUT_MS, "환율 수집", ""),
     withTimeout(fetchInternationalRatesSummary(), OPTIONAL_INPUT_TIMEOUT_MS, "국제금리 수집", ""),

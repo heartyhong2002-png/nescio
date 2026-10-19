@@ -9,8 +9,8 @@ import { NewsItem } from "./types";
  * "집계(aggregation)" 방식으로 바꿨다 — 국내 소스 하나가 막혀도 다른 소스로 계속 커버되고,
  * 여러 소스의 관점이 같이 들어가 원인 분석(1단계 LLM)의 근거가 더 풍부해진다.
  *
- * 국내 소스: 네이버 뉴스 API, 한국경제 증권 RSS, 아시아경제 증권 RSS(제목에 종목명이 들어간
- * 것만 필터링, 최후 보조용).
+ * 국내 소스: 네이버 뉴스 API, 카카오의 Daum 검색 웹문서 API(다음 뉴스 도메인 한정),
+ * 한국경제 증권 RSS, 아시아경제 증권 RSS(제목에 종목명이 들어간 것만 필터링, 최후 보조용).
  * 해외 소스: Google News RSS(API 키 불필요) — 한국어 쿼리로 한 번, 종목의 영문명이
  * GLOBAL_NAME_MAP에 있으면 영어 쿼리로 한 번 더 돌려서 "SK Hynix", "Micron", "Nvidia" 같은
  * 해외 반도체 업계 동향까지 잡는다. 매핑이 없는 종목은 영문 쿼리를 건너뛴다(무리하게 한글
@@ -19,6 +19,9 @@ import { NewsItem } from "./types";
  * 소스 하나가 실패해도(Promise.allSettled) 나머지로 계속 진행하고, 전부 실패하면 빈 배열을
  * 돌려준다 — 뉴스가 없어도 브리핑 자체는 계속 진행되게(환율/국제금리와 동일한 방어 패턴).
  *
+ * 주의(Daum): Kakao 공식 검색 API에는 현재 별도 "뉴스 검색" 엔드포인트가 없어서 공식 웹문서
+ * 검색에 `site:v.daum.net` 조건을 붙인다. 따라서 다음 뉴스 전용 API가 아니라 Daum 뉴스 문서
+ * 검색 결과라는 점을 UI/운영 문서에 명시한다. REST API 키가 없으면 이 소스는 건너뛴다.
  * 주의(아시아경제): RSS 안내 페이지에 "비상업적 이용만 허용"이라는 문구가 있다 — 최후 보조로만
  * 쓴다. 주의(Google News RSS): 공개 피드이지만 Google의 이용약관 범위를 벗어나는 대량/상업적
  * 스크래핑은 별도 검토가 필요하다 — 서비스가 커지면 정식 뉴스 API(Alpha Vantage, Finnhub 등)로
@@ -29,6 +32,7 @@ const NAVER_URL = "https://openapi.naver.com/v1/search/news.json";
 const HANKYUNG_FINANCE_RSS = "https://www.hankyung.com/feed/finance"; // 한국경제 증권 섹션
 const ASIAE_STOCK_RSS = "https://view.asiae.co.kr/rss/stock.htm"; // 아시아경제 증권 섹션 — 비상업 용도 한정, 최후 보조 전용
 const GOOGLE_NEWS_RSS = "https://news.google.com/rss/search";
+const DAUM_SEARCH_URL = "https://dapi.kakao.com/v2/search/web";
 
 const FETCH_HEADERS = {
   "User-Agent":
@@ -90,6 +94,34 @@ async function getNewsFromNaver(query: string): Promise<NewsItem[]> {
     source: "네이버뉴스",
     language: "ko" as const,
   }));
+}
+
+async function getNewsFromDaum(name: string): Promise<NewsItem[]> {
+  const restApiKey = serverEnv("KAKAO_REST_API_KEY");
+  if (!restApiKey) throw new Error("KAKAO_REST_API_KEY가 없어 다음 검색을 건너뜁니다.");
+
+  const params = new URLSearchParams({
+    query: `${name} site:v.daum.net`,
+    sort: "recency",
+    size: "10",
+  });
+  const response = await fetch(`${DAUM_SEARCH_URL}?${params}`, {
+    headers: { Authorization: `KakaoAK ${restApiKey}`, Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error(`다음 검색 API 오류 (${response.status})`);
+  const payload = (await response.json()) as {
+    documents?: Array<{ title?: string; contents?: string; url?: string; datetime?: string }>;
+  };
+  return (payload.documents ?? []).map((item) => ({
+    title: clean(item.title ?? ""),
+    description: clean(item.contents ?? ""),
+    link: item.url ?? "",
+    pubDate: item.datetime ?? "",
+    source: "다음뉴스",
+    language: "ko" as const,
+  })).filter((item) => item.title && item.link);
 }
 
 type RssItem = { title: string; link: string; pubDate: string; description: string; source?: string };
@@ -204,6 +236,7 @@ export async function getNewsMultiSource(name: string, ticker?: string): Promise
 
   const tasks: Promise<NewsItem[]>[] = [
     getNewsFromNaver(name),
+    getNewsFromDaum(name),
     getNewsFromGoogleNews(name, "ko", 8),
     getNewsFromHankyung(name),
     getNewsFromAsiae(name),
@@ -214,7 +247,7 @@ export async function getNewsMultiSource(name: string, ticker?: string): Promise
 
   const results = await Promise.allSettled(tasks);
   const merged: NewsItem[] = [];
-  const labels = ["네이버", "구글뉴스(국내)", "한국경제 RSS", "아시아경제 RSS", "구글뉴스(해외)"];
+  const labels = ["네이버", "다음뉴스", "구글뉴스(국내)", "한국경제 RSS", "아시아경제 RSS", "구글뉴스(해외)"];
   results.forEach((result, index) => {
     if (result.status === "fulfilled") {
       merged.push(...result.value);

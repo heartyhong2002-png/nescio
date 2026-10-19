@@ -1,5 +1,13 @@
 # Handoff notes (2026-09-29) — 화면 경험 정비
 
+## 뉴스 소스 다중화 (2026-10-19)
+
+- `src/lib/news-sources.ts`는 네이버 뉴스 API, 카카오 공식 Daum 검색 웹문서 API(`site:v.daum.net`), Google News RSS, 한국경제·아시아경제 RSS를 병렬 호출하고 제목 기준으로 중복을 제거한 뒤 최신순으로 합칩니다.
+- Kakao 공식 문서에는 별도의 뉴스 검색 엔드포인트가 없으므로 Daum 연동은 `https://dapi.kakao.com/v2/search/web`에 `KAKAO_REST_API_KEY`를 사용하고, 다음 뉴스 도메인으로 범위를 제한합니다. 키가 없거나 쿼터·네트워크 오류가 나면 해당 소스만 건너뜁니다.
+- 종목 분석은 이제 티커도 뉴스 수집기에 전달해 매핑된 종목의 해외 Google News 영문 검색을 활성화합니다. AI 프롬프트도 단일 네이버 뉴스가 아닌 다중 출처 뉴스로 설명합니다.
+- Google News는 RSS라 별도 키가 필요 없고, 제목·발행시각·언론사(`source`)를 보존합니다. 대량 상업적 수집과 각 제공자의 이용약관·쿼터는 운영 전 확인해야 합니다.
+- `KAKAO_REST_API_KEY`는 `tools/notebooks/.env`와 Vercel 환경변수에 등록해야 하며, 등록하지 않아도 네이버·Google News·RSS는 계속 동작합니다.
+
 ## Figma Make 시장 지수 UI 통합 (2026-10-01)
 
 - `C:\Users\홍준기\Downloads\근본ui\src\App.tsx`의 `MarketOverview`, `MarketSection`, `MarketIndexCard`, `MarketSkeletonCard` 구조를 현재 Next.js 홈(`src/app/page.tsx`)에 맞게 옮겼습니다.
