@@ -64,7 +64,8 @@ export const StockConsensusCard = memo(function StockConsensusCard({ ticker }: {
 
           <div className="stock-consensus-reports">
             {reports.map((report) => {
-              const href = report.attachUrl || `https://stock.naver.com/research/company/detail/${encodeURIComponent(report.nid)}`;
+              // 네이버 V2 API는 첨부 URL을 생략하는 경우가 많다. 구형 리서치 원문 경로가 현재도 유효한 fallback이다.
+              const href = report.attachUrl || `https://finance.naver.com/research/company_read.naver?nid=${encodeURIComponent(report.nid)}`;
               return (
                 <a key={report.nid} className="stock-consensus-report" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${report.brokerName} 리포트 ${report.title} 원문 새 창에서 보기`}>
                   <div className="stock-consensus-firm"><strong>{report.brokerName}</strong><span>{report.writeDate}</span></div>
