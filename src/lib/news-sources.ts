@@ -41,7 +41,7 @@ const FETCH_HEADERS = {
 
 // 전체 소스를 합친 뒤 최종적으로 자르는 개수 — 너무 많으면 1단계 LLM 프롬프트가 길어지고
 // 비용도 늘어난다. 합치기 전 소스별 개수는 각 fetch 함수 안에서 개별적으로 제한한다.
-const MAX_MERGED_NEWS = 18;
+const MAX_MERGED_NEWS = 40;
 
 // 종목의 해외 보도를 찾기 위한 영문명 매핑. 여기 없는 종목은 영문 Google News 쿼리를
 // 건너뛴다(매핑 없이 한글 종목명으로 영어 로케일 검색을 하면 관련 없는 결과만 나옴).
@@ -76,9 +76,10 @@ async function getNewsFromNaver(query: string): Promise<NewsItem[]> {
   const clientId = serverEnv("NAVER_CLIENT_ID");
   const clientSecret = serverEnv("NAVER_CLIENT_SECRET");
   if (!clientId || !clientSecret) throw new Error("NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET을 .env에 설정하세요.");
-  const response = await fetch(`${NAVER_URL}?query=${encodeURIComponent(query)}&display=10&sort=date`, {
+  const response = await fetch(`${NAVER_URL}?query=${encodeURIComponent(query)}&display=100&sort=date`, {
     headers: { "X-Naver-Client-Id": clientId, "X-Naver-Client-Secret": clientSecret },
     cache: "no-store",
+    signal: AbortSignal.timeout(5000),
   });
   if (!response.ok) throw new Error(`네이버 뉴스 API 오류 (${response.status})`);
   const items = (await response.json()).items ?? [];
