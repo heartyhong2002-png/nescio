@@ -214,7 +214,7 @@ function buildUserPrompt(ipo: IpoInfo): string {
   const underwritersStr = (ipo.underwriterAllocations || [])
     .map(
       (a) =>
-        `- ${a.name} (${a.role || "주관"}): 일반배정 ${a.retailShares ? a.retailShares.toLocaleString() : "미정"}주, 청약한도: ${a.subscriptionLimit || "기본한도"}`,
+        `- ${a.name} (${a.role || "주관"}): 일반배정 ${a.retailShares ? a.retailShares.toLocaleString() : "미정"}주, 최소증거금: ${a.minSubscriptionDeposit ? `${a.minSubscriptionDeposit.toLocaleString()}원` : "미정"}, 청약한도: ${a.subscriptionLimit || "미정"}, 계좌개설 마감: ${a.accountOpeningDeadline || "공고 확인 필요"}, 수수료: ${a.subscriptionFee || "공고 확인 필요"}`,
     )
     .join("\n");
 
@@ -245,7 +245,10 @@ ${companyProfileStr}
 - 희망 공모가 밴드: ${ipo.hopePriceBand || "미정"}
 - 확정 공모가: ${ipo.confirmedPrice ? `${ipo.confirmedPrice.toLocaleString()}원` : "미확정"}
 - 기관 수요예측 경쟁률: ${ipo.institutionCompetitionRate || "미공시"}
+- 수요예측 참여기관 수: ${ipo.demandForecast?.institutionParticipationCount?.toLocaleString() || "미공시"}
+- 공모가 상단 이상 주문 비율/기관 수: ${ipo.demandForecast?.upperBandOrAboveOrderRatio || "미공시"} / ${ipo.demandForecast?.upperBandOrAboveInstitutionCount?.toLocaleString() || "미공시"}
 - 의무보유확약 비율: ${ipo.lockupRatio || "미공시"}
+- 의무보유확약 경쟁률/기관 수/기관 비율: ${ipo.demandForecast?.lockupCompetitionRate || "미공시"} / ${ipo.demandForecast?.lockupInstitutionCount?.toLocaleString() || "미공시"} / ${ipo.demandForecast?.lockupInstitutionRatio || "미공시"}
 - 일반 청약 경쟁률: ${ipo.subscriptionCompetitionRate || "청약 전/진행 중"}
 - 최소 청약 단위: ${ipo.minSubscriptionShares ?? 10}주 (필요 증거금: ${ipo.minSubscriptionDeposit ? `${ipo.minSubscriptionDeposit.toLocaleString()}원` : "계산중"})
 - 환매청구권(풋백옵션): ${ipo.lockupNote || "없음"}

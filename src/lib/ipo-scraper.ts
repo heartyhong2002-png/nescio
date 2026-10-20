@@ -44,19 +44,31 @@ type CacheEntry = {
 };
 
 let memoryCache: CacheEntry | null = null;
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30분 캐시
+// 수요예측 결과는 청약 직전·진행 중에 수시로 확정된다. 30분 지연은 증권사 공지와의
+// 차이가 너무 크므로, 원천 사이트 부하를 고려한 짧은 3분 캐시만 둔다.
+const CACHE_TTL_MS = 3 * 60 * 1000;
 
 async function fetchEucKr(url: string): Promise<string> {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    },
-    signal: AbortSignal.timeout(5000),
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
-  const buf = await res.arrayBuffer();
-  return new TextDecoder("euc-kr").decode(buf);
+  let lastError: unknown = null;
+  // 38은 간헐적으로 첫 연결이 5초를 넘긴다. 한 번만 짧게 재시도하되, 어떤 요청도
+  // 영구 대기하지 않게 한다. 호출부는 독립 목록을 병렬로 시작해 화면 대기를 줄인다.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+        signal: AbortSignal.timeout(8000),
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
+      const buf = await res.arrayBuffer();
+      return new TextDecoder("euc-kr").decode(buf);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`38커뮤니케이션 요청 실패: ${url}`);
 }
 
 function cleanText(text: string): string {
@@ -366,8 +378,12 @@ export async function fetch38IpoData(): Promise<Map<string, ScrapedIpoData>> {
   }
 
   try {
-    // 1. 공모청약 일정 목록(o=k)
-    const htmlK = await fetchEucKr("http://www.38.co.kr/html/fund/index.htm?o=k");
+    // 1. 공모청약 일정 목록(o=k)과 수요예측 결과 목록(o=r1)은 서로 의존하지 않으므로
+    // 동시에 시작한다. 한 쪽의 지연이 다른 목록의 수집을 늦추지 않는다.
+    const [htmlK, htmlR1] = await Promise.all([
+      fetchEucKr("http://www.38.co.kr/html/fund/index.htm?o=k"),
+      fetchEucKr("http://www.38.co.kr/html/fund/index.htm?o=r1"),
+    ]);
     const rawItems: {
       no: string;
       rawName: string;
@@ -403,7 +419,6 @@ export async function fetch38IpoData(): Promise<Map<string, ScrapedIpoData>> {
     }
 
     // 2. 수요예측 결과 목록(o=r1)
-    const htmlR1 = await fetchEucKr("http://www.38.co.kr/html/fund/index.htm?o=r1");
     const forecastMap = new Map<
       string,
       {

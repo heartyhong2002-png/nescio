@@ -7,20 +7,34 @@ import { IpoInfo } from "@/lib/types";
 // 후보 종목마다 상세 1회)를 아낄 수 있다.
 type Cache = { data: IpoInfo[]; expiresAt: number };
 let cache: Cache | null = null;
-const CACHE_TTL_MS = 30 * 60_000;
+let inFlight: Promise<IpoInfo[]> | null = null;
+// 청약·수요예측 결과는 장중에도 빠르게 정정될 수 있다. 수집기와 같은 3분 창을 쓰되,
+// 만료 직후의 동시 요청은 하나의 수집 작업에 합류시켜 DART/38커뮤니케이션을 중복 호출하지 않는다.
+const CACHE_TTL_MS = 3 * 60_000;
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  if (cache && cache.expiresAt > Date.now()) {
-    return NextResponse.json({ ipos: cache.data });
-  }
+async function loadIpos(): Promise<IpoInfo[]> {
+  if (cache && cache.expiresAt > Date.now()) return cache.data;
+  if (inFlight) return inFlight;
 
+  inFlight = fetchUpcomingIpos()
+    .then((ipos) => {
+      cache = { data: ipos, expiresAt: Date.now() + CACHE_TTL_MS };
+      return ipos;
+    })
+    .finally(() => {
+      inFlight = null;
+    });
+  return inFlight;
+}
+
+export async function GET() {
   try {
-    const ipos = await fetchUpcomingIpos();
-    cache = { data: ipos, expiresAt: Date.now() + CACHE_TTL_MS };
-    return NextResponse.json({ ipos });
+    const ipos = await loadIpos();
+    // 브라우저·CDN이 서버의 3분 캐시보다 오래된 응답을 다시 쓰지 않도록 한다.
+    return NextResponse.json({ ipos }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("[api/ipos] 공모주 목록 조회 실패:", error);
     const message = error instanceof Error ? error.message : "공모주 정보를 불러오지 못했습니다.";

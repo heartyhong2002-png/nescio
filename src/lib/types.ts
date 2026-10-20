@@ -63,6 +63,20 @@ export type UnderwriterAllocation = {
   equalShares: number | null; // 균등배정 예상물량 (일반청약자의 50%)
   proportionalShares: number | null; // 비례배정 예상물량 (일반청약자의 50%)
   subscriptionLimit?: string | null; // 최고 청약한도 (예: "15,000 ~ 18,000주")
+  minSubscriptionDeposit?: number | null; // 최소 청약 단위 기준 증거금 (원)
+  accountOpeningDeadline?: string | null; // 해당 공모주 청약용 계좌개설 마감 시각
+  subscriptionFee?: string | null; // 온라인 청약 수수료 등 증권사 공고 기준
+};
+
+// 정정 증권신고서의 수요예측 결과 표에서만 확인되는 세부 지표.
+// 원문에 없는 값은 null로 유지한다. 수치 추정이나 다른 공모주의 값을 재사용하지 않는다.
+export type IpoDemandForecast = {
+  institutionParticipationCount: number | null;
+  upperBandOrAboveOrderRatio: string | null;
+  upperBandOrAboveInstitutionCount: number | null;
+  lockupCompetitionRate: string | null;
+  lockupInstitutionCount: number | null;
+  lockupInstitutionRatio: string | null;
 };
 
 export type CompanyInfo = {
@@ -107,6 +121,7 @@ export type IpoInfo = {
   confirmedPrice: number | null; // 확정 공모가 (원)
   hopePriceBand: string | null; // 희망 공모가 밴드 (예: "16,500 ~ 19,500원")
   institutionCompetitionRate: string | null; // 기관 수요예측 경쟁률 (예: "1187.74:1")
+  demandForecast?: IpoDemandForecast | null; // 기관 참여·가격제시·확약 세부 결과
   lockupRatio: string | null; // 의무보유확약 비율 (예: "21.75%")
   subscriptionCompetitionRate: string | null; // 일반 청약 경쟁률 (예: "1375.34:1")
   minSubscriptionShares?: number | null; // 최소 청약 단위 (보통 10주 또는 20주)

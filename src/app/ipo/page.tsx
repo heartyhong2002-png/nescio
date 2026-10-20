@@ -1748,6 +1748,30 @@ export default function IpoPage() {
                             tagColor={(lockupNum ?? 0) >= 10 ? "#059669" : "var(--muted)"}
                           />
                           <HighlightCard
+                            label="수요예측 참여기관 수"
+                            value={ipo.demandForecast?.institutionParticipationCount?.toLocaleString() ?? "원문 확인 중"}
+                            tag={ipo.demandForecast?.institutionParticipationCount ? "기관 기준" : undefined}
+                            tagColor="var(--muted)"
+                          />
+                          <HighlightCard
+                            label="공모가 상단 이상 주문 비율"
+                            value={ipo.demandForecast?.upperBandOrAboveOrderRatio ?? "원문 확인 중"}
+                            tag={ipo.demandForecast?.upperBandOrAboveInstitutionCount ? `${ipo.demandForecast.upperBandOrAboveInstitutionCount.toLocaleString()}개 기관` : undefined}
+                            tagColor="var(--accent)"
+                          />
+                          <HighlightCard
+                            label="의무보유확약 경쟁률"
+                            value={ipo.demandForecast?.lockupCompetitionRate ?? "원문 확인 중"}
+                            tag={ipo.demandForecast?.lockupInstitutionCount ? `${ipo.demandForecast.lockupInstitutionCount.toLocaleString()}개 기관` : undefined}
+                            tagColor="#059669"
+                          />
+                          <HighlightCard
+                            label="의무보유확약 기관 비율"
+                            value={ipo.demandForecast?.lockupInstitutionRatio ?? "원문 확인 중"}
+                            tag="참여 기관 기준"
+                            tagColor="#059669"
+                          />
+                          <HighlightCard
                             label="희망 공모가 밴드"
                             value={ipo.hopePriceBand ?? (ipo.offerPriceMin ? `${formatPrice(ipo.offerPriceMin)}원 ~ ${formatPrice(ipo.offerPriceMax)}원` : "미정")}
                             tag={
@@ -1846,7 +1870,7 @@ export default function IpoPage() {
                           }}
                         >
                           <div className="eyebrow" style={{ fontSize: 11 }}>
-                            증권사별 배정 주식수 & 청약 한도 상세
+                            증권사별 청약 조건
                           </div>
                           <span className="muted" style={{ fontSize: 11 }}>
                             일반청약자 배정 물량 기준
@@ -1868,7 +1892,7 @@ export default function IpoPage() {
                                 borderCollapse: "collapse",
                                 fontSize: 12.5,
                                 textAlign: "left",
-                                minWidth: 480,
+                                minWidth: 820,
                               }}
                             >
                               <thead>
@@ -1883,7 +1907,10 @@ export default function IpoPage() {
                                   <th style={{ padding: "8px 12px" }}>증권사</th>
                                   <th style={{ padding: "8px 10px", textAlign: "right" }}>일반 배정 수량</th>
                                   <th style={{ padding: "8px 10px", textAlign: "right" }}>균등 예상 (50%)</th>
+                                  <th style={{ padding: "8px 10px", textAlign: "right" }}>최소 청약 증거금</th>
                                   <th style={{ padding: "8px 12px", textAlign: "right" }}>최고 청약 한도</th>
+                                  <th style={{ padding: "8px 12px" }}>계좌개설 마감</th>
+                                  <th style={{ padding: "8px 12px", textAlign: "right" }}>청약 수수료</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -1941,7 +1968,16 @@ export default function IpoPage() {
                                       {a.equalShares !== null ? `${formatPrice(a.equalShares)}주` : "—"}
                                     </td>
                                     <td style={{ padding: "10px 12px", textAlign: "right", color: "var(--ink-soft)", fontWeight: 500 }}>
+                                      {a.minSubscriptionDeposit !== null && a.minSubscriptionDeposit !== undefined ? `${formatPrice(a.minSubscriptionDeposit)}원` : "공고 확인"}
+                                    </td>
+                                    <td style={{ padding: "10px 12px", textAlign: "right", color: "var(--ink-soft)", fontWeight: 500 }}>
                                       {a.subscriptionLimit ?? "증권사 앱 확인"}
+                                    </td>
+                                    <td style={{ padding: "10px 12px", color: "var(--ink-soft)", fontWeight: 500 }}>
+                                      {a.accountOpeningDeadline ?? "증권사 공고 확인"}
+                                    </td>
+                                    <td style={{ padding: "10px 12px", textAlign: "right", color: "var(--ink-soft)", fontWeight: 500 }}>
+                                      {a.subscriptionFee ?? "증권사 공고 확인"}
                                     </td>
                                   </tr>
                                 ))}

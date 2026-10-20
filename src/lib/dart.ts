@@ -1,6 +1,7 @@
 import { serverEnv } from "./server-env";
 import { IpoInfo, UnderwriterAllocation } from "./types";
-import { fetch38IpoData, normalizeBrokerName, normalizeCorpName, ScrapedUnderwriter } from "./ipo-scraper";
+import { fetch38IpoData, normalizeBrokerName, normalizeCorpName, ScrapedIpoData, ScrapedUnderwriter } from "./ipo-scraper";
+import { fetchDemandForecastFromDartDocument } from "./ipo-demand-forecast";
 import { generateRuleBasedAnalysis } from "./ipo-analyzer";
 
 /**
@@ -228,6 +229,16 @@ function isEquityRegistrationTitle(reportNm: string | undefined) {
   return !!reportNm && reportNm.includes("증권신고서") && reportNm.includes("지분증권");
 }
 
+function findScrapedIpo(name: string, scraped38Map: Map<string, ScrapedIpoData>) {
+  const normalized = normalizeCorpName(name);
+  const exact = scraped38Map.get(normalized);
+  if (exact) return { key: normalized, scraped: exact };
+  for (const [key, scraped] of scraped38Map.entries()) {
+    if (normalized.includes(key) || key.includes(normalized)) return { key, scraped };
+  }
+  return null;
+}
+
 /**
  * 공시검색: 최근 접수된 "증권신고(지분증권)" 목록에서 아직 상장 안 된 회사(=IPO 후보)만 추린다.
  * 한 회사가 초기 신고 -> [정정] -> [발행조건확정]까지 같은 지분증권 건으로 여러 번 공시를
@@ -306,7 +317,10 @@ export async function fetchIpoDetail(item: DartListItem, bgnDe: string, endDe: s
       minSubscriptionDeposit,
       estimatedListingDate: end ? addBusinessDays(end, SUBSCRIPTION_TO_LISTING_BUSINESS_DAYS) : null,
       leadUnderwriter,
-      underwriterAllocations,
+      underwriterAllocations: underwriterAllocations.map((allocation) => ({
+        ...allocation,
+        minSubscriptionDeposit,
+      })),
       totalShares,
       offerAmount,
       lockupNote,
@@ -352,6 +366,26 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     .map((r) => r.value)
     .filter((ipo): ipo is IpoInfo => ipo !== null);
 
+  // 38 요약에 이미 수요예측 결과가 잡힌 종목만 DART 원문을 한 번 더 읽는다. 원문 ZIP은
+  // 크기가 커서 아직 결과가 없는 모든 후보에 요청하지 않으며, 최대 5건으로 제한한다.
+  const candidateByCorp = new Map(candidates.filter((item) => item.corp_code).map((item) => [item.corp_code!, item]));
+  const demandForecastByCorp = new Map<string, NonNullable<IpoInfo["demandForecast"]>>();
+  const demandTargets = dartIpos
+    .map((ipo) => ({ ipo, item: candidateByCorp.get(ipo.corpCode), match: findScrapedIpo(ipo.corpName, scraped38Map) }))
+    .filter((target) => target.item?.rcept_no && target.match?.scraped.institutionCompetitionRate)
+    .slice(0, 5);
+  const demandResults = await Promise.allSettled(
+    demandTargets.map(async ({ ipo, item }) => {
+      const detail = await fetchDemandForecastFromDartDocument(dartUrl("document.xml", { rcept_no: item!.rcept_no! }));
+      return { corpCode: ipo.corpCode, detail };
+    }),
+  );
+  for (const result of demandResults) {
+    if (result.status === "fulfilled" && result.value.detail) {
+      demandForecastByCorp.set(result.value.corpCode, result.value.detail);
+    }
+  }
+
   const matchedCorpNames = new Set<string>();
 
   // 1. DART 공모주 데이터에 38 수요예측 결과 및 실제 일반청약자 배정/한도 데이터 합성
@@ -360,16 +394,9 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     matchedCorpNames.add(norm);
 
     // 38 데이터에서 매칭 (정확 일치 또는 상호 포함 매칭)
-    let scraped = scraped38Map.get(norm);
-    if (!scraped) {
-      for (const [key, val] of scraped38Map.entries()) {
-        if (norm.includes(key) || key.includes(norm)) {
-          scraped = val;
-          matchedCorpNames.add(key);
-          break;
-        }
-      }
-    }
+    const scrapedMatch = findScrapedIpo(ipo.corpName, scraped38Map);
+    const scraped = scrapedMatch?.scraped;
+    if (scrapedMatch) matchedCorpNames.add(scrapedMatch.key);
 
     if (!scraped) return ipo;
 
@@ -468,6 +495,12 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     }
 
     const leadUnderwriter = summarizeUnderwriters(cleanedAllocations) || ipo.leadUnderwriter;
+    const allocationsWithDeposit = cleanedAllocations.map((allocation) => ({
+      ...allocation,
+      // 최소 청약 단위와 증거금률은 해당 공모의 공통 조건이다. 증권사별 별도 조건이
+      // 공고되면 그 원문값이 이 계산값을 대체해야 하며, 계좌 마감·수수료는 추정하지 않는다.
+      minSubscriptionDeposit,
+    }));
 
     // 38커뮤니케이션에서 수집된 기업 정보 매핑
     const companyInfo = scraped
@@ -492,10 +525,11 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
       institutionCompetitionRate,
       lockupRatio,
       subscriptionCompetitionRate,
+      demandForecast: demandForecastByCorp.get(ipo.corpCode) ?? null,
       minSubscriptionShares,
       minSubscriptionDeposit,
       leadUnderwriter,
-      underwriterAllocations: cleanedAllocations,
+      underwriterAllocations: allocationsWithDeposit,
       companyInfo,
     };
     mergedObj.aiAnalysis = generateRuleBasedAnalysis(mergedObj);
@@ -545,6 +579,10 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     const minSubscriptionShares = scraped.minShares ?? 10;
     const price = scraped.confirmedPrice;
     const minDeposit = price ? Math.round(price * minSubscriptionShares * 0.5) : null;
+    const allocationsWithDeposit = cleanedAllocations.map((allocation) => ({
+      ...allocation,
+      minSubscriptionDeposit: minDeposit,
+    }));
 
     const scrapedIpo: IpoInfo = {
       corpCode: `38-${scraped.no}`,
@@ -564,7 +602,7 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
       minSubscriptionDeposit: minDeposit,
       estimatedListingDate: scraped.subscriptionEnd ? addBusinessDays(scraped.subscriptionEnd, 2) : null,
       leadUnderwriter: summarizeUnderwriters(cleanedAllocations),
-      underwriterAllocations: cleanedAllocations,
+      underwriterAllocations: allocationsWithDeposit,
       totalShares: scraped.totalShares,
       offerAmount: null,
       lockupNote: null,
