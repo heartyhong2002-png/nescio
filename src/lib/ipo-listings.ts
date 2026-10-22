@@ -1,4 +1,5 @@
 import { IpoListingItem, IpoListingsData, IpoMarketStats, Stock } from "./types";
+import { formatReturnRate, getFirstDayBadge } from "./ipo-grading";
 
 /**
  * 38커뮤니케이션 신규상장(o=nw) 페이지 크롤러.
@@ -69,7 +70,7 @@ export async function fetchNewListings(): Promise<IpoListingsData> {
           cleanText(m[1]),
         );
         // 컬럼: [기업명, 신규상장일, 현재가, 전일비, 공모가, 공모가대비등락률, 시초가, 시초/공모, 첫날종가]
-        if (tds.length >= 9 && tds[1] && (tds[1].startsWith("2026/") || tds[1].startsWith("2025/"))) {
+        if (tds.length >= 9 && tds[1]?.startsWith("2026/")) {
           const name = tds[0];
           const listingDate = tds[1];
           const currentPrice = toNumber(tds[2]);
@@ -101,18 +102,8 @@ export async function fetchNewListings(): Promise<IpoListingsData> {
           let badge: IpoListingItem["badge"] = isUpcoming ? "UPCOMING" : undefined;
 
           if (!isUpcoming && offerPrice && firstDayClose) {
-            const ret = ((firstDayClose - offerPrice) / offerPrice) * 100;
-            firstDayReturnRate = ret > 0 ? `+${ret.toFixed(1)}%` : `${ret.toFixed(1)}%`;
-
-            if (ret >= 295) {
-              badge = "TRIPLE"; // 따따블 (+300%)
-            } else if (ret >= 95) {
-              badge = "DOUBLE"; // 따블 (+100% 이상)
-            } else if (ret >= 0) {
-              badge = "PROFIT";
-            } else {
-              badge = "LOSS"; // 공모가 하회 손실
-            }
+            firstDayReturnRate = formatReturnRate(offerPrice, firstDayClose);
+            badge = getFirstDayBadge(offerPrice, firstDayClose);
           }
 
           rawItems.push({
@@ -158,8 +149,8 @@ export async function fetchNewListings(): Promise<IpoListingsData> {
         if (!Number.isNaN(num)) {
           closeSum += num;
           closeCount++;
-          if (num >= 295) tripleCount++;
-          else if (num >= 95) doubleCount++;
+          if (h.badge === "TRIPLE") tripleCount++;
+          else if (h.badge === "DOUBLE") doubleCount++;
           else if (num < 0) lossCount++;
         }
       }

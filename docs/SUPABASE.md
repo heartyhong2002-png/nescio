@@ -134,8 +134,9 @@ alter table public.valuation_interpretations enable row level security;
   직접 조회하는 히스토리 UI는 아직 없습니다 — 다음 세션에서 필요하면
   추가하세요(예: 종목 페이지에 "과거 분석 보기" 탭, `select ... where user_id = ? and
   ticker = ? order by created_at desc`).
-- 실제 `stock_analyses`에는 `tone`이 있지만 문서 SQL과 API가 다른 컬럼명을 사용한다. 이 상태에서는
-  영속 캐시 조회·저장이 실패할 수 있으므로 migration으로 먼저 정합성을 복구해야 한다.
+- `stock_analyses`의 `stock_name`·`created_at` 정규화는 v001으로 반영됐다. 기존
+  `stock_analyses: 본인만` ALL 정책은 중복 정책과 불필요한 update/delete 권한을 남기므로 v002에서
+  제거했다. 실제 RLS Advisor를 재검증한 뒤에만 완료로 기록한다.
 - 두 테이블 모두 버전을 무한히 쌓기만 하고 정리(retention)하지 않습니다. 사용자가 같은
   종목을 자주 들여다보면 행이 계속 늘어나므로, 필요해지면 오래된 행을 주기적으로 지우는
   것도 고려하세요.
