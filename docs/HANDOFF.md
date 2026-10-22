@@ -1,5 +1,39 @@
 # Handoff notes (2026-09-29) — 화면 경험 정비
 
+## 최신 인계 — 공모주·뉴스 데이터 및 배포 상태 (2026-10-22)
+
+이 섹션이 이전 인계 메모보다 우선합니다. 아래 내용은 로컬 환경에서 실제 API 응답까지 확인한 상태를 기준으로 작성했습니다.
+
+### GitHub 반영 완료
+
+- `main`의 최신 관련 커밋은 `3a9494c` (`feat: enrich IPO subscription and demand data`)이며 GitHub 원격 저장소에 push되었습니다.
+- 공모주 API와 화면에 다음 선택 필드를 추가했습니다. 기존 응답 필드를 제거하거나 이름을 바꾸지 않았습니다.
+  - 증권사 배정 정보: 최소 청약증거금, 계좌개설 기한, 청약 수수료
+  - 수요예측: 참여 기관 수, 공모가 상단 이상 경쟁률·기관 수, 의무보유확약 경쟁률·기관 수·비율
+- 뉴스 수집 다중화는 `83ab3b3`에 반영되었습니다. 네이버 뉴스는 호출당 최대 100건을 요청하고, 카카오(다음) 웹검색 및 Google News RSS와 병렬로 수집한 뒤 최대 40건을 병합합니다. 네이버 검색 API의 공식 일일 한도는 클라이언트 ID당 25,000회입니다.
+- 전체 응답 뉴스 최대치는 40건이지만 `/api/analyze`의 LLM 입력은 `MAX_ANALYSIS_NEWS = 10`으로 제한됩니다. 뉴스 표시량과 AI 입력량을 별도로 관리하는 현재 설계입니다.
+- 종목 브리핑은 NVIDIA Nemotron → Groq GPT-OSS 120B → 단계별 Gemini 폴백이며, 캐시는 sessionStorage → 서버/Supabase 순으로 사용합니다. 10분 신선 캐시는 즉시 반환하고, 10분~24시간 stale 캐시는 `after()` 백그라운드 갱신을 사용합니다.
+- 중국·일본·대만 지수 지원과 공모주 예측 목록 누락 수정은 `2d7c1cc`에 반영되었습니다.
+
+### 공모주 데이터의 현재 동작
+
+- 38커뮤니케이션의 수요예측 결과를 두 경로(`o=k`, `o=r1`)로 병렬 조회하고, 인코딩 문제와 지연에 대비해 8초 제한 내에서 재시도합니다.
+- 로컬 프로덕션 모드에서 `/api/ipos`는 약 9.8초에 24건을 반환했습니다. 예를 들어 티앤이코리아는 기관경쟁률 `1041.02:1`, 의무보유확약 비율 `29.52%`를 정상 반환했습니다.
+- 세부 수요예측 값은 DART 공시 원문 ZIP/XML을 보수적으로 해석합니다. 관련 맥락 없이 발견되는 숫자가 잘못 연결되는 문제를 차단했으므로, 확신할 수 없는 경우에는 잘못된 값 대신 `null`을 반환하고 화면은 `원문 확인 중`으로 표시합니다.
+- 계좌개설 기한과 청약 수수료는 38커뮤니케이션·DART만으로 신뢰성 있게 확보할 수 없어 현재 `null`일 수 있습니다. 화면의 `증권사 공고 확인` 안내는 의도된 폴백이며, 각 증권사 IPO 공고 연동이 다음 작업입니다.
+
+### 검증 결과와 미완료 항목
+
+- `npm test`(20개), `npm run lint`, `npm run build`를 통과했습니다. 테스트 중 TypeScript 모듈 형식 경고는 있으나 실패는 아닙니다. 이 경고만을 이유로 `package.json`의 모듈 형식을 변경하지 마세요.
+- Vercel CLI로 프로덕션 배포를 시도했지만 이 작업 환경에는 Vercel 로그인 정보와 프로젝트 연결 정보가 없어 배포 URL을 만들거나 배포 성공을 확인하지 못했습니다. GitHub 연결 기반 자동 배포가 존재할 가능성은 있지만 확인되지 않았습니다.
+- 다음 담당자는 Vercel 로그인·프로젝트 연결 후 환경변수(`DART_API_KEY`, `KAKAO_REST_API_KEY` 등)를 확인하고 프로덕션 배포 API를 직접 검증해야 합니다. 키나 비밀값은 출력·문서화·커밋하지 않습니다.
+
+### 인계 시 안전 수칙
+
+- 현재 작업 트리에는 이 공모주 변경과 무관한 사용자/다른 세션의 수정 파일이 있습니다. 작업 전 `git status`를 확인하고, 본인 변경만 선택적으로 스테이징하세요.
+- 외부 원천의 지연·빈 응답·형식 변경은 정상 상황으로 취급합니다. 보조 데이터 실패가 공모주 목록 전체 응답을 막지 않게 하고, 추정값을 사실처럼 노출하지 마세요.
+- 이어서 작업할 AI용 상세 프롬프트는 [AI-HANDOFF-PROMPT.md](AI-HANDOFF-PROMPT.md)에 있습니다.
+
 ## 뉴스 소스 다중화 (2026-10-19)
 
 - `src/lib/news-sources.ts`는 네이버 뉴스 API, 카카오 공식 Daum 검색 웹문서 API(`site:v.daum.net`), Google News RSS, 한국경제·아시아경제 RSS를 병렬 호출하고 제목 기준으로 중복을 제거한 뒤 최신순으로 합칩니다.
@@ -909,3 +943,64 @@ price data — it was just unused. `src/lib/krx.ts` now parses it into
 - **Concurrency**: 독립적 데이터 소스는 무조건 `Promise.all` 병렬 처리.
 - **Security**: API 키 및 민감 정보는 `serverEnv()` 기반의 `process.env` 통제 및 절대 출력/커밋 금지.
 - **Autonomous Validation**: 자율 즉시 실행 원칙에 따라 코드 반영 후 500 에러, 타임아웃 상황을 방지하고 `npm run build` 검증 후 커밋/푸시를 마무리함.
+# 현재 인계 상태 (2026-10-22)
+
+## 프로젝트 방향과 협업 방식
+
+- Nescio는 투자 초보자가 주가·공시·뉴스를 빠르게 이해하도록 돕는 한국어 주식/공모주 인텔리전스 웹앱입니다. 시세와 확인된 데이터가 AI 해석보다 먼저 보여야 하며, 없는 데이터는 추측해 채우지 않습니다.
+- 사용자는 빠르게 실제 화면에 적용하고 이후 다듬는 방식을 선호합니다. 변경 요청이 분명하면 영향 범위 안에서 구현하고 적절히 검증합니다. 사용자가 커밋·푸시를 요청하지 않았다면 자동으로 커밋하거나 푸시하지 않습니다.
+- 변경 전 `git status`로 사용자의 기존 작업을 확인하고 보존합니다. API 응답 계약·서버 로직·공용 컴포넌트는 사용처와 영향 범위를 확인한 뒤 바꿉니다.
+- 프로젝트의 실제 규칙은 `AGENTS.md`와 `CLAUDE.md`를 확인합니다. 현재 Next.js 에이전트 규칙에 따르면 코드를 수정하기 전 `node_modules/next/dist/docs/`에서 변경 대상에 해당하는 가이드를 읽어야 합니다.
+
+## 최근 커밋된 작업
+
+- `3a9494c feat: enrich IPO subscription and demand data` (2026-10-21): DART 증권신고서 원문 ZIP에서 수요예측 세부 항목을 제한적으로 파싱하고, 청약 증거금 정보를 증권사별 정보에도 전달합니다. 원문 조회는 38커뮤니케이션에 수요예측 정보가 있는 후보 중 최대 5건만 수행하며 실패 시 공모주 목록을 막지 않습니다.
+- `a83e641 fix: open valid Naver research report links`: 네이버 증권 리서치 카드의 잘못된 상세 URL을 `finance.naver.com/research/company_read.naver?nid=...`로 수정했습니다. 기존 `stock.naver.com/research/company/detail/{nid}` 경로는 404였습니다.
+- `83ab3b3 feat: expand multi-source news collection`: 네이버·Daum 검색·Google News RSS·국내 언론 RSS를 병렬 집계하며, 한 소스 장애는 나머지 소스에 영향을 주지 않습니다. Daum 소스에 `KAKAO_REST_API_KEY`가 필요합니다.
+- `f03c19b fix: handle macro API non-JSON failures`: 매크로 화면의 응답 파싱을 방어적으로 바꾸고 AI 브리핑 실패와 시장 데이터 표시를 분리했습니다.
+- `465db9c feat: add family friendly stock view`: 가족 친화형 종목 화면 `/family`와 `/family/stock/[ticker]`를 추가했습니다.
+- 앞선 공모주 상세 페이지·회사 정보·로고, 시장 지수 UI, AI 브리핑 재시도와 테마 작업은 이 문서의 아래 기록과 README를 참조합니다.
+
+## 인계 시점의 작업 트리
+
+2026-10-22 확인 당시 `main`은 `origin/main`과 `3a9494c`에서 일치했습니다. 아래 변경은 커밋되지 않은 상태였으므로 현재 세션에서 사용자가 진행 중인 작업일 수 있습니다. 덮어쓰거나 정리·삭제하지 말고 먼저 의도와 diff를 확인하세요. 문서 인계 작업 중 `README.md` 변경도 추가로 관찰했으며, 이번 작업에서는 수정하지 않았습니다.
+
+- 수정됨: `README.md`, `docs/PR-2-QUALITY-DEPLOYMENT-REPORT.md`, `docs/SUPABASE.md`, `package.json`, `package-lock.json`, `src/lib/ipo-listings.ts`
+- 새 파일: `docs/AI-HANDOFF-PROMPT.md`, `docs/POST-DEPLOYMENT-HARDENING-PROMPT.md`, `docs/migrations/v002_remove_legacy_stock_analyses_policy.sql`, `src/lib/ipo-grading.ts`, `tests/ipo-grading.test.mjs`, `graphify-out/`, `근본ui.make`
+- 이 목록은 인계 당시 스냅샷입니다. 새 AI는 작업을 시작할 때 현재 `git status`를 다시 읽고 이 목록과 비교해야 합니다.
+
+## 다음 AI가 이어서 할 일
+
+1. 현재 요청을 먼저 확인하고, 인계 시점의 미커밋 변경이 요청과 관련 있는지 살펴봅니다.
+2. 필요한 기존 코드·문서와 해당 Next.js 가이드를 읽고 영향 범위를 정합니다.
+3. 사용자의 변경을 보존하면서 요청한 작업을 완료하고, 관련 검증만 수행합니다. 브라우저/API 원격 상태는 직접 확인하지 않았다면 확인했다고 말하지 않습니다.
+4. 문서 업데이트 요청이 있으면 이 파일과 README의 관련 항목을 함께 최신화합니다. 배포·CI 상태는 실제 확인 결과만 기록합니다.
+
+## 추가 작업 기록 (2026-10-22)
+
+### 공모주 첫날 성적 기준
+
+- `src/lib/ipo-listings.ts`는 38커뮤니케이션 신규상장 데이터 중 `2026/` 상장일만 2026 성적표에 포함하도록 수정 중입니다. 기존 파서는 2025년 데이터도 섞을 수 있었습니다.
+- 첫날 성적은 공모가 대비 **상장 첫날 종가** 기준으로 분류합니다. `TRIPLE`은 +300% 이상, `DOUBLE`은 +100% 이상, `PROFIT`은 0% 이상, `LOSS`는 0% 미만입니다. 기존 +295%/+95% 경계는 제거했고 통계 집계도 같은 분류 결과를 재사용합니다.
+- UI 표 머리글에 `(종가 기준)`을 표시합니다. 순수 판정 함수와 경계 테스트는 `src/lib/ipo-grading.ts`, `tests/ipo-grading.test.mjs`에 있습니다.
+- 이 기준은 사용자 요청에 따라 코드상 일관성 있게 정리한 것입니다. 실제 38커뮤니케이션의 행별 원본값과 운영 화면은 대조하지 않았으므로, “첫날 성적”의 사업상 기준이 시초가/종가 중 무엇이어야 하는지 필요하면 사용자와 확인하세요.
+- 변경 당시 `npm test` 17개, `npm run lint`, `npx tsc --noEmit`, `npm run build`가 통과했습니다. 이후 작업 트리 변경이 있을 수 있으므로 다음 AI는 현재 상태에서 다시 실행해야 합니다.
+
+### Vercel `db-backups` 프리뷰 빌드 오류
+
+- 제공된 Vercel 로그는 `db-backups` 브랜치의 `89f6ecf` (`backup: 2026-10-13 public schema (UTC)`) 프리뷰 배포가 `No Next.js version detected`로 실패한 기록입니다.
+- Git에서 확인한 `origin/db-backups`는 백업 전용 orphan 브랜치로 루트에 `README.md`, `backups/`만 있고 앱의 `package.json`/Next.js 의존성이 없습니다. 이를 앱 브랜치에 병합하거나 앱 파일을 백업 브랜치에 복사하지 마세요.
+- Vercel 프로젝트 `nesio`의 Production 환경은 이미 `main`을 추적하고 있었고 Preview는 모든 미할당 Git 브랜치를 추적했습니다. 따라서 Production Branch를 바꾸는 문제는 아니며, 실패 프리뷰가 Production을 대체했다는 근거도 없습니다.
+- Vercel의 **Project Settings → Build and Deployment → Ignored Build Step**에 다음 조건을 저장했습니다. `db-backups`만 exit 0으로 건너뛰고, 다른 브랜치는 exit 1로 계속 빌드합니다.
+
+  ```sh
+  if [ "$VERCEL_GIT_COMMIT_REF" = "db-backups" ]; then exit 0; else exit 1; fi
+  ```
+
+- Vercel UI에서 프로젝트 설정에 명령이 표시되고 저장 버튼이 비활성화된 것을 확인했습니다. 실패한 프리뷰의 재배포도 “Use project's Ignore Build Step”을 켠 채 요청했고 “Deployment created” 알림을 봤으나, 새 배포의 최종 상태는 확인하지 못했습니다. 그러므로 설정 저장은 확인, 동작 검증은 **미검증**입니다.
+- 다음 AI는 Vercel 배포 목록에서 해당 재시도와 새 `db-backups` 커밋을 확인하고, 기대 결과가 빌드 오류가 아니라 무시/취소 상태인지 확인해야 합니다. 일반 앱 브랜치가 계속 배포되는지 확인하고, Production을 임의 재배포하지 마세요.
+- Vercel 공식 설명상 Ignored Build Step의 exit 0은 빌드 무시, exit 1은 빌드 진행입니다. 무시되어도 Vercel에 취소된 배포 기록이 남을 수 있으므로 결과를 성공적인 앱 배포로 오인하지 마세요.
+
+### 다음 AI용 단일 인계 프롬프트
+
+- 전체 요약과 작업 절차는 [AI-HANDOFF-PROMPT.md](./AI-HANDOFF-PROMPT.md)를 사용하세요. Supabase 실제 운영 검증만 이어갈 때는 기존 [POST-DEPLOYMENT-HARDENING-PROMPT.md](./POST-DEPLOYMENT-HARDENING-PROMPT.md)를 참고하되, 이 문서의 더 최신 상태와 모순되면 최신 기록을 우선하고 다시 확인하세요.
