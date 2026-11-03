@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict tRFzVA2gfzqobNgjeU03CmYrsUzdevRDG6RhSFpOFFMsk9XeArrYojppjuPLH0I
+\restrict hDUuiAD5SYgaql80IFbS8d65bAo5jhDxtcaLNkBIJVWexSyf3uhvCl9ewmeEjGw
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg26.04+2)
@@ -375,5 +375,5 @@ ALTER TABLE public.watchlist_items ENABLE ROW LEVEL SECURITY;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict tRFzVA2gfzqobNgjeU03CmYrsUzdevRDG6RhSFpOFFMsk9XeArrYojppjuPLH0I
+\unrestrict hDUuiAD5SYgaql80IFbS8d65bAo5jhDxtcaLNkBIJVWexSyf3uhvCl9ewmeEjGw
 
