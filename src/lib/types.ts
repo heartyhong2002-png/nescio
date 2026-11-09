@@ -94,8 +94,11 @@ export type CompanyInfo = {
   products?: string | null; // 주력 상품·서비스
   financialHistory?: Array<{ year: string; revenue: string | null; operatingProfit: string | null; netProfit: string | null }>;
   executiveHoldings?: Array<{ name: string; role: string | null; shares: string | null; ownershipRate: string | null }>;
-  offeringUse?: string | null; // 공모자금 사용처
+  offeringUse?: string | null; // 공모자금 사용처 및 공모구조 요약
   correctionNotice?: string | null; // 최근 정정 공시
+  peerCompanies?: string | null; // 비교 기업 (Peer Group)
+  tradableShares?: string | null; // 상장 직후 유통가능물량 요약
+  marketCapEstimate?: string | null; // 공모가 기준 예상 시가총액
 };
 
 export type IpoAiAnalysis = {
@@ -121,6 +124,7 @@ export type IpoInfo = {
   confirmedPrice: number | null; // 확정 공모가 (원)
   hopePriceBand: string | null; // 희망 공모가 밴드 (예: "16,500 ~ 19,500원")
   institutionCompetitionRate: string | null; // 기관 수요예측 경쟁률 (예: "1187.74:1")
+  demandForecastDate?: string | null; // 기관 수요예측 일정 (예: "2026.12.02 ~ 2026.12.08")
   demandForecast?: IpoDemandForecast | null; // 기관 참여·가격제시·확약 세부 결과
   lockupRatio: string | null; // 의무보유확약 비율 (예: "21.75%")
   subscriptionCompetitionRate: string | null; // 일반 청약 경쟁률 (예: "1375.34:1")

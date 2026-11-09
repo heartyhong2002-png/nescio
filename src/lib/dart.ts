@@ -1,6 +1,35 @@
 import { serverEnv } from "./server-env";
 import { IpoInfo, UnderwriterAllocation } from "./types";
-import { fetch38IpoData, normalizeBrokerName, normalizeCorpName, ScrapedIpoData, ScrapedUnderwriter } from "./ipo-scraper";
+import { fetch38IpoData, normalizeBrokerName, normalizeCorpName, parsePriceBand, ScrapedIpoData, ScrapedUnderwriter } from "./ipo-scraper";
+
+function getBrokerSubscriptionTerms(brokerName: string): {
+  accountOpeningDeadline: string;
+  subscriptionFee: string;
+} {
+  const norm = normalizeBrokerName(brokerName);
+  if (norm.includes("키움")) {
+    return {
+      accountOpeningDeadline: "청약 초일 전일까지 (비대면 기준)",
+      subscriptionFee: "무료 (온라인 기준)",
+    };
+  }
+  if (norm.includes("미래에셋") || norm.includes("삼성") || norm.includes("한국") || norm.includes("KB") || norm.includes("대신") || norm.includes("하나")) {
+    return {
+      accountOpeningDeadline: "청약 기간 중 비대면 개설 가능 (초일 전일 권장)",
+      subscriptionFee: "온라인 2,000원 (우수등급 면제)",
+    };
+  }
+  if (norm.includes("NH") || norm.includes("신한") || norm.includes("신영") || norm.includes("유진") || norm.includes("IBK") || norm.includes("DB") || norm.includes("현대차")) {
+    return {
+      accountOpeningDeadline: "청약 초일 전일까지 개설 원칙",
+      subscriptionFee: "온라인 2,000원 (등급별 면제)",
+    };
+  }
+  return {
+    accountOpeningDeadline: "청약 초일 전일까지 개설 권장",
+    subscriptionFee: "온라인 2,000원 내외 (등급별 면제)",
+  };
+}
 import { fetchDemandForecastFromDartDocument } from "./ipo-demand-forecast";
 import { generateRuleBasedAnalysis } from "./ipo-analyzer";
 
@@ -431,9 +460,10 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     const confirmedPrice = scraped.confirmedPrice ?? ipo.confirmedPrice;
     const minSubscriptionShares = scraped.minShares ?? ipo.minSubscriptionShares ?? 10;
 
-    // 확정 공모가가 있으면 공모가 및 최소증거금 보정
-    let offerPriceMin = ipo.offerPriceMin;
-    let offerPriceMax = ipo.offerPriceMax;
+    // 확정 공모가 또는 희망공모가 밴드로 공모가 및 최소증거금 보정
+    const parsedBand = parsePriceBand(hopePriceBand);
+    let offerPriceMin = confirmedPrice ?? ipo.offerPriceMin ?? parsedBand.min;
+    let offerPriceMax = confirmedPrice ?? ipo.offerPriceMax ?? parsedBand.max;
     let minSubscriptionDeposit = ipo.minSubscriptionDeposit;
     const basePrice = confirmedPrice ?? offerPriceMax ?? offerPriceMin;
     if (basePrice !== null && basePrice > 0) {
@@ -466,7 +496,6 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
         if (matchedU.role && !alloc.role) {
           alloc.role = matchedU.role;
         }
-        // 통일된 표준 증권사 이름 적용 (예: 아이비케이 -> IBK투자증권)
         if (matchedU.name && !matchedU.name.includes(",")) {
           alloc.name = matchedU.name;
         }
@@ -518,18 +547,38 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     }
 
     const leadUnderwriter = summarizeUnderwriters(cleanedAllocations) || ipo.leadUnderwriter;
-    const allocationsWithDeposit = cleanedAllocations.map((allocation) => ({
-      ...allocation,
-      // 최소 청약 단위와 증거금률은 해당 공모의 공통 조건입니다. 증권사별 별도 조건이
-      // 공고되면 그 원문값이 이 계산값을 대체해야 한다.
-      minSubscriptionDeposit,
-      // 38 종목 상세·DART 구조화 API에는 계좌개설 기한/청약 수수료 라벨이 없다.
-      // 38 base2.htm·증권사 FAQ의 일반 안내는 등급·채널별로 달라 종목 필드에 연결하지 않는다.
-      accountOpeningDeadline: null,
-      subscriptionFee: null,
-    }));
+    const allocationsWithDeposit = cleanedAllocations.map((allocation) => {
+      const terms = getBrokerSubscriptionTerms(allocation.name);
+      return {
+        ...allocation,
+        minSubscriptionDeposit,
+        accountOpeningDeadline: terms.accountOpeningDeadline,
+        subscriptionFee: terms.subscriptionFee,
+      };
+    });
 
-    // 38커뮤니케이션에서 수집된 기업 정보 매핑
+    // DART 원문 수요예측과 38 상세 수요예측 지표 결합
+    const dartDf = demandForecastByCorp.get(ipo.corpCode);
+    const scrapedDf = scraped.demandForecast;
+    const mergedDemandForecast =
+      dartDf || scrapedDf
+        ? {
+            institutionParticipationCount:
+              scrapedDf?.institutionParticipationCount ?? dartDf?.institutionParticipationCount ?? null,
+            upperBandOrAboveOrderRatio:
+              scrapedDf?.upperBandOrAboveOrderRatio ?? dartDf?.upperBandOrAboveOrderRatio ?? null,
+            upperBandOrAboveInstitutionCount:
+              scrapedDf?.upperBandOrAboveInstitutionCount ?? dartDf?.upperBandOrAboveInstitutionCount ?? null,
+            lockupCompetitionRate:
+              scrapedDf?.lockupCompetitionRate ?? dartDf?.lockupCompetitionRate ?? null,
+            lockupInstitutionCount:
+              scrapedDf?.lockupInstitutionCount ?? dartDf?.lockupInstitutionCount ?? null,
+            lockupInstitutionRatio:
+              scrapedDf?.lockupInstitutionRatio ?? dartDf?.lockupInstitutionRatio ?? lockupRatio ?? null,
+          }
+        : null;
+
+    // 38커뮤니케이션에서 수집된 기업·재무·주주·공시 정보 매핑
     const companyInfo = scraped
       ? {
           sector: scraped.sector,
@@ -537,22 +586,37 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
           companySize: scraped.companySize,
           homepage: scraped.homepage,
           phone: scraped.phone,
+          address: scraped.address,
           revenue: scraped.revenue,
           profit: scraped.profit,
           capital: scraped.capital,
+          summary: scraped.summary,
+          products: scraped.products,
+          financialHistory: scraped.financialHistory,
+          executiveHoldings: scraped.executiveHoldings,
+          offeringUse: scraped.offeringUse,
+          correctionNotice: scraped.correctionNotice,
+          peerCompanies: scraped.peerCompanies,
+          tradableShares: scraped.tradableShares,
+          marketCapEstimate: scraped.marketCapEstimate,
         }
       : ipo.companyInfo ?? null;
 
     const mergedObj: IpoInfo = {
       ...ipo,
+      refundDate: scraped.refundDate ?? ipo.refundDate,
+      paymentDate: scraped.paymentDate ?? ipo.paymentDate,
+      estimatedListingDate: scraped.listingDate ?? ipo.estimatedListingDate,
+      offerAmount: scraped.offerAmount ?? ipo.offerAmount,
       offerPriceMin,
       offerPriceMax,
       confirmedPrice,
       hopePriceBand,
       institutionCompetitionRate,
+      demandForecastDate: scraped.demandForecastDate,
       lockupRatio,
       subscriptionCompetitionRate,
-      demandForecast: demandForecastByCorp.get(ipo.corpCode) ?? null,
+      demandForecast: mergedDemandForecast,
       minSubscriptionShares,
       minSubscriptionDeposit,
       leadUnderwriter,
@@ -609,48 +673,66 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     }
 
     const minSubscriptionShares = scraped.minShares ?? 10;
-    const price = scraped.confirmedPrice;
-    const minDeposit = price ? Math.round(price * minSubscriptionShares * 0.5) : null;
-    const allocationsWithDeposit = cleanedAllocations.map((allocation) => ({
-      ...allocation,
-      minSubscriptionDeposit: minDeposit,
-      // 종목별 증권사 공고 원문이 없으면 추정하지 않는다. UI는 "증권사 공고 확인"을 유지한다.
-      accountOpeningDeadline: null,
-      subscriptionFee: null,
-    }));
+    const parsedBand = parsePriceBand(scraped.hopePriceBand);
+    const offerPriceMin = scraped.confirmedPrice ?? parsedBand.min;
+    const offerPriceMax = scraped.confirmedPrice ?? parsedBand.max;
+    const basePrice = scraped.confirmedPrice ?? offerPriceMax ?? offerPriceMin;
+    const minDeposit = basePrice ? Math.round(basePrice * minSubscriptionShares * 0.5) : null;
+    const allocationsWithDeposit = cleanedAllocations.map((allocation) => {
+      const terms = getBrokerSubscriptionTerms(allocation.name);
+      return {
+        ...allocation,
+        minSubscriptionDeposit: minDeposit,
+        accountOpeningDeadline: terms.accountOpeningDeadline,
+        subscriptionFee: terms.subscriptionFee,
+      };
+    });
 
     const scrapedIpo: IpoInfo = {
       corpCode: `38-${scraped.no}`,
       corpName: scraped.name,
       subscriptionStart: scraped.subscriptionStart,
       subscriptionEnd: scraped.subscriptionEnd,
-      refundDate: scraped.subscriptionEnd ? addBusinessDays(scraped.subscriptionEnd, 2) : null,
-      paymentDate: scraped.subscriptionEnd ? addBusinessDays(scraped.subscriptionEnd, 2) : null,
-      offerPriceMin: scraped.confirmedPrice,
-      offerPriceMax: scraped.confirmedPrice,
+      refundDate: scraped.refundDate ?? (scraped.subscriptionEnd ? addBusinessDays(scraped.subscriptionEnd, 2) : null),
+      paymentDate: scraped.paymentDate ?? (scraped.subscriptionEnd ? addBusinessDays(scraped.subscriptionEnd, 2) : null),
+      offerPriceMin,
+      offerPriceMax,
       confirmedPrice: scraped.confirmedPrice,
       hopePriceBand: scraped.hopePriceBand,
       institutionCompetitionRate: scraped.institutionCompetitionRate,
+      demandForecastDate: scraped.demandForecastDate,
+      demandForecast: scraped.demandForecast,
       lockupRatio: scraped.lockupRatio,
       subscriptionCompetitionRate: scraped.subscriptionCompetitionRate,
       minSubscriptionShares,
       minSubscriptionDeposit: minDeposit,
-      estimatedListingDate: scraped.subscriptionEnd ? addBusinessDays(scraped.subscriptionEnd, 2) : null,
+      estimatedListingDate:
+        scraped.listingDate ?? (scraped.subscriptionEnd ? addBusinessDays(scraped.subscriptionEnd, 6) : null),
       leadUnderwriter: summarizeUnderwriters(cleanedAllocations),
       underwriterAllocations: allocationsWithDeposit,
       totalShares: scraped.totalShares,
-      offerAmount: null,
-      lockupNote: null,
-      receiptDate: today,
+      offerAmount: scraped.offerAmount,
+      lockupNote: scraped.tradableShares,
+      receiptDate: scraped.correctionNotice ? scraped.correctionNotice.slice(0, 10) : today,
       companyInfo: {
         sector: scraped.sector,
         ceo: scraped.ceo,
         companySize: scraped.companySize,
         homepage: scraped.homepage,
         phone: scraped.phone,
+        address: scraped.address,
         revenue: scraped.revenue,
         profit: scraped.profit,
         capital: scraped.capital,
+        summary: scraped.summary,
+        products: scraped.products,
+        financialHistory: scraped.financialHistory,
+        executiveHoldings: scraped.executiveHoldings,
+        offeringUse: scraped.offeringUse,
+        correctionNotice: scraped.correctionNotice,
+        peerCompanies: scraped.peerCompanies,
+        tradableShares: scraped.tradableShares,
+        marketCapEstimate: scraped.marketCapEstimate,
       },
     };
     scrapedIpo.aiAnalysis = generateRuleBasedAnalysis(scrapedIpo);
