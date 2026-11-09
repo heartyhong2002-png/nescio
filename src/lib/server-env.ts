@@ -29,13 +29,13 @@ export function serverEnv(name: string) {
 
 /**
  * Groq 서빙 모델을 검증하여 반환한다.
- * llama-3.3-70b-versatile, llama-3.1-8b 등 Groq에서 삭제된 레거시 모델이 환경변수에 남아있으면
- * 404가 발생하므로, 현재 Groq에서 가장 빠르고 한국어 품질이 뛰어난 qwen3.8-27b로 자동 승격한다.
+ * llama-3.3-70b-versatile, llama-3.1-8b 등 Groq에서 삭제된 레거시 모델 또는 미지정 시,
+ * Groq에서 공식 서빙하는 고성능 모델인 OpenAI의 GPT-OSS 120B(openai/gpt-oss-120b)로 자동 설정한다.
  */
 export function resolveGroqModel(): string {
   const model = serverEnv("GROQ_MODEL");
-  if (!model || model.includes("llama-3") || model.includes("llama3")) {
-    return "qwen/qwen3.8-27b";
+  if (!model || model.includes("llama-3") || model.includes("llama3") || model.includes("qwen")) {
+    return "openai/gpt-oss-120b";
   }
   return model;
 }
