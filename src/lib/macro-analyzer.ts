@@ -1,4 +1,4 @@
-import { serverEnv } from "./server-env";
+import { serverEnv, resolveGroqModel, resolveGeminiModel } from "./server-env";
 import { MacroIndicator } from "./macro-data";
 import { ExchangeRate } from "./types";
 
@@ -79,7 +79,7 @@ function callGroq(system: string, prompt: string, temperature: number, maxTokens
     label: "Groq",
     url: "https://api.groq.com/openai/v1/chat/completions",
     apiKey,
-    model: serverEnv("GROQ_MODEL") || "openai/gpt-oss-120b",
+    model: resolveGroqModel(),
     system,
     prompt,
     temperature,
@@ -106,7 +106,7 @@ function callCerebras(system: string, prompt: string, temperature: number, maxTo
 async function callGemini(system: string, prompt: string, temperature: number): Promise<string> {
   const apiKey = serverEnv("GEMINI_API_KEY");
   if (!apiKey) throw new Error("GEMINI_API_KEY를 .env에 설정하세요.");
-  const model = serverEnv("GEMINI_MODEL") || "gemini-3.8-flash";
+  const model = resolveGeminiModel();
 
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST",
@@ -221,7 +221,7 @@ async function writeComment(analysis: string): Promise<string> {
   const prompt = buildRewritePrompt(analysis);
   return withFallbackChain("2단계 멘트 작성", [
     { name: "Groq", hasKey: !!serverEnv("GROQ_API_KEY"), call: () => callGroq(system, prompt, 0.9, 400) },
-    { name: "Cerebras", hasKey: !!serverEnv("CEREBRAS_API_KEY"), call: () => callCerebras(system, prompt, 0.9, 400) },
+
     { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, 0.9) },
   ]);
 }

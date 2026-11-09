@@ -1,4 +1,4 @@
-import { serverEnv } from "./server-env";
+import { serverEnv, resolveGroqModel, resolveGeminiModel } from "./server-env";
 import { getNewsMultiSource } from "./news-sources";
 import { MarketIndex } from "./types";
 
@@ -107,7 +107,7 @@ function callGroq(system: string, prompt: string, temperature: number, maxTokens
     // llama-3.3-70b-versatile은 2026-08-16부로 Groq 무료/개발자 티어에서 서빙 종료됨
     // (엔터프라이즈 유상 계약 계정만 예외) → model_not_found(404) 발생. Groq가 공식
     // 권장하는 대체 모델로 교체. (https://console.groq.com/docs/deprecations)
-    model: serverEnv("GROQ_MODEL") || "openai/gpt-oss-120b",
+    model: resolveGroqModel(),
     system,
     prompt,
     temperature,
@@ -135,7 +135,7 @@ function callCerebras(system: string, prompt: string, temperature: number, maxTo
 async function callGemini(system: string, prompt: string, temperature: number): Promise<string> {
   const apiKey = serverEnv("GEMINI_API_KEY");
   if (!apiKey) throw new Error("GEMINI_API_KEY를 .env에 설정하세요. (발급: https://aistudio.google.com/apikey)");
-  const model = serverEnv("GEMINI_MODEL") || "gemini-3.8-flash";
+  const model = resolveGeminiModel();
 
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST",
@@ -277,7 +277,7 @@ async function writeComment(analysis: string): Promise<string> {
   const prompt = buildRewritePrompt(analysis);
   return withFallbackChain("2단계 멘트 작성", [
     { name: "Groq", hasKey: !!serverEnv("GROQ_API_KEY"), call: () => callGroq(system, prompt, 0.9, 1200) },
-    { name: "Cerebras", hasKey: !!serverEnv("CEREBRAS_API_KEY"), call: () => callCerebras(system, prompt, 0.9, 1200) },
+
     { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, 0.9) },
   ]);
 }

@@ -1,4 +1,4 @@
-import { serverEnv } from "./server-env";
+import { serverEnv, resolveGroqModel, resolveGeminiModel } from "./server-env";
 import { AnalystReport, ConsensusAiReport } from "./consensus-types";
 
 // 인메모리 캐시 (TTL 2시간)
@@ -191,7 +191,7 @@ export async function analyzeConsensus(
       aiResultText = await callOpenAiFormat({
         url: "https://api.groq.com/openai/v1/chat/completions",
         apiKey: groqKey,
-        model: serverEnv("GROQ_MODEL") || "openai/gpt-oss-120b",
+        model: resolveGroqModel(),
         system: SYSTEM_PROMPT,
         prompt,
       });
@@ -207,7 +207,7 @@ export async function analyzeConsensus(
       try {
         aiResultText = await callGeminiFormat({
           apiKey: geminiKey,
-          model: "gemini-3.8-flash",
+          model: resolveGeminiModel(),
           system: SYSTEM_PROMPT,
           prompt,
         });

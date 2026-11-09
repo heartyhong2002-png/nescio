@@ -1,4 +1,4 @@
-import { serverEnv } from "./server-env";
+import { serverEnv, resolveGroqModel, resolveGeminiModel } from "./server-env";
 import { IpoAiAnalysis, IpoInfo } from "./types";
 
 /**
@@ -274,7 +274,7 @@ export async function analyzeIpoWithAi(ipo: IpoInfo): Promise<IpoAiAnalysis> {
       const content = await callOpenAiFormat({
         url: "https://api.groq.com/openai/v1/chat/completions",
         apiKey: groqKey,
-        model: serverEnv("GROQ_MODEL") || "openai/gpt-oss-120b",
+        model: resolveGroqModel(),
         system: SYSTEM_PROMPT,
         prompt,
       });
@@ -292,7 +292,7 @@ export async function analyzeIpoWithAi(ipo: IpoInfo): Promise<IpoAiAnalysis> {
   const geminiKey = serverEnv("GEMINI_API_KEY");
   if (geminiKey) {
     try {
-      const model = serverEnv("GEMINI_MODEL") || "gemini-3.8-flash";
+      const model = resolveGeminiModel();
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
         headers: { "x-goog-api-key": geminiKey, "Content-Type": "application/json" },

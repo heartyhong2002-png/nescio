@@ -1,6 +1,6 @@
 import { after, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
-import { serverEnv } from "@/lib/server-env";
+import { serverEnv, resolveGroqModel, resolveGeminiModel } from "@/lib/server-env";
 import { getPriceForTicker } from "@/lib/krx";
 import { fetchMajorRatesSummary, fetchInternationalRatesSummary } from "@/lib/exim";
 import { getNewsMultiSource } from "@/lib/news-sources";
@@ -114,7 +114,7 @@ const errMsg = (error: unknown) => (error instanceof Error ? error.message : Str
 
 // Vercel 함수의 최대 실행 시간보다 훨씬 앞에서 외부 호출을 끊어야, 플랫폼이 504로
 // 강제 종료하기 전에 앱이 정상적인 오류 응답이나 다음 제공자 폴백을 돌려줄 수 있다.
-const LLM_REQUEST_TIMEOUT_MS = 10_000;
+const LLM_REQUEST_TIMEOUT_MS = 8_000;
 const OPTIONAL_INPUT_TIMEOUT_MS = 6_000;
 const PERSISTENT_CACHE_TIMEOUT_MS = 3_000;
 
@@ -251,7 +251,7 @@ function callGroq(
     label: "Groq",
     url: "https://api.groq.com/openai/v1/chat/completions",
     apiKey,
-    model: serverEnv("GROQ_MODEL") || "openai/gpt-oss-120b",
+    model: resolveGroqModel(),
     system,
     prompt,
     temperature,
@@ -270,7 +270,7 @@ async function callGemini(
   const apiKey = serverEnv("GEMINI_API_KEY");
   if (!apiKey) throw new Error("GEMINI_API_KEY를 .env에 설정하세요. (발급: https://aistudio.google.com/apikey)");
   // Gemini 2.5 Flash는 신규 사용자에게 더 이상 제공되지 않아 최신 Flash 모델을 쓴다.
-  const model = serverEnv("GEMINI_MODEL") || "gemini-3.8-flash";
+  const model = resolveGeminiModel();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), LLM_REQUEST_TIMEOUT_MS);

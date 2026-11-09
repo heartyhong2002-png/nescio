@@ -26,3 +26,30 @@ function readNotebookEnv() {
 export function serverEnv(name: string) {
   return process.env[name] || readNotebookEnv()[name];
 }
+
+/**
+ * Groq 서빙 모델을 검증하여 반환한다.
+ * llama-3.3-70b-versatile, llama-3.1-8b 등 Groq에서 삭제된 레거시 모델이 환경변수에 남아있으면
+ * 404가 발생하므로, 현재 Groq에서 가장 빠르고 한국어 품질이 뛰어난 qwen3.8-27b로 자동 승격한다.
+ */
+export function resolveGroqModel(): string {
+  const model = serverEnv("GROQ_MODEL");
+  if (!model || model.includes("llama-3") || model.includes("llama3")) {
+    return "qwen/qwen3.8-27b";
+  }
+  return model;
+}
+
+/**
+ * Gemini 서빙 모델을 검증하여 반환한다.
+ * 2.5/2.0/1.5는 404로 폐기되었고, 3.8-flash는 트래픽 과부하(503/timeout)가 잦으므로
+ * 1초대로 응답이 가장 안정적인 gemini-3.5-flash-lite를 기본값으로 사용한다.
+ */
+export function resolveGeminiModel(): string {
+  const model = serverEnv("GEMINI_MODEL");
+  if (!model || model.includes("2.5") || model.includes("1.5") || model.includes("2.0") || model === "gemini-3.8-flash") {
+    return "gemini-3.5-flash-lite";
+  }
+  return model;
+}
+

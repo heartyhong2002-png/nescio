@@ -1,4 +1,4 @@
-import { serverEnv } from "./server-env";
+import { serverEnv, resolveGroqModel, resolveGeminiModel } from "./server-env";
 import { IpoListingItem, IpoMonthlyAnalysis } from "./types";
 
 /**
@@ -298,7 +298,7 @@ ${baseAnalysis.policyAndIssues.map((p) => `- ${p}`).join("\n")}
         method: "POST",
         headers: { Authorization: `Bearer ${groqKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: serverEnv("GROQ_MODEL") || "openai/gpt-oss-120b",
+          model: resolveGroqModel(),
           temperature: 0.3,
           reasoning_effort: "low",
           response_format: { type: "json_object" },
@@ -341,7 +341,7 @@ ${baseAnalysis.policyAndIssues.map((p) => `- ${p}`).join("\n")}
   const geminiKey = serverEnv("GEMINI_API_KEY");
   if (geminiKey) {
     try {
-      const model = serverEnv("GEMINI_MODEL") || "gemini-3.8-flash";
+      const model = resolveGeminiModel();
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
