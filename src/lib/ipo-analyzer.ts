@@ -173,6 +173,7 @@ async function callOpenAiFormat(opts: {
     body: JSON.stringify({
       model: opts.model,
       temperature: 0.2,
+      reasoning_effort: "low",
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: opts.system },
@@ -273,7 +274,7 @@ export async function analyzeIpoWithAi(ipo: IpoInfo): Promise<IpoAiAnalysis> {
       const content = await callOpenAiFormat({
         url: "https://api.groq.com/openai/v1/chat/completions",
         apiKey: groqKey,
-        model: serverEnv("GROQ_MODEL") || "llama-3.3-70b-versatile",
+        model: serverEnv("GROQ_MODEL") || "openai/gpt-oss-120b",
         system: SYSTEM_PROMPT,
         prompt,
       });
@@ -300,6 +301,7 @@ export async function analyzeIpoWithAi(ipo: IpoInfo): Promise<IpoAiAnalysis> {
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.2,
+            thinkingConfig: { thinkingLevel: "low" },
             responseMimeType: "application/json",
           },
         }),

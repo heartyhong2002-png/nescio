@@ -13,7 +13,8 @@ async function callOpenAiCompatible(opts: {
   prompt: string;
   temperature: number;
   maxTokens?: number;
-  disableReasoning?: boolean;
+  reasoningEffort?: "low" | "medium" | "high";
+  chatTemplateKwargs?: Record<string, unknown>;
 }): Promise<string> {
   const doFetch = () =>
     fetch(opts.url, {
@@ -23,7 +24,8 @@ async function callOpenAiCompatible(opts: {
         model: opts.model,
         temperature: opts.temperature,
         ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-        ...(opts.disableReasoning ? { reasoning: { effort: "none" } } : {}),
+        ...(opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
+        ...(opts.chatTemplateKwargs ? { chat_template_kwargs: opts.chatTemplateKwargs } : {}),
         messages: [
           { role: "system", content: opts.system },
           { role: "user", content: opts.prompt },
@@ -48,18 +50,25 @@ async function callOpenAiCompatible(opts: {
   return content;
 }
 
-function callNvidia(system: string, prompt: string, temperature: number, maxTokens?: number): Promise<string> {
+function callNvidia(
+  system: string,
+  prompt: string,
+  temperature: number,
+  maxTokens?: number,
+  modelOverride?: string,
+): Promise<string> {
   const apiKey = serverEnv("NVIDIA_API_KEY");
   if (!apiKey) throw new Error("NVIDIA_API_KEY를 .env에 설정하세요.");
   return callOpenAiCompatible({
     label: "NVIDIA",
     url: "https://integrate.api.nvidia.com/v1/chat/completions",
     apiKey,
-    model: serverEnv("NVIDIA_MODEL") || "nvidia/nemotron-3-super-120b-a12b",
+    model: modelOverride || serverEnv("NVIDIA_MODEL") || "nvidia/nemotron-3.5-super-vl-120b-a12b",
     system,
     prompt,
     temperature,
     maxTokens,
+    chatTemplateKwargs: { enable_thinking: false },
   });
 }
 
@@ -75,6 +84,7 @@ function callGroq(system: string, prompt: string, temperature: number, maxTokens
     prompt,
     temperature,
     maxTokens,
+    reasoningEffort: "low",
   });
 }
 
@@ -125,24 +135,6 @@ async function callGemini(system: string, prompt: string, temperature: number): 
   return content;
 }
 
-async function withGeminiFallback(
-  label: string,
-  primary: () => Promise<string>,
-  gemini: () => Promise<string>,
-): Promise<string> {
-  try {
-    return await primary();
-  } catch (primaryError) {
-    if (!serverEnv("GEMINI_API_KEY")) throw primaryError;
-    console.warn(`[macro-analyzer] ${label} 기본 제공자 실패 → Gemini 폴백:`, errMsg(primaryError));
-    try {
-      return await gemini();
-    } catch (fallbackError) {
-      throw new Error(`${label} 실패 — 기본: ${errMsg(primaryError)} / Gemini 폴백: ${errMsg(fallbackError)}`);
-    }
-  }
-}
-
 async function withFallbackChain(
   label: string,
   providers: Array<{ name: string; hasKey: boolean; call: () => Promise<string> }>,
@@ -191,11 +183,16 @@ ${rateText}
 async function analyzeMacro(indicators: MacroIndicator[], rates: ExchangeRate[]): Promise<string> {
   const system = buildAnalystSystem();
   const prompt = buildAnalysisPrompt(indicators, rates);
-  return withGeminiFallback(
-    "1단계 매크로 분석",
-    () => callNvidia(system, prompt, 0.2, 500),
-    () => callGemini(system, prompt, 0.2),
-  );
+  return withFallbackChain("1단계 매크로 분석", [
+    { name: "NVIDIA", hasKey: !!serverEnv("NVIDIA_API_KEY"), call: () => callNvidia(system, prompt, 0.2, 2200) },
+    {
+      name: "NVIDIA-Lightning",
+      hasKey: !!serverEnv("NVIDIA_API_KEY"),
+      call: () => callNvidia(system, prompt, 0.2, 2200, "nvidia/nemotron-3.5-lightning-30b-a3b"),
+    },
+    { name: "Groq", hasKey: !!serverEnv("GROQ_API_KEY"), call: () => callGroq(system, prompt, 0.2, 2200) },
+    { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, 0.2) },
+  ]);
 }
 
 function buildJeonhyungSystem(): string {

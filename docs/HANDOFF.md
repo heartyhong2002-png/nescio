@@ -1,6 +1,19 @@
-# Handoff notes (2026-09-29) — 화면 경험 정비
+# Handoff notes (2026-11-09) — AI 모델 세대교체 대응·재무지표 해설 폴백·10~11월 공모주 갱신
 
-## 최신 인계 — 공모주·뉴스 데이터 및 배포 상태 (2026-10-22)
+## 최신 인계 — 외부 LLM 엔드포인트 장애 복구 및 `main` 통합 (2026-11-09)
+
+- **NVIDIA 1단계 분석 모델 교체 (`nvidia/nemotron-3.5-super-vl-120b-a12b`)**:
+  - 기존 기본값 `nvidia/nemotron-3-super-120b-a12b`가 NVIDIA NIM에서 서비스 종료(`404 Not Found`)되어 `/api/analyze`, `src/lib/market-comment.ts`, `src/lib/macro-analyzer.ts`의 기본 모델을 `nvidia/nemotron-3.5-super-vl-120b-a12b`(`chat_template_kwargs: { enable_thinking: false }`)로 교체하고, 2차 `nvidia/nemotron-3.5-lightning-30b-a3b`, 3차 Groq(`openai/gpt-oss-120b`), 4차 Gemini(`gemini-3.8-flash`, `thinkingLevel: "low"`) 폴백 체인을 구성했습니다.
+- **Groq 구형 모델(`llama-3.3-70b-versatile`) 참조 일괄 제거**:
+  - `src/lib/consensus-analyzer.ts`, `src/lib/ipo-analyzer.ts`, `src/lib/ipo-monthly-analyzer.ts`에 남아 있던 `llama-3.3-70b-versatile` 기본값을 `openai/gpt-oss-120b`(`reasoning_effort: "low"`)로 통일했습니다.
+- **재무지표 해설(`/api/valuation/interpret`) 다중 폴백 적용**:
+  - 로컬 Ollama(`http://localhost:11434`) 미실행 시 500 오류가 발생하던 구조를 `OLLAMA_BASE_URL(설정 시) → Groq(GPT-OSS 120B) → Gemini(3.8 Flash) → 정량 기준 룰베이스 폴백`으로 보강했습니다.
+- **공모주 월별 리포트 10월·11월 확장**:
+  - `src/lib/ipo-monthly-analyzer.ts` 및 `src/app/ipo/page.tsx`에 `2026-10`, `2026-11` 월별 분석 컨텍스트와 선택 칩을 추가했습니다.
+- **공모주 첫날 종가 기준 성적 판정 및 원문 예외 방어 통합**:
+  - `cursor/ipo-first-day-grading` 브랜치의 종가 기준 등급 산정(`src/lib/ipo-grading.ts`)과 DART 수요예측 원문 ZIP 타임아웃 방어(`src/lib/dart.ts`, `src/lib/ipo-demand-forecast.ts`), 상장 예정 종목 시세 분리(`src/lib/ipo-listings.ts`)를 `main`에 통합했습니다.
+
+## 이전 인계 — 공모주·뉴스 데이터 및 배포 상태 (2026-10-22)
 
 이 섹션이 이전 인계 메모보다 우선합니다. 아래 내용은 로컬 환경에서 실제 API 응답까지 확인한 상태를 기준으로 작성했습니다.
 

@@ -73,12 +73,13 @@ export async function fetchNewListings(): Promise<IpoListingsData> {
         if (tds.length >= 9 && tds[1]?.startsWith("2026/")) {
           const name = tds[0];
           const listingDate = tds[1];
-          const currentPrice = toNumber(tds[2]);
-          const changeRate = tds[3] !== "%" && tds[3] ? tds[3] : null;
           const offerPrice = toNumber(tds[4]);
           const openPrice = toNumber(tds[6]);
           const firstDayClose = toNumber(tds[8]);
           const isUpcoming = tds[8] === "예정" || tds[6] === "-" || !firstDayClose;
+          // 상장 전에는 체결가가 없다. 38 표의 현재가 칸에 공모가·대시가 있어도 시세로 쓰지 않는다.
+          const currentPrice = isUpcoming ? null : toNumber(tds[2]);
+          const changeRate = isUpcoming ? null : tds[3] !== "%" && tds[3] ? tds[3] : null;
 
           // 차트 링크에서 6자리 단축 종목코드(티커) 추출 (예: code=0161M0, code=386380)
           const codeMatch = tr[1].match(/code=([0-9A-Za-z]{6})/i);

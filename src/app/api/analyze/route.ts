@@ -158,6 +158,7 @@ async function callOpenAiCompatible(opts: {
   maxTokens?: number;
   // Groq GPT-OSS처럼 reasoning_effort를 지원하는 모델에서 추론량을 낮춘다.
   reasoningEffort?: "low" | "medium" | "high";
+  chatTemplateKwargs?: Record<string, unknown>;
 }): Promise<string> {
   const doFetch = async () => {
     const controller = new AbortController();
@@ -172,6 +173,7 @@ async function callOpenAiCompatible(opts: {
           ...(opts.json ? { response_format: { type: "json_object" } } : {}),
           ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
           ...(opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
+          ...(opts.chatTemplateKwargs ? { chat_template_kwargs: opts.chatTemplateKwargs } : {}),
           messages: [
             { role: "system", content: opts.system },
             { role: "user", content: opts.prompt },
@@ -210,7 +212,7 @@ function callNvidia(
   system: string,
   prompt: string,
   temperature: number,
-  opts?: { json?: boolean; maxTokens?: number },
+  opts?: { json?: boolean; maxTokens?: number; modelOverride?: string },
 ): Promise<string> {
   const apiKey = serverEnv("NVIDIA_API_KEY");
   if (!apiKey) throw new Error("NVIDIA_API_KEY를 .env에 설정하세요.");
@@ -218,12 +220,15 @@ function callNvidia(
     label: "NVIDIA",
     url: "https://integrate.api.nvidia.com/v1/chat/completions",
     apiKey,
-    model: serverEnv("NVIDIA_MODEL") || "nvidia/nemotron-3-super-120b-a12b",
+    // nvidia/nemotron-3-super-120b-a12b는 NVIDIA NIM에서 404(서비스 종료)를 반환하므로
+    // 현역 모델인 nemotron-3.5-super-vl-120b-a12b를 기본값으로 사용하고 추론 토큰 소진을 막는다.
+    model: opts?.modelOverride || serverEnv("NVIDIA_MODEL") || "nvidia/nemotron-3.5-super-vl-120b-a12b",
     system,
     prompt,
     temperature,
     json: opts?.json,
     maxTokens: opts?.maxTokens,
+    chatTemplateKwargs: { enable_thinking: false },
   });
 }
 
@@ -278,6 +283,7 @@ async function callGemini(
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: opts.temperature,
+          thinkingConfig: { thinkingLevel: "low" },
           // 짧은 브리핑에 필요한 범위만 생성해 대기 시간을 제한한다.
           maxOutputTokens: 2200,
           ...(opts.json ? { responseMimeType: "application/json" } : {}),
@@ -438,6 +444,8 @@ async function analyzeRaw(
   const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news, fxSummary, intlRateSummary, historySummary);
   return withFallbackChain("1단계 원본 분석", [
     { name: "NVIDIA", hasKey: !!serverEnv("NVIDIA_API_KEY"), call: () => callNvidia(system, prompt, 0.2, { maxTokens: 2200 }) },
+    { name: "NVIDIA-Lightning", hasKey: !!serverEnv("NVIDIA_API_KEY"), call: () => callNvidia(system, prompt, 0.2, { maxTokens: 2200, modelOverride: "nvidia/nemotron-3.5-lightning-30b-a3b" }) },
+    { name: "Groq", hasKey: !!serverEnv("GROQ_API_KEY"), call: () => callGroq(system, prompt, 0.2, { maxTokens: 2200 }) },
     { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, { temperature: 0.2 }) },
   ]);
 }

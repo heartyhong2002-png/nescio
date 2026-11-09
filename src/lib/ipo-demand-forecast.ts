@@ -114,8 +114,13 @@ function unzipXmlDocuments(zip: Buffer): string[] {
  * 원문에 실제로 적힌 수요예측 수치만 추출한다.
  */
 export async function fetchDemandForecastFromDartDocument(url: string): Promise<IpoDemandForecast | null> {
-  const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8_000) });
-  if (!response.ok) return null;
-  const documents = unzipXmlDocuments(Buffer.from(await response.arrayBuffer()));
-  return parseDemandForecastText(documents.join("\n"));
+  try {
+    const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) return null;
+    const documents = unzipXmlDocuments(Buffer.from(await response.arrayBuffer()));
+    return parseDemandForecastText(documents.join("\n"));
+  } catch {
+    // 시간 초과·손상 ZIP은 세부 필드만 비운다. 호출부 목록 응답을 실패로 바꾸지 않는다.
+    return null;
+  }
 }

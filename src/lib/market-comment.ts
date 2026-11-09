@@ -29,6 +29,7 @@ async function callOpenAiCompatible(opts: {
   temperature: number;
   maxTokens?: number;
   reasoningEffort?: "low" | "medium" | "high";
+  chatTemplateKwargs?: Record<string, unknown>;
 }): Promise<string> {
   const doFetch = () =>
     fetch(opts.url, {
@@ -39,6 +40,7 @@ async function callOpenAiCompatible(opts: {
         temperature: opts.temperature,
         ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
         ...(opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
+        ...(opts.chatTemplateKwargs ? { chat_template_kwargs: opts.chatTemplateKwargs } : {}),
         messages: [
           { role: "system", content: opts.system },
           { role: "user", content: opts.prompt },
@@ -68,18 +70,25 @@ async function callOpenAiCompatible(opts: {
 }
 
 /** NVIDIA(무료 티어, nemotron) — 1단계 사실 분석 전용. */
-function callNvidia(system: string, prompt: string, temperature: number, maxTokens?: number): Promise<string> {
+function callNvidia(
+  system: string,
+  prompt: string,
+  temperature: number,
+  maxTokens?: number,
+  modelOverride?: string,
+): Promise<string> {
   const apiKey = serverEnv("NVIDIA_API_KEY");
   if (!apiKey) throw new Error("NVIDIA_API_KEY를 .env에 설정하세요.");
   return callOpenAiCompatible({
     label: "NVIDIA",
     url: "https://integrate.api.nvidia.com/v1/chat/completions",
     apiKey,
-    model: serverEnv("NVIDIA_MODEL") || "nvidia/nemotron-3-super-120b-a12b",
+    model: modelOverride || serverEnv("NVIDIA_MODEL") || "nvidia/nemotron-3.5-super-vl-120b-a12b",
     system,
     prompt,
     temperature,
     maxTokens,
+    chatTemplateKwargs: { enable_thinking: false },
   });
 }
 
@@ -157,27 +166,8 @@ async function callGemini(system: string, prompt: string, temperature: number): 
   return content;
 }
 
-/** 기본 제공자를 먼저 시도하고, 실패하면 Gemini로 한 번 더 시도한다. (1단계 분석 전용) */
-async function withGeminiFallback(
-  label: string,
-  primary: () => Promise<string>,
-  gemini: () => Promise<string>,
-): Promise<string> {
-  try {
-    return await primary();
-  } catch (primaryError) {
-    if (!serverEnv("GEMINI_API_KEY")) throw primaryError;
-    console.warn(`[market-comment] ${label} 기본 제공자 실패 → Gemini 폴백:`, errMsg(primaryError));
-    try {
-      return await gemini();
-    } catch (fallbackError) {
-      throw new Error(`${label} 실패 — 기본: ${errMsg(primaryError)} / Gemini 폴백: ${errMsg(fallbackError)}`);
-    }
-  }
-}
-
 /**
- * 제공자를 순서대로 시도하고, 앞선 게 실패하면 다음으로 넘어간다(2단계 멘트 작성 전용).
+ * 제공자를 순서대로 시도하고, 앞선 게 실패하면 다음으로 넘어간다.
  * API 키가 없는 제공자는 아예 건너뛴다 — 안 쓰는 제공자의 ".env에 설정하세요" 에러가
  * 로그만 채우는 걸 막는다. 전부 실패해야 진짜로 에러를 던진다.
  */
@@ -241,13 +231,16 @@ ${newsText}
 async function analyzeMarket(indices: MarketIndex[], headlines: MarketHeadline[]): Promise<string> {
   const system = buildAnalystSystem();
   const prompt = buildAnalysisPrompt(indices, headlines);
-  return withGeminiFallback(
-    "1단계 시장 분석",
-    // Nemotron은 내부 추론도 출력 예산을 사용한다. 500토큰에서는 짧은 시장 분석도
-    // finish_reason=length로 잘리는 것이 실측되어 종목 브리핑과 같은 여유를 둔다.
-    () => callNvidia(system, prompt, 0.2, 2200),
-    () => callGemini(system, prompt, 0.2),
-  );
+  return withFallbackChain("1단계 시장 분석", [
+    { name: "NVIDIA", hasKey: !!serverEnv("NVIDIA_API_KEY"), call: () => callNvidia(system, prompt, 0.2, 2200) },
+    {
+      name: "NVIDIA-Lightning",
+      hasKey: !!serverEnv("NVIDIA_API_KEY"),
+      call: () => callNvidia(system, prompt, 0.2, 2200, "nvidia/nemotron-3.5-lightning-30b-a3b"),
+    },
+    { name: "Groq", hasKey: !!serverEnv("GROQ_API_KEY"), call: () => callGroq(system, prompt, 0.2, 2200) },
+    { name: "Gemini", hasKey: !!serverEnv("GEMINI_API_KEY"), call: () => callGemini(system, prompt, 0.2) },
+  ]);
 }
 
 // ---------------------------------------------------------------------------

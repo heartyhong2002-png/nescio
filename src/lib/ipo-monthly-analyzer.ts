@@ -21,6 +21,32 @@ const HISTORICAL_CONTEXT: Record<
     marketSentiment: string;
   }
 > = {
+  "2026-11": {
+    title: "2026년 11월",
+    macroIssues: [
+      "연말 북클로징을 앞둔 기관 수급의 실적 가시성 중심 압축",
+      "글로벌 금리·환율 변동성 속 AI·반도체·방산 소부장 종목 선호 지속",
+    ],
+    policyFactors: [
+      "상장 직후 유통가능물량 및 의무보유확약 공시 투명성 강화 기조 유지",
+      "주관사 책임성 및 공모가 산정 적정성 심사 지속",
+    ],
+    marketSentiment:
+      "연말 IPO 성수기 진입과 함께 기관 수요예측 경쟁률 및 의무보유확약 비율에 따라 상장 첫날 수익률 격차가 크게 벌어지는 철저한 실적·수급 중심 장세입니다.",
+  },
+  "2026-10": {
+    title: "2026년 10월",
+    macroIssues: [
+      "3분기 실적 시즌 돌입에 따른 흑자 기업과 적자 기술특례 기업 간 차별화 심화",
+      "하반기 대어급 및 중견 기술주 상장 일정 집중에 따른 청약 자금 분산",
+    ],
+    policyFactors: [
+      "금융당국의 증권신고서 정정 요구 및 비교기업(Peer) PER 적정성 검증 강화",
+      "수요예측 참여 기관의 납입능력 확인 및 허수성 청약 관리 안착",
+    ],
+    marketSentiment:
+      "공모가 밴드 상단 돌파 여부보다 상장일 유통물량 부담과 전방 산업의 실질 수주 잔고가 첫날 종가를 결정짓는 선별적 장세가 이어졌습니다.",
+  },
   "2026-09": {
     title: "2026년 9월",
     macroIssues: [
@@ -272,8 +298,9 @@ ${baseAnalysis.policyAndIssues.map((p) => `- ${p}`).join("\n")}
         method: "POST",
         headers: { Authorization: `Bearer ${groqKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: serverEnv("GROQ_MODEL") || "llama-3.3-70b-versatile",
+          model: serverEnv("GROQ_MODEL") || "openai/gpt-oss-120b",
           temperature: 0.3,
+          reasoning_effort: "low",
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
@@ -323,7 +350,11 @@ ${baseAnalysis.policyAndIssues.map((p) => `- ${p}`).join("\n")}
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.3, responseMimeType: "application/json" },
+            generationConfig: {
+              temperature: 0.3,
+              thinkingConfig: { thinkingLevel: "low" },
+              responseMimeType: "application/json",
+            },
           }),
           signal: AbortSignal.timeout(8000),
           cache: "no-store",

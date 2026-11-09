@@ -108,11 +108,94 @@ const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 10 * 60_000;
 
 function cacheKey(ticker: string, name: string, m: MetricsInput, close: number | null, changeRate: number | null) {
-  const model = serverEnv("OLLAMA_MODEL") || "qwen2.5:7b-instruct";
+  const model = serverEnv("OLLAMA_MODEL") || serverEnv("GROQ_MODEL") || "openai/gpt-oss-120b";
   // close를 100원 단위로 반올림 — 미세한 가격 변동으로 캐시를 깨뜨리지 않으면서도,
   // 의미 있게 다른 가격에서는 다른 해설을 생성한다.
   const roundedClose = close !== null ? Math.round(close / 100) * 100 : "null";
   return [ticker, name.trim().toLowerCase(), m.per, m.pbr, m.dividend, m.marketCap, roundedClose, changeRate, model].join("|");
+}
+
+function buildRuleBasedFallback(metrics: MetricsInput): ValuationInterpretation {
+  return {
+    per:
+      metrics.per !== null
+        ? {
+            meaning: `현재 주가가 1주당 순이익의 ${metrics.per}배 수준에서 거래되고 있다는 뜻이에요.`,
+            interpretation:
+              metrics.per < 10
+                ? "코스피 평균(약 10~12배)보다 낮은 편이라 이익 대비 주가가 비교적 저렴한 구간으로 볼 수 있어요."
+                : metrics.per <= 15
+                  ? "코스피 평균(약 10~12배)과 비슷하거나 완만한 프리미엄이 반영된 수준이에요."
+                  : "시장 평균보다 높은 배수로, 향후 성장성에 대한 기대가 주가에 반영되어 있어요.",
+          }
+        : EMPTY,
+    pbr:
+      metrics.pbr !== null
+        ? {
+            meaning: `주가가 회사의 순자산(장부가치) 대비 ${metrics.pbr}배 수준이라는 뜻이에요.`,
+            interpretation:
+              metrics.pbr < 1
+                ? "1배 미만이면 회사가 가진 순자산보다 시가총액이 낮게 평가된 저PBR 구간이에요."
+                : metrics.pbr <= 2
+                  ? "순자산 대비 무난한 수준에서 거래되고 있어요."
+                  : "자본 효율성이나 미래 성장 기대가 반영되어 장부가치보다 높게 거래되고 있어요.",
+          }
+        : EMPTY,
+    dividend:
+      metrics.dividend !== null
+        ? {
+            meaning: `현재 주가로 매수했을 때 1년간 기대할 수 있는 배당금 비율이 약 ${metrics.dividend}%예요.`,
+            interpretation:
+              metrics.dividend >= 3.5
+                ? "은행 예금 금리(약 3% 안팎)나 시장 평균(약 2%)보다 높은 편이라 배당 매력이 돋보여요."
+                : metrics.dividend >= 1.5
+                  ? "주식 시장 평균(약 2% 안팎)과 비슷한 수준의 배당을 지급하고 있어요."
+                  : "배당보다는 사업 재투자나 주가 성장에 무게를 두는 흐름에 가까워요.",
+          }
+        : EMPTY,
+    marketCap:
+      metrics.marketCap !== null
+        ? {
+            meaning: `이 회사 전체 주식을 모두 합친 시장 가치가 약 ${eok(metrics.marketCap)}억 원이라는 뜻이에요.`,
+            interpretation:
+              metrics.marketCap >= 10_000_000_000_000
+                ? "시가총액 10조 원 이상의 대형주로 시장 대표성과 유동성이 매우 높은 편이에요."
+                : metrics.marketCap >= 1_000_000_000_000
+                  ? "시가총액 1조 원 이상의 중대형주로 기관 수급과 시장 관심이 활발한 규모예요."
+                  : "중소형주 규모로 이슈나 수급 변화에 따라 주가 탄력이 비교적 크게 나타날 수 있어요.",
+          }
+        : EMPTY,
+  };
+}
+
+async function callOpenAiCompatibleJson(opts: {
+  url: string;
+  apiKey?: string;
+  model: string;
+  prompt: string;
+  reasoningEffort?: "low" | "medium" | "high";
+}): Promise<ValuationInterpretation> {
+  const response = await fetch(opts.url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(opts.apiKey ? { Authorization: `Bearer ${opts.apiKey}` } : {}),
+    },
+    body: JSON.stringify({
+      model: opts.model,
+      temperature: 0.4,
+      ...(opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM },
+        { role: "user", content: opts.prompt },
+      ],
+    }),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`LLM API 오류 (${response.status}): ${await response.text()}`);
+  const content = (await response.json()).choices?.[0]?.message?.content as string;
+  return coerce(JSON.parse(content));
 }
 
 async function generate(
@@ -122,37 +205,70 @@ async function generate(
   close: number | null,
   changeRate: number | null,
 ): Promise<ValuationInterpretation> {
-  const ollamaBase = serverEnv("OLLAMA_BASE_URL") || "http://localhost:11434";
-  const model = serverEnv("OLLAMA_MODEL") || "qwen2.5:7b-instruct";
-  const ollamaKey = serverEnv("OLLAMA_API_KEY"); // 로컬 Ollama는 불필요, Groq 등 외부 API 사용 시 설정
+  const prompt = buildPrompt(name, ticker, metrics, close, changeRate);
 
-  const response = await fetch(`${ollamaBase}/v1/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(ollamaKey ? { Authorization: `Bearer ${ollamaKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.4,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM },
-        { role: "user", content: buildPrompt(name, ticker, metrics, close, changeRate) },
-      ],
-    }),
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`Ollama API 오류 (${response.status}): ${await response.text()}`);
-  const content = (await response.json()).choices?.[0]?.message?.content as string;
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    throw new Error(`Ollama 응답이 JSON이 아닙니다: ${(content ?? "").slice(0, 300)}`);
+  // 1. 명시적으로 OLLAMA_BASE_URL이 설정된 경우 우선 시도
+  const ollamaBase = serverEnv("OLLAMA_BASE_URL");
+  if (ollamaBase) {
+    try {
+      return await callOpenAiCompatibleJson({
+        url: `${ollamaBase}/v1/chat/completions`,
+        apiKey: serverEnv("OLLAMA_API_KEY"),
+        model: serverEnv("OLLAMA_MODEL") || "qwen2.5:7b-instruct",
+        prompt,
+      });
+    } catch (error) {
+      console.warn("[valuation/interpret] Ollama 호출 실패, 다음 제공자로 폴백:", error);
+    }
   }
-  return coerce(parsed);
+
+  // 2. Groq (GPT-OSS 120B) 시도
+  const groqKey = serverEnv("GROQ_API_KEY");
+  if (groqKey) {
+    try {
+      return await callOpenAiCompatibleJson({
+        url: "https://api.groq.com/openai/v1/chat/completions",
+        apiKey: groqKey,
+        model: serverEnv("GROQ_MODEL") || "openai/gpt-oss-120b",
+        prompt,
+        reasoningEffort: "low",
+      });
+    } catch (error) {
+      console.warn("[valuation/interpret] Groq 호출 실패, 다음 제공자로 폴백:", error);
+    }
+  }
+
+  // 3. Gemini 시도
+  const geminiKey = serverEnv("GEMINI_API_KEY");
+  if (geminiKey) {
+    try {
+      const model = serverEnv("GEMINI_MODEL") || "gemini-3.8-flash";
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "x-goog-api-key": geminiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM }] },
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.4,
+            thinkingConfig: { thinkingLevel: "low" },
+            responseMimeType: "application/json",
+          },
+        }),
+        cache: "no-store",
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        const text = payload.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("");
+        if (text) return coerce(JSON.parse(text));
+      }
+    } catch (error) {
+      console.warn("[valuation/interpret] Gemini 호출 실패, 룰베이스 폴백 적용:", error);
+    }
+  }
+
+  // 4. 모든 제공자 장애 시에도 500 오류 대신 정량 기준 기반 해설을 반환
+  return buildRuleBasedFallback(metrics);
 }
 
 // 로그인한 사용자에 한해, 새로 생성된 해설을 valuation_interpretations에 버전으로 남긴다.

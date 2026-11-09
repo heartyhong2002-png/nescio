@@ -664,6 +664,8 @@ function parsePercentNumber(percentStr: string | null): number | null {
 
 const MONTH_SELECTOR_OPTIONS = [
   { value: "ALL", label: "2026 전체 종합" },
+  { value: "2026-11", label: "11월" },
+  { value: "2026-10", label: "10월" },
   { value: "2026-09", label: "9월" },
   { value: "2026-08", label: "8월" },
   { value: "2026-07", label: "7월" },

@@ -89,6 +89,7 @@ async function callOpenAiFormat(opts: { url: string; apiKey: string; model: stri
     body: JSON.stringify({
       model: opts.model,
       temperature: 0.2,
+      reasoning_effort: "low",
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: opts.system },
@@ -112,7 +113,11 @@ async function callGeminiFormat(opts: { apiKey: string; model: string; system: s
     body: JSON.stringify({
       system_instruction: { parts: [{ text: opts.system }] },
       contents: [{ role: "user", parts: [{ text: opts.prompt }] }],
-      generationConfig: { response_mime_type: "application/json", temperature: 0.2 },
+      generationConfig: {
+        response_mime_type: "application/json",
+        temperature: 0.2,
+        thinkingConfig: { thinkingLevel: "low" },
+      },
     }),
     cache: "no-store",
   });
@@ -179,14 +184,14 @@ export async function analyzeConsensus(
 
   let aiResultText = "";
 
-  // 4-1. Groq (Llama 3.3/3.1) 우선 호출
+  // 4-1. Groq (GPT-OSS 120B) 우선 호출
   const groqKey = serverEnv("GROQ_API_KEY");
   if (groqKey) {
     try {
       aiResultText = await callOpenAiFormat({
         url: "https://api.groq.com/openai/v1/chat/completions",
         apiKey: groqKey,
-        model: "llama-3.3-70b-versatile",
+        model: serverEnv("GROQ_MODEL") || "openai/gpt-oss-120b",
         system: SYSTEM_PROMPT,
         prompt,
       });

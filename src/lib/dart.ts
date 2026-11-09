@@ -320,6 +320,8 @@ export async function fetchIpoDetail(item: DartListItem, bgnDe: string, endDe: s
       underwriterAllocations: underwriterAllocations.map((allocation) => ({
         ...allocation,
         minSubscriptionDeposit,
+        accountOpeningDeadline: null,
+        subscriptionFee: null,
       })),
       totalShares,
       offerAmount,
@@ -376,8 +378,19 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     .slice(0, 5);
   const demandResults = await Promise.allSettled(
     demandTargets.map(async ({ ipo, item }) => {
-      const detail = await fetchDemandForecastFromDartDocument(dartUrl("document.xml", { rcept_no: item!.rcept_no! }));
-      return { corpCode: ipo.corpCode, detail };
+      try {
+        const detail = await fetchDemandForecastFromDartDocument(
+          dartUrl("document.xml", { rcept_no: item!.rcept_no! }),
+        );
+        return { corpCode: ipo.corpCode, detail };
+      } catch (error) {
+        // 원문 ZIP 지연·파싱 실패는 해당 종목의 세부 수요예측만 null로 두고 목록 전체를 막지 않는다.
+        console.warn(
+          `[dart] ${ipo.corpName} 수요예측 원문 조회 실패:`,
+          error instanceof Error ? error.message : error,
+        );
+        return { corpCode: ipo.corpCode, detail: null };
+      }
     }),
   );
   for (const result of demandResults) {
@@ -497,9 +510,13 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     const leadUnderwriter = summarizeUnderwriters(cleanedAllocations) || ipo.leadUnderwriter;
     const allocationsWithDeposit = cleanedAllocations.map((allocation) => ({
       ...allocation,
-      // 최소 청약 단위와 증거금률은 해당 공모의 공통 조건이다. 증권사별 별도 조건이
-      // 공고되면 그 원문값이 이 계산값을 대체해야 하며, 계좌 마감·수수료는 추정하지 않는다.
+      // 최소 청약 단위와 증거금률은 해당 공모의 공통 조건입니다. 증권사별 별도 조건이
+      // 공고되면 그 원문값이 이 계산값을 대체해야 한다.
       minSubscriptionDeposit,
+      // 38 종목 상세·DART 구조화 API에는 계좌개설 기한/청약 수수료 라벨이 없다.
+      // 38 base2.htm·증권사 FAQ의 일반 안내는 등급·채널별로 달라 종목 필드에 연결하지 않는다.
+      accountOpeningDeadline: null,
+      subscriptionFee: null,
     }));
 
     // 38커뮤니케이션에서 수집된 기업 정보 매핑
@@ -582,6 +599,9 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     const allocationsWithDeposit = cleanedAllocations.map((allocation) => ({
       ...allocation,
       minSubscriptionDeposit: minDeposit,
+      // 종목별 증권사 공고 원문이 없으면 추정하지 않는다. UI는 "증권사 공고 확인"을 유지한다.
+      accountOpeningDeadline: null,
+      subscriptionFee: null,
     }));
 
     const scrapedIpo: IpoInfo = {
