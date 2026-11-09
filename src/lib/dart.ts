@@ -65,7 +65,10 @@ function dartUrl(path: string, params: Record<string, string>) {
 async function dartGet<T>(path: string, params: Record<string, string>): Promise<T> {
   const key = serverEnv("DART_API_KEY");
   if (!key) throw new Error("DART_API_KEY가 설정되지 않았어요.");
-  const response = await fetch(dartUrl(path, params), { cache: "no-store" });
+  const response = await fetch(dartUrl(path, params), {
+    cache: "no-store",
+    signal: AbortSignal.timeout(4000),
+  });
   if (!response.ok) throw new Error(`DART API 오류 (${response.status})`);
   const data = (await response.json()) as T & { status?: string; message?: string };
   // DART는 "013"(조회된 데이터가 없음)을 정상 응답으로 준다 — 에러 취급하면 안 되고, 나머지
@@ -250,25 +253,29 @@ export async function searchIpoCandidates(bgnDe: string, endDe: string): Promise
   if (!key) return [];
 
   const byCorp = new Map<string, DartListItem>();
-  let page = 1;
-  for (; page <= MAX_LIST_PAGES; page += 1) {
-    const data = await dartGet<DartListResponse>("list.json", {
-      pblntf_ty: "C",
-      pblntf_detail_ty: "C001",
-      bgn_de: bgnDe,
-      end_de: endDe,
-      page_no: String(page),
-      page_count: "100",
-    });
-    const list = data.list ?? [];
+  const pages = [1, 2, 3];
+  const results = await Promise.allSettled(
+    pages.map((p) =>
+      dartGet<DartListResponse>("list.json", {
+        pblntf_ty: "C",
+        pblntf_detail_ty: "C001",
+        bgn_de: bgnDe,
+        end_de: endDe,
+        page_no: String(p),
+        page_count: "100",
+      }),
+    ),
+  );
+
+  for (const res of results) {
+    if (res.status !== "fulfilled") continue;
+    const list = res.value.list ?? [];
     for (const item of list) {
       const isUnlisted = !item.stock_code || item.stock_code.trim() === "";
       if (!isUnlisted || !isEquityRegistrationTitle(item.report_nm) || !item.corp_code) continue;
       const existing = byCorp.get(item.corp_code);
-      // rcept_no는 "20260914000379"처럼 접수일+일련번호라 같은 자릿수 문자열 비교로 최신순 판단 가능.
       if (!existing || (item.rcept_no ?? "") > (existing.rcept_no ?? "")) byCorp.set(item.corp_code, item);
     }
-    if (!data.total_page || page >= data.total_page) break;
   }
   return [...byCorp.values()];
 }
@@ -375,16 +382,19 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
   const demandTargets = dartIpos
     .map((ipo) => ({ ipo, item: candidateByCorp.get(ipo.corpCode), match: findScrapedIpo(ipo.corpName, scraped38Map) }))
     .filter((target) => target.item?.rcept_no && target.match?.scraped.institutionCompetitionRate)
-    .slice(0, 5);
+    .slice(0, 3);
   const demandResults = await Promise.allSettled(
     demandTargets.map(async ({ ipo, item }) => {
       try {
-        const detail = await fetchDemandForecastFromDartDocument(
+        const fetchPromise = fetchDemandForecastFromDartDocument(
           dartUrl("document.xml", { rcept_no: item!.rcept_no! }),
         );
+        const timeoutPromise = new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error("DART 원문 조회 시간 초과")), 3000),
+        );
+        const detail = await Promise.race([fetchPromise, timeoutPromise]);
         return { corpCode: ipo.corpCode, detail };
       } catch (error) {
-        // 원문 ZIP 지연·파싱 실패는 해당 종목의 세부 수요예측만 null로 두고 목록 전체를 막지 않는다.
         console.warn(
           `[dart] ${ipo.corpName} 수요예측 원문 조회 실패:`,
           error instanceof Error ? error.message : error,
@@ -554,10 +564,15 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     return mergedObj;
   });
 
-  // 2. 38커뮤니케이션에는 잡혀있으나 DART 60일 목록에는 아직 안 잡힌 예정 공모주 추가
+  // 오늘 기준 30일 전 날짜 (최근 청약 마감 및 상장 대기 종목도 화면에서 확인 가능하도록 보존)
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 30);
+  const cutoffDate = thirtyDaysAgo.toISOString().slice(0, 10);
+
+  // 2. 38커뮤니케이션에는 잡혀있으나 DART 60일 목록에는 아직 안 잡힌 예정/진행/최근마감 공모주 추가
   for (const [key, scraped] of scraped38Map.entries()) {
     if (matchedCorpNames.has(key)) continue;
-    if (!scraped.subscriptionEnd || Date.parse(scraped.subscriptionEnd) < Date.parse(today)) continue;
+    if (scraped.subscriptionEnd && scraped.subscriptionEnd < cutoffDate) continue;
 
     const rawAllocations: UnderwriterAllocation[] = scraped.underwriters.map((u: ScrapedUnderwriter) => ({
       name: u.name,
@@ -642,8 +657,31 @@ export async function fetchUpcomingIpos(): Promise<IpoInfo[]> {
     mergedIpos.push(scrapedIpo);
   }
 
-  // 청약이 아직 끝나지 않은 공모주만 청약임박순 정렬
+  // 공모주 필터링 및 우선순위 정렬:
+  // 1순위: 청약 진행 중 (start <= today && end >= today)
+  // 2순위: 청약 예정 (start > today)
+  // 3순위: 상장 대기 / 최근 청약 마감 (end < today && end >= cutoffDate)
   return mergedIpos
-    .filter((ipo) => ipo.subscriptionEnd !== null && Date.parse(ipo.subscriptionEnd) >= Date.parse(today))
-    .sort((a, b) => (a.subscriptionEnd ?? "").localeCompare(b.subscriptionEnd ?? ""));
+    .filter((ipo) => {
+      if (!ipo.subscriptionEnd) return true;
+      return ipo.subscriptionEnd >= cutoffDate;
+    })
+    .sort((a, b) => {
+      const aEnd = a.subscriptionEnd ?? "";
+      const bEnd = b.subscriptionEnd ?? "";
+      const aStart = a.subscriptionStart ?? "";
+      const bStart = b.subscriptionStart ?? "";
+
+      const aIsActive = aStart <= today && aEnd >= today;
+      const bIsActive = bStart <= today && bEnd >= today;
+      if (aIsActive && !bIsActive) return -1;
+      if (!aIsActive && bIsActive) return 1;
+
+      const aIsUpcoming = aStart > today;
+      const bIsUpcoming = bStart > today;
+      if (aIsUpcoming && !bIsUpcoming) return -1;
+      if (!aIsUpcoming && bIsUpcoming) return 1;
+
+      return aEnd.localeCompare(bEnd);
+    });
 }

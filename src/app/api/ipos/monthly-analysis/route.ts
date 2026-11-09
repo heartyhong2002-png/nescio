@@ -55,9 +55,6 @@ export async function GET(req: Request) {
   const blocked = checkRateLimit(req);
   if (blocked) return blocked;
 
-  const auth = await requireAuth();
-  if (auth.response) return auth.response;
-
   try {
     const { searchParams } = new URL(req.url);
     const month = searchParams.get("month") || "ALL";
