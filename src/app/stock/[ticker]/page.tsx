@@ -9,6 +9,7 @@ import { CauseCardButton } from "@/components/CauseCard";
 import CauseDetailView from "@/components/CauseDetailView";
 import PriceChart from "@/components/PriceChart";
 import { StockConsensusCard } from "@/components/StockConsensusCard";
+import { StockMultiSignalCard } from "@/components/StockMultiSignalCard";
 import {
   changeArrow,
   changeEmoji,
@@ -84,7 +85,7 @@ function StockBriefingContent() {
 
             <div className="stock-section-heading">
               <span>오늘의 변동 요인</span>
-              <small>뉴스와 시세를 바탕으로 정리했어요</small>
+              <small>뉴스·수급·공시·컨센서스·기술적 지표·업종 흐름을 종합해 정리했어요</small>
             </div>
             {briefingLoading ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 26 }}>
@@ -133,6 +134,9 @@ function StockBriefingContent() {
                 </div>
               </div>
             )}
+
+            {/* 6대 다차원 종목 분석 시그널 (수급·공시·기술적위치·업종비교·리스크) */}
+            <StockMultiSignalCard ticker={ticker} />
 
             {/* 전문가 컨센서스 (비동기 로딩) */}
             <StockConsensusCard ticker={ticker} />

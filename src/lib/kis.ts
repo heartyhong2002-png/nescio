@@ -450,16 +450,58 @@ export async function fetchKisPriceHistory(ticker: string, range: string): Promi
 // 밸류에이션 지표 (PER/PBR/EPS/BPS/시가총액/배당수익률)
 // ---------------------------------------------------------------------------
 
+export type KisRiskSnapshot = {
+  creditBalanceRate: number | null; // 전체 융자 잔고 비율 (%)
+  programNetBuyQty: number | null; // 프로그램 순매수 수량 (주)
+  turnoverRate: number | null; // 거래량 회전율 (%)
+  shortSellingAllowed: boolean | null; // 공매도 가능 여부
+  marketWarning: string; // "정상" | "투자주의" | "투자경고" | "투자위험" | "단기과열"
+};
+
+function fetchInquirePriceOutput(ticker: string): Promise<KisRow> {
+  return cached(`inquire-price:${ticker}`, 3 * 60_000, async () => {
+    const data = await kisGet("/uapi/domestic-stock/v1/quotations/inquire-price", "FHKST01010100", {
+      FID_COND_MRKT_DIV_CODE: "J",
+      FID_INPUT_ISCD: ticker,
+    });
+    return data.output ?? {};
+  });
+}
+
+export async function fetchKisRiskSnapshot(ticker: string): Promise<KisRiskSnapshot | null> {
+  const appKey = serverEnv("KIS_APP_KEY");
+  const appSecret = serverEnv("KIS_APP_SECRET");
+  if (!appKey || !appSecret) return null;
+
+  try {
+    const output = await fetchInquirePriceOutput(ticker);
+    const warnCode = output.mrkt_warn_cls_code;
+    const isShortOver = output.short_over_yn === "Y";
+    const isCaution = output.invt_caful_yn === "Y";
+    let marketWarning = "정상";
+    if (warnCode === "03") marketWarning = "투자위험";
+    else if (warnCode === "02") marketWarning = "투자경고";
+    else if (warnCode === "01" || isCaution) marketWarning = "투자주의";
+    else if (isShortOver) marketWarning = "단기과열";
+
+    return {
+      creditBalanceRate: toNumber(output.whol_loan_rmnd_rate),
+      programNetBuyQty: toNumber(output.pgtr_ntby_qty),
+      turnoverRate: toNumber(output.vol_tnrt),
+      shortSellingAllowed: output.ssts_yn ? output.ssts_yn === "Y" : null,
+      marketWarning,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function fetchValuation(ticker: string): Promise<Valuation> {
   return cached(`valuation:${ticker}`, 10 * 60_000, () => fetchValuationUncached(ticker));
 }
 
 async function fetchValuationUncached(ticker: string): Promise<Valuation> {
-  const data = await kisGet("/uapi/domestic-stock/v1/quotations/inquire-price", "FHKST01010100", {
-    FID_COND_MRKT_DIV_CODE: "J",
-    FID_INPUT_ISCD: ticker,
-  });
-  const output = data.output ?? {};
+  const output = await fetchInquirePriceOutput(ticker);
 
   // 존재하지 않는 종목이어도 KIS는 rt_cd 0에 값만 0/빈칸으로 준다 — 0은 "데이터 없음"으로 취급.
   const positive = (value: number | null) => (value !== null && value > 0 ? value : null);

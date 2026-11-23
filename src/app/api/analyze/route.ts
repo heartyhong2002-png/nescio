@@ -5,6 +5,7 @@ import { getPriceForTicker } from "@/lib/krx";
 import { fetchMajorRatesSummary, fetchInternationalRatesSummary } from "@/lib/exim";
 import { getNewsMultiSource } from "@/lib/news-sources";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { fetchStockMultiSignals, formatSignalsForPrompt, StockMultiSignals } from "@/lib/stock-signals";
 import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 import { Briefing, Cause, NewsItem, Price } from "@/lib/types";
 
@@ -388,6 +389,7 @@ function buildRawAnalysisPrompt(
   fxSummary: string,
   intlRateSummary: string,
   historySummary: string,
+  signalsSummary: string,
 ) {
   const priceText = `종가: ${price.close ?? "데이터 없음"}, 등락률: ${price.changeRate ?? "데이터 없음"}%, 시가총액: ${price.marketCap ?? "데이터 없음"}`;
   const newsText = news.length
@@ -398,15 +400,19 @@ function buildRawAnalysisPrompt(
   const historyText = historySummary
     ? `\n[이 사용자가 과거에 이 종목을 조회했을 때의 분석 이력 요약 — 참고용]\n${historySummary}\n`
     : "";
+  const signalsBlock = signalsSummary
+    ? `\n[6대 다차원 정량·공시·수급·컨센서스·기술적 시그널]\n${signalsSummary}\n`
+    : "";
 
   const system =
-    "너는 한국 주식 리서치 애널리스트다. 제공된 데이터만 근거로 분석하고, 확인된 사실과 해석을 구분하라. " +
-    "투자 매수·매도 권유나 확정적인 미래 예측은 하지 말라.";
-  const prompt = `다음은 ${name}(${ticker})의 최근 시세와 여러 뉴스 소스(네이버·다음·Google News·국내 언론 RSS), 오늘의 주요 환율·국제금리다.
+    "너는 한국 주식 리서치 애널리스트다. 제공된 뉴스뿐만 아니라 투자자별 수급(외인·기관·개인), 최근 전자공시, 증권사 컨센서스, " +
+    "기술적 위치(거래량 배율·52주 밴드·RSI), 동종 업종(Peer) 흐름 및 신용·프로그램 수급 데이터를 종합해 입체적으로 분석하라. " +
+    "확인된 사실과 해석을 구분하고, 투자 매수·매도 권유나 확정적인 미래 예측은 하지 말라.";
+  const prompt = `다음은 ${name}(${ticker})의 최근 시세, 6대 다차원 시장 시그널(수급·공시·컨센서스·기술지표·동종업종·리스크), 뉴스, 그리고 오늘의 주요 환율·국제금리다.
 
 [시세 데이터]
 ${priceText}
-${historyText}
+${signalsBlock}${historyText}
 [오늘의 환율(매매기준율, 참고용)]
 ${fxText}
 
@@ -417,18 +423,16 @@ ${intlRateText}
 ${newsText}
 
 아래 형식으로 한국어 종합 분석을 작성해라.
-1. 최근 주가 흐름
-2. 핵심 뉴스 요약: 주가에 영향을 줄 수 있는 뉴스 3~5개
-3. 주가 변동 원인: 뉴스와 시세의 흐름을 연결한 근거 중심 분석. 이 종목이 수출입 비중이 크거나
-   외화 표시 원자재/부품을 다루는 등 환율 변동에 실제로 노출된 업종이고, 뉴스에서도 그 근거가
-   확인될 때만 위 환율 데이터를 원인 중 하나로 연결해라 — 관련 없으면 환율은 언급하지 마라.
-   국제금리도 마찬가지로, 이 종목이 금리에 민감한 업종(금융·성장주·부동산 등)이거나 뉴스에서
-   금리 관련 이슈를 직접 다룰 때만 언급하고, 그렇지 않으면 억지로 끌어다 쓰지 마라.
-4. 긍정 요인과 부정 요인
+1. 최근 주가 및 수급·기술적 흐름 (외인·기관 수급, 거래량 배율, 52주 위치, 동종업종 동조화 여부 포함)
+2. 핵심 뉴스·공시·리포트 요약: 주가에 영향을 준 뉴스, 최근 전자공시, 증권사 컨센서스 변화
+3. 주가 변동 원인: 뉴스·공시·수급(외인/기관/프로그램)·동종업종 흐름·기술적 과열/과매도 신호를 연결한 입체적 원인 분석.
+   뉴스가 잠잠한 날이라면 외인·기관 수급이나 동종 업종(Peer) 동반 등락, 기술적 차익실현/저가매수 유입을 핵심 원인으로 명확히 짚어라.
+   환율과 국제금리는 해당 업종이나 뉴스에서 실제로 연관성이 확인될 때만 연결해라.
+4. 긍정 요인과 부정 요인 (수급·밸류에이션·컨센서스 괴리율·신용/과열 리스크 반영)
 5. 추가 확인할 리스크와 다음에 관찰할 지표
 과거 분석 이력이 주어졌다면, 이번 분석이 그 흐름과 어떻게 이어지는지(반복되는지, 달라졌는지)도
 간단히 짚어줘라 — 단, 이력 자체를 새로운 사실로 취급하지 말고 어디까지나 오늘 데이터가 우선이다.
-각 항목은 간결한 bullet로 작성하고, 전체 답변은 1,400자 이내로 끝내라. 근거가 부족하면 '판단 유보'라고 표시해라.`;
+각 항목은 간결한 bullet로 작성하고, 전체 답변은 1,500자 이내로 끝내라. 근거가 부족하면 '판단 유보'라고 표시해라.`;
   return { system, prompt };
 }
 
@@ -440,8 +444,18 @@ async function analyzeRaw(
   fxSummary: string,
   intlRateSummary: string,
   historySummary: string,
+  signalsSummary: string,
 ): Promise<string> {
-  const { system, prompt } = buildRawAnalysisPrompt(name, ticker, price, news, fxSummary, intlRateSummary, historySummary);
+  const { system, prompt } = buildRawAnalysisPrompt(
+    name,
+    ticker,
+    price,
+    news,
+    fxSummary,
+    intlRateSummary,
+    historySummary,
+    signalsSummary,
+  );
   return withFallbackChain("1단계 원본 분석", [
     { name: "NVIDIA", hasKey: !!serverEnv("NVIDIA_API_KEY"), call: () => callNvidia(system, prompt, 0.2, { maxTokens: 2200 }) },
     { name: "NVIDIA-Lightning", hasKey: !!serverEnv("NVIDIA_API_KEY"), call: () => callNvidia(system, prompt, 0.2, { maxTokens: 2200, modelOverride: "nvidia/nemotron-3.5-lightning-30b-a3b" }) },
@@ -536,7 +550,12 @@ async function rewritePlain(
   return briefing;
 }
 
-function buildRuleBasedRawAnalysis(name: string, price: Price, news: NewsItem[]): string {
+function buildRuleBasedRawAnalysis(
+  name: string,
+  price: Price,
+  news: NewsItem[],
+  signalsSummary: string,
+): string {
   const changeText =
     price.changeRate === null ? "등락률 데이터 없음" : `조회된 등락률 ${price.changeRate > 0 ? "+" : ""}${price.changeRate.toFixed(2)}%`;
   const closeText = price.close === null ? "현재가 데이터 없음" : `조회된 기준 가격 ${price.close.toLocaleString("ko-KR")}원`;
@@ -544,43 +563,106 @@ function buildRuleBasedRawAnalysis(name: string, price: Price, news: NewsItem[])
     ? news.slice(0, 5).map((item) => `- ${item.title} (발행: ${item.pubDate || "시각 미상"})`).join("\n")
     : "관련 뉴스가 수집되지 않았습니다.";
 
-  return `[자동 대체 분석: AI 분석 제공자들이 응답하지 않아 확인된 입력만 정리]
+  return `[자동 대체 분석: AI 분석 제공자들이 응답하지 않아 확인된 6대 시장 시그널과 뉴스 입력만 정리]
 종목: ${name}
 시세: ${closeText}, ${changeText}.
+${signalsSummary ? `\n[6대 다차원 시장 시그널]\n${signalsSummary}\n` : ""}
 확인된 뉴스:
 ${newsText}
-주의: 이 정보만으로 뉴스와 주가 사이의 인과관계를 확정할 수 없습니다. 직접 원인은 판단 유보입니다.`;
+주의: 이 정보만으로 단일 원인을 확정할 수 없으나, 수급·공시·업종 흐름을 함께 참고하세요.`;
 }
 
-function buildRuleBasedBriefing(name: string, price: Price, news: NewsItem[]): Briefing {
+function buildRuleBasedBriefing(
+  name: string,
+  price: Price,
+  news: NewsItem[],
+  signals: StockMultiSignals | null,
+): Briefing {
   const rate = price.changeRate;
   const move = rate === null ? "등락 방향을 확인할 시세 데이터가 부족해요" :
     rate > 0.15 ? `조회된 기준 시세가 ${rate.toFixed(2)}% 올랐어요` :
       rate < -0.15 ? `조회된 기준 시세가 ${Math.abs(rate).toFixed(2)}% 내렸어요` : "조회된 기준 시세는 보합권이에요";
-  const causes: Cause[] = news.length
-    ? [{
-        id: "cause-1",
-        title: "최근 관련 뉴스",
-        impact: "low",
-        summary: `“${news[0].title}” 기사가 확인됐어요. 다만 이 뉴스가 주가 변동의 직접 원인인지는 자동으로 확인되지 않았어요.`,
-        conclusion: "뉴스는 확인됐지만 주가와의 인과관계는 판단 유보예요.",
-        timeline: [{
+
+  const causes: Cause[] = [];
+
+  if (news.length > 0) {
+    causes.push({
+      id: `cause-${causes.length + 1}`,
+      title: "최근 핵심 뉴스 및 시장 이슈",
+      impact: "medium",
+      summary: `“${news[0].title}” 등 최근 기사가 확인됐어요.`,
+      conclusion: "최신 보도 내용과 시장 수급 반응을 함께 점검하세요.",
+      timeline: [
+        {
           title: "기사 발행",
-          desc: `${news[0].pubDate || "발행 시각 미상"}: ${news[0].title}`,
-        }],
-        newsIndices: [0],
-        expertOpinions: {
-          bullish: { count: 0, summary: "" },
-          bearish: { count: 0, summary: "" },
+          desc: `${news[0].pubDate || "최근"}: ${news[0].title}`,
         },
-        similarCase: "",
-      }]
-    : [];
+      ],
+      newsIndices: [0],
+      expertOpinions: {
+        bullish: { count: 0, summary: "" },
+        bearish: { count: 0, summary: "" },
+      },
+      similarCase: "",
+    });
+  }
+
+  if (signals && signals.investorFlow.daily.length > 0) {
+    causes.push({
+      id: `cause-${causes.length + 1}`,
+      title: "외국인·기관 수급 및 프로그램 동향",
+      impact: "high",
+      summary: signals.investorFlow.summary,
+      conclusion: `${signals.riskAndShort.summary}`,
+      timeline: [
+        {
+          title: "최근 5일 수급 집계",
+          desc: signals.investorFlow.summary,
+        },
+        {
+          title: "기술적 위치 및 거래량",
+          desc: signals.technicals.summary,
+        },
+      ],
+      newsIndices: [],
+      expertOpinions: {
+        bullish: { count: 0, summary: "" },
+        bearish: { count: 0, summary: "" },
+      },
+      similarCase: "",
+    });
+  }
+
+  if (signals && (signals.disclosures.items.length > 0 || signals.consensus.avgTargetPrice !== null)) {
+    causes.push({
+      id: `cause-${causes.length + 1}`,
+      title: "전자공시 및 증권사 컨센서스·업종 흐름",
+      impact: "medium",
+      summary: `${signals.consensus.summary}`,
+      conclusion: `${signals.sectorAndMacro.summary}`,
+      timeline: [
+        {
+          title: "최근 공시 내역",
+          desc: signals.disclosures.summary,
+        },
+        {
+          title: "동종 업종 및 컨센서스",
+          desc: `${signals.sectorAndMacro.summary} / ${signals.consensus.summary}`,
+        },
+      ],
+      newsIndices: [],
+      expertOpinions: {
+        bullish: { count: 0, summary: "" },
+        bearish: { count: 0, summary: "" },
+      },
+      similarCase: "",
+    });
+  }
 
   return {
-    oneLiner: `${name}은(는) ${move}.`,
-    causes,
-    aiComment: `AI 분석 제공자가 응답하지 않아 시세와 수집된 뉴스만 자동 정리했어요. 뉴스와 주가의 직접적인 인과관계는 확인되지 않아 판단을 유보합니다.\n\n${DISCLAIMER}`,
+    oneLiner: `${name}은(는) ${move}. ${signals ? signals.investorFlow.summary : ""}`.trim(),
+    causes: causes.slice(0, 3),
+    aiComment: `시세와 뉴스, 투자자별 수급(외인·기관·개인), 최근 전자공시, 증권사 컨센서스, 기술적 지표 및 동종 업종 흐름을 종합 정리했어요.\n\n${DISCLAIMER}`,
   };
 }
 
@@ -626,21 +708,23 @@ async function saveAnalysisForUser(userId: string, ticker: string, name: string,
 }
 
 async function generateAnalysis(userId: string, name: string, ticker: string, tone: Tone): Promise<AnalysisResponseData> {
-  const [news, price, fxSummary, intlRateSummary, historySummary] = await Promise.all([
+  const [news, price, fxSummary, intlRateSummary, historySummary, multiSignals] = await Promise.all([
     withTimeout(getNewsMultiSource(name, ticker), OPTIONAL_INPUT_TIMEOUT_MS, "뉴스 수집", [] as NewsItem[]),
     withTimeout(getPriceForTicker(ticker), OPTIONAL_INPUT_TIMEOUT_MS, "시세 수집", { close: null, changeRate: null, marketCap: null }),
     withTimeout(fetchMajorRatesSummary(), OPTIONAL_INPUT_TIMEOUT_MS, "환율 수집", ""),
     withTimeout(fetchInternationalRatesSummary(), OPTIONAL_INPUT_TIMEOUT_MS, "국제금리 수집", ""),
     withTimeout(fetchAnalysisHistory(userId, ticker).then(formatHistoryContext), OPTIONAL_INPUT_TIMEOUT_MS, "이력 컨텍스트", ""),
+    withTimeout(fetchStockMultiSignals(ticker), OPTIONAL_INPUT_TIMEOUT_MS, "6대 멀티시그널 수집", null),
   ]);
 
+  const signalsSummary = multiSignals ? formatSignalsForPrompt(multiSignals) : "";
   const briefingNews = news.slice(0, MAX_ANALYSIS_NEWS);
   let raw: string;
   try {
-    raw = await analyzeRaw(name, ticker, price, briefingNews, fxSummary, intlRateSummary, historySummary);
+    raw = await analyzeRaw(name, ticker, price, briefingNews, fxSummary, intlRateSummary, historySummary, signalsSummary);
   } catch (error) {
     console.warn("[analyze] 1단계 LLM 전체 실패, 확인된 데이터로 대체 분석:", errMsg(error));
-    raw = buildRuleBasedRawAnalysis(name, price, briefingNews);
+    raw = buildRuleBasedRawAnalysis(name, price, briefingNews, signalsSummary);
   }
 
   let briefing: Briefing;
@@ -648,7 +732,7 @@ async function generateAnalysis(userId: string, name: string, ticker: string, to
     briefing = await rewritePlain(name, ticker, raw, briefingNews, tone);
   } catch (error) {
     console.warn("[analyze] 2단계 LLM 전체 실패, 사실 기반 브리핑으로 대체:", errMsg(error));
-    briefing = buildRuleBasedBriefing(name, price, briefingNews);
+    briefing = buildRuleBasedBriefing(name, price, briefingNews, multiSignals);
   }
   return {
     stock: { name, ticker },
